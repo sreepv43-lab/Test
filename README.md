@@ -8,23 +8,27 @@ in any modern browser — no server, no build step, no network access required.
 ## The board
 
 ```
-        BLUE
-   ┌───┬───┬───┬───┬───┐
-   │ ↻ │ ↓ │ B │ → │ ↻ │      outer ring · 16 squares · clockwise
-   ├───┼───┼───┼───┼───┤      inner ring ·  8 squares · anti-clockwise
-   │ ↑ │ ⌐ │ ← │ ← │ ← │      centre     ·  home
-Y  │ Y │ ↓ │ ✦ │ ↑ │ R │  R
-E  ├───┼───┼───┼───┼───┤  E
-L  │ → │ → │ → │ ⌐ │ ↓ │  D
-   ├───┼───┼───┼───┼───┤
-   │ ↑ │ ← │ G │ ↑ │ ← │
-   └───┴───┴───┴───┴───┘
-        GREEN
+             BLUE
+   ┌────┬────┬────┬────┬────┐
+   │    │    │ B  │    │    │   outer ring · 16 squares · clockwise
+   ├────┼────┼────┼────┼────┤   inner ring ·  8 squares · anti-clockwise
+   │    │    │ b  │    │    │   centre     ·  home
+Y  │ Y  │ y  │ ✦  │ r  │ R  │  R
+E  ├────┼────┼────┼────┼────┤  E
+L  │    │    │ g  │    │    │  D
+   ├────┼────┼────┼────┼────┤
+   │    │    │ G  │    │    │
+   └────┴────┴────┴────┴────┘
+             GREEN
 ```
 
-Every one of the 25 squares is on the track. Each colour starts on its own
-block, laps the outer ring, turns inwards at the arrow beside its block,
-travels the inner ring the whole way round, and steps into the centre.
+Every one of the 25 squares is on the track. Capitals are the four starting
+blocks; lower case are the inner-ring squares each colour steps into the centre
+from, each facing its own side of the board and its own triangle of the centre.
+
+A colour starts on its block, laps the outer ring, turns inwards from the square
+just before its own block, travels the inner ring the whole way round, and steps
+into the centre.
 
 ## Rules
 
