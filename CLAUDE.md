@@ -4,21 +4,52 @@ This file provides guidance for AI assistants (Claude and others) working in thi
 
 ## Project Overview
 
-> **Note:** This is a newly initialized repository. Update this section once the project purpose, language, and framework are defined.
-
 - **Repository:** sreepv43-lab/Test
-- **Status:** Initial setup — no source code yet
-- **Purpose:** TBD
+- **Status:** Active
+- **Purpose:** Ludo Circuit — an offline, single-file ludo variant played on a
+  5x5 circuit (16-square outer ring, 8-square inner ring, centre home).
+- **Stack:** Plain HTML, CSS and ES5-flavoured JavaScript. No dependencies, no
+  build step, no network calls. Opened directly from disk via `file://`.
 
 ## Repository Structure
-
-> Update this section as files and directories are added.
 
 ```
 /
 ├── CLAUDE.md          # This file — AI assistant guidance
-└── (add directories and files here as the project grows)
+├── README.md          # Rules, options and controls
+├── index.html         # The whole game (rules engine + UI)
+└── test/
+    └── simulate.mjs   # Head-less soak test for the rules engine
 ```
+
+### How index.html is organised
+
+The file carries two scripts, and the split matters:
+
+- `<script id="ludo-rules">` — a **pure, DOM-free** rules engine: board
+  geometry, move planning, capture/blockade resolution, win detection and the
+  computer player. It attaches itself to `window` or `globalThis`, so Node can
+  evaluate it as-is.
+- `<script id="ludo-ui">` — everything visual: board construction, token
+  layout and animation, the 3D dice, sound, overlays and turn flow.
+
+Keep game logic in the rules block and DOM work in the UI block. The test
+extracts the rules block by its `id`, so renaming that script tag breaks the
+test.
+
+## Design constraints
+
+- **Single file, offline.** `index.html` must stay self-contained — no CDN
+  links, no external fonts, images or scripts.
+- **Flat design.** Solid fills, no gradients used for depth, no glossy effects.
+  Colours come from CSS custom properties on `:root`; per-player colours are
+  selected with `[data-color="..."]`, which sets `--c`, `--c-rgb` and `--c-d`.
+- **No side panel.** Game state is communicated on the board itself: the active
+  player's dice appears on their edge, their yard and the board outline light up
+  in their colour, and a status pill sits under the board.
+- **Board sizing** is driven by `--cs` (one cell) on `:root`, computed from the
+  viewport so the whole table always fits without scrolling. Everything else is
+  a multiple of `--cs`; avoid hard-coded pixel sizes inside the table.
 
 ## Development Workflow
 
@@ -108,25 +139,27 @@ Only retry on network errors, not on authentication (403) or permission failures
 
 ## Environment Setup
 
-> Update this section once the tech stack is defined.
+No installation. Open `index.html` in a browser:
 
 ```bash
-# Example (replace with actual commands):
-# npm install
-# pip install -r requirements.txt
-# cargo build
+xdg-open index.html      # or: open index.html
 ```
+
+Node (18+) is only needed to run the rules test.
 
 ## Running Tests
 
-> Update this section once a test framework is in place.
-
 ```bash
-# Example:
-# npm test
-# pytest
-# cargo test
+node test/simulate.mjs        # 300 games per configuration (default)
+node test/simulate.mjs 1000   # longer soak
 ```
+
+The test plays computer-vs-computer games across four rule configurations and
+asserts the invariants after every move: token counts per colour, valid token
+states, that no token reaches the inner ring without a completed lap and a cut,
+and that opponents never occupy the same unsafe square. It exits non-zero if an
+invariant fails or a game fails to finish. Run it after any change to the rules
+engine.
 
 ## CI/CD
 

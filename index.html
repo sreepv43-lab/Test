@@ -1,0 +1,1223 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ludo Circuit</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%232F6FED'/><circle cx='10.5' cy='10.5' r='3' fill='white'/><circle cx='21.5' cy='10.5' r='3' fill='white'/><circle cx='10.5' cy='21.5' r='3' fill='white'/><circle cx='21.5' cy='21.5' r='3' fill='white'/></svg>">
+<style>
+/* ---------------------------------------------------------------- tokens */
+:root{
+  --blue:#2F6FED;   --blue-rgb:47,111,237;    --blue-d:#1B4CB0;
+  --red:#E8483F;    --red-rgb:232,72,63;      --red-d:#B4302A;
+  --green:#2FB673;  --green-rgb:47,182,115;   --green-d:#1C8552;
+  --yellow:#F0B419; --yellow-rgb:240,180,25;  --yellow-d:#B9860A;
+
+  --bg:#EBEFF6;  --surface:#FFFFFF; --cellbg:#F2F5FA; --line:#DFE5F0;
+  --ink:#161B26; --muted:#6C7689;   --shade:#0B1020;
+
+  /* Board metrics, sized from the space the table actually needs:
+     10.7 cells across, 11.8 down (board plus a yard and a dice on every edge). */
+  --cs: min(calc((100vw - 28px) / 10.7), calc((100vh - 160px) / 11.8), 72px);
+  --span: 10.7;
+  --gap: calc(var(--cs) * .07);
+  --pad: calc(var(--cs) * .17);
+  --slot: calc(var(--cs) * .78);
+  --d: calc(var(--cs) * 1.1);
+  --tok: calc(var(--cs) * .6);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#10131A; --surface:#191E28; --cellbg:#212734; --line:#2B3242;
+    --ink:#E9EDF6; --muted:#95A0B5; --shade:#000000;
+  }
+}
+[data-color=blue]  { --c:var(--blue);   --c-rgb:var(--blue-rgb);   --c-d:var(--blue-d); }
+[data-color=red]   { --c:var(--red);    --c-rgb:var(--red-rgb);    --c-d:var(--red-d); }
+[data-color=green] { --c:var(--green);  --c-rgb:var(--green-rgb);  --c-d:var(--green-d); }
+[data-color=yellow]{ --c:var(--yellow); --c-rgb:var(--yellow-rgb); --c-d:var(--yellow-d); }
+
+*{ box-sizing:border-box; }
+html,body{ height:100%; }
+body{
+  margin:0; background:var(--bg); color:var(--ink);
+  font:500 15px/1.45 ui-sans-serif,system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;
+  -webkit-font-smoothing:antialiased; overflow-x:hidden;
+  display:flex; flex-direction:column; align-items:center;
+  padding:10px 10px 18px;
+}
+button{ font:inherit; color:inherit; border:0; background:none; cursor:pointer; }
+h1,h2,h3{ margin:0; font-weight:800; letter-spacing:-.02em; }
+
+/* --------------------------------------------------------------- top bar */
+.topbar{
+  width:max(330px, calc(var(--cs) * var(--span))); max-width:100%;
+  display:flex; align-items:center; gap:10px; padding:2px 2px 10px;
+}
+.brand{ display:flex; align-items:center; gap:9px; margin-right:auto; }
+.brand .marks{ display:grid; grid-template-columns:repeat(2,9px); gap:3px; }
+.brand .marks i{ width:9px; height:9px; border-radius:3px; display:block; }
+.brand h1{ font-size:17px; }
+.brand small{ display:block; font-size:11px; font-weight:600; color:var(--muted); letter-spacing:.06em; text-transform:uppercase; }
+.tbtn{
+  height:34px; padding:0 13px; border-radius:10px; background:var(--surface);
+  box-shadow:inset 0 0 0 1.5px var(--line); font-size:13px; font-weight:700;
+  display:inline-flex; align-items:center; gap:6px; transition:transform .12s, box-shadow .15s;
+}
+.tbtn:hover{ box-shadow:inset 0 0 0 1.5px var(--muted); }
+.tbtn:active{ transform:scale(.96); }
+
+/* ----------------------------------------------------------------- table */
+#table{
+  position:relative;
+  display:grid;
+  grid-template-areas:". top ." "left board right" ". bottom .";
+  grid-template-columns:auto auto auto;
+  grid-template-rows:auto auto auto;
+  place-items:center;
+  gap:calc(var(--cs)*.16);
+}
+.side{ display:flex; align-items:center; justify-content:center; gap:calc(var(--cs)*.2); }
+/* the yard stays centred on its edge; the dice sits outside it, on that player's side */
+.side-top   { grid-area:top;    flex-direction:column-reverse; }
+.side-right { grid-area:right;  flex-direction:row; }
+.side-bottom{ grid-area:bottom; flex-direction:column; }
+.side-left  { grid-area:left;   flex-direction:row-reverse; }
+.side.off{ visibility:hidden; }
+
+/* ------------------------------------------------------------------ yard */
+.yard{
+  display:grid; gap:calc(var(--cs)*.11); padding:calc(var(--cs)*.13);
+  border-radius:calc(var(--cs)*.26); background:var(--surface);
+  box-shadow:inset 0 0 0 2px var(--line);
+  transition:box-shadow .25s, transform .25s;
+}
+.side-top .yard,.side-bottom .yard{ grid-template-columns:repeat(4,var(--slot)); }
+.side-left .yard,.side-right .yard{ grid-template-rows:repeat(4,var(--slot)); }
+.slot{
+  width:var(--slot); height:var(--slot); border-radius:calc(var(--cs)*.18);
+  background:rgba(var(--c-rgb),.10);
+  box-shadow:inset 0 0 0 1.5px rgba(var(--c-rgb),.28);
+}
+.side.turn .yard{ box-shadow:inset 0 0 0 2.5px var(--c); transform:scale(1.03); }
+
+/* ----------------------------------------------------------------- board */
+#board{
+  grid-area:board; position:relative;
+  display:grid; grid-template-columns:repeat(5,var(--cs)); grid-template-rows:repeat(5,var(--cs));
+  gap:var(--gap); padding:var(--pad);
+  background:var(--surface); border-radius:calc(var(--cs)*.3);
+  box-shadow:0 0 0 2.5px var(--line), 0 18px 40px -28px var(--shade);
+  transition:box-shadow .3s;
+}
+#board.turn-lit{ box-shadow:0 0 0 2.5px var(--turnc,var(--line)), 0 18px 40px -28px var(--shade); }
+.cell{
+  position:relative; border-radius:calc(var(--cs)*.16);
+  background:var(--cellbg); box-shadow:inset 0 0 0 1.5px var(--line);
+  overflow:hidden; transition:box-shadow .18s, background .18s;
+}
+.cell .xfill{ position:absolute; inset:0; }
+.cell.base .xfill{
+  background:conic-gradient(from 45deg,
+    var(--c) 0 25%, rgba(var(--c-rgb),.62) 0 50%,
+    var(--c) 0 75%, rgba(var(--c-rgb),.62) 0);
+}
+.cell.base{ box-shadow:inset 0 0 0 2px rgba(var(--c-rgb),.9); }
+.cell.center .xfill{
+  background:conic-gradient(from 45deg,
+    var(--red) 0 25%, var(--green) 0 50%, var(--yellow) 0 75%, var(--blue) 0);
+}
+.cell.center{ box-shadow:inset 0 0 0 2px var(--line); }
+.cell.center .hub{
+  position:absolute; left:50%; top:50%; width:34%; height:34%;
+  transform:translate(-50%,-50%); border-radius:50%;
+  background:rgba(255,255,255,.92); box-shadow:0 0 0 2px rgba(0,0,0,.10);
+}
+.cell.inner{ background:rgba(120,140,180,.10); }
+.chev{
+  position:absolute; left:50%; top:50%; width:52%; height:52%;
+  margin:-26% 0 0 -26%; color:var(--muted); opacity:.30; pointer-events:none;
+}
+.chev.branch{ color:var(--c); opacity:.95; width:60%; height:60%; margin:-30% 0 0 -30%; }
+.cell.base .chev, .cell.center .chev{ display:none; }
+.cell.target{ box-shadow:inset 0 0 0 3px rgb(var(--tc-rgb)); background:rgba(var(--tc-rgb),.18); }
+.safe-dot{
+  position:absolute; right:8%; top:8%; width:13%; height:13%; border-radius:50%;
+  background:rgba(255,255,255,.85);
+}
+
+/* ---------------------------------------------------------------- tokens */
+#tokens{ position:absolute; inset:0; pointer-events:none; z-index:5; }
+#tokens.no-anim .token{ transition:none !important; }
+.token{
+  position:absolute; left:0; top:0; width:var(--tok); height:var(--tok);
+  transition:transform 150ms cubic-bezier(.34,.02,.2,1);
+  will-change:transform; z-index:6;
+}
+.token.returning{ transition:transform 520ms cubic-bezier(.5,-.25,.3,1.3); z-index:20; }
+.token.moving{ z-index:30; }
+.token .body{
+  position:absolute; inset:0; border-radius:50%;
+  background:var(--c);
+  box-shadow:inset 0 0 0 calc(var(--tok)*.13) rgba(255,255,255,.92),
+             inset 0 0 0 calc(var(--tok)*.155) rgba(0,0,0,.10),
+             0 calc(var(--tok)*.06) 0 var(--c-d);
+}
+.token.hop .body{ animation:hop 150ms ease-out; }
+@keyframes hop{ 50%{ transform:translateY(-26%) scale(1.07); } }
+.token .star{
+  position:absolute; left:50%; top:50%; width:42%; height:42%; margin:-21% 0 0 -21%;
+  color:#fff; opacity:0; transform:scale(.4); transition:.25s;
+}
+.token.cut .star{ opacity:1; transform:scale(1); }
+.token.movable{ pointer-events:auto; cursor:pointer; }
+.token.movable .body{ animation:ready 1.25s ease-in-out infinite; }
+@keyframes ready{
+  0%,100%{ box-shadow:inset 0 0 0 calc(var(--tok)*.13) rgba(255,255,255,.92), 0 calc(var(--tok)*.06) 0 var(--c-d), 0 0 0 0 rgba(var(--c-rgb),.55); }
+  60%    { box-shadow:inset 0 0 0 calc(var(--tok)*.13) rgba(255,255,255,.92), 0 calc(var(--tok)*.06) 0 var(--c-d), 0 0 0 calc(var(--tok)*.30) rgba(var(--c-rgb),0); }
+}
+.token.picked .body{ animation:none; box-shadow:inset 0 0 0 calc(var(--tok)*.13) #fff, 0 0 0 3px var(--c); }
+#ghost{
+  position:absolute; left:0; top:0; width:var(--tok); height:var(--tok); border-radius:50%;
+  border:3px dashed rgba(255,255,255,.95); background:rgba(var(--c-rgb),.55);
+  box-shadow:0 0 0 2px rgba(var(--c-rgb),.9);
+  opacity:0; transition:opacity .15s; pointer-events:none; z-index:4;
+}
+#ghost.on{ opacity:1; }
+.float{
+  position:absolute; left:0; top:0; z-index:40; pointer-events:none;
+  font-size:calc(var(--cs)*.34); font-weight:900; letter-spacing:.04em;
+  color:var(--c); text-shadow:0 2px 0 var(--surface),0 0 8px var(--surface);
+  animation:floatup 900ms cubic-bezier(.2,.9,.3,1) forwards;
+}
+@keyframes floatup{
+  0%  { transform:translate(-50%,-50%) scale(.5); opacity:0; }
+  25% { transform:translate(-50%,-90%) scale(1.15); opacity:1; }
+  100%{ transform:translate(-50%,-190%) scale(1); opacity:0; }
+}
+
+/* ------------------------------------------------------------------ dice */
+.dicewrap{
+  width:var(--d); height:calc(var(--d) * 1.5); position:relative;
+  display:flex; align-items:flex-start; justify-content:center;
+  perspective:700px;
+  opacity:0; transform:scale(.55); transition:opacity .28s, transform .28s cubic-bezier(.2,1.4,.4,1);
+}
+.dicewrap.active{ opacity:1; transform:scale(1); }
+.dicewrap.rollable{ cursor:pointer; }
+.dice-shell{ width:var(--d); height:var(--d); position:relative; }
+.dicewrap.rollable .dice-shell::before{
+  content:""; position:absolute; inset:calc(var(--d)*-.16); border-radius:calc(var(--d)*.4);
+  background:rgba(var(--c-rgb),.20); animation:halo 1.5s ease-in-out infinite;
+}
+@keyframes halo{ 0%,100%{ transform:scale(.86); opacity:.75; } 50%{ transform:scale(1.06); opacity:.25; } }
+.dice3d{
+  position:absolute; inset:0; transform-style:preserve-3d;
+  transition:transform 760ms cubic-bezier(.22,.72,.2,1);
+}
+.dicewrap.tossing .dice3d{ animation:toss 760ms cubic-bezier(.3,.1,.3,1); }
+@keyframes toss{ 0%{ translate:0 0; } 45%{ translate:0 calc(var(--d)*-.55); } 100%{ translate:0 0; } }
+.face{
+  position:absolute; inset:0; border-radius:calc(var(--d)*.2);
+  background:var(--surface); box-shadow:inset 0 0 0 2px rgba(0,0,0,.07);
+  display:grid; grid-template:repeat(3,1fr)/repeat(3,1fr);
+  padding:calc(var(--d)*.14); backface-visibility:hidden;
+}
+.face span{ display:block; }
+.face span.p{
+  width:calc(var(--d)*.18); height:calc(var(--d)*.18); border-radius:50%;
+  background:var(--c); place-self:center;
+}
+.dlabel{
+  position:absolute; left:50%; bottom:0; transform:translateX(-50%);
+  font-size:calc(var(--cs)*.2); font-weight:800; letter-spacing:.08em; text-transform:uppercase;
+  color:var(--c); opacity:.85; white-space:nowrap; pointer-events:none;
+}
+
+/* ---------------------------------------------------------------- status */
+#status{
+  margin-top:14px; min-height:34px; display:flex; align-items:center; gap:9px;
+  padding:7px 16px; border-radius:99px; background:var(--surface);
+  box-shadow:inset 0 0 0 1.5px var(--line);
+  font-size:14px; font-weight:650; text-align:center;
+  transition:box-shadow .25s;
+}
+#status .dot{ width:10px; height:10px; border-radius:50%; background:var(--c,var(--muted)); flex:none; }
+#status.flash{ box-shadow:inset 0 0 0 2px var(--c); }
+
+/* --------------------------------------------------------------- overlay */
+.overlay{
+  position:fixed; inset:0; z-index:100; display:none;
+  align-items:center; justify-content:center; padding:18px;
+  background:rgba(8,12,22,.55); backdrop-filter:blur(6px);
+}
+.overlay.on{ display:flex; }
+.sheet{
+  width:min(560px,100%); max-height:88vh; overflow:auto;
+  background:var(--surface); border-radius:20px; padding:22px;
+  box-shadow:0 30px 70px -30px #000; animation:pop .28s cubic-bezier(.2,1.3,.4,1);
+}
+@keyframes pop{ from{ transform:translateY(14px) scale(.96); opacity:0; } }
+.sheet h2{ font-size:22px; margin-bottom:4px; }
+.sheet .sub{ color:var(--muted); font-size:13.5px; margin-bottom:16px; }
+.seats{ display:grid; grid-template-columns:repeat(2,1fr); gap:9px; margin-bottom:16px; }
+.seat{
+  display:flex; align-items:center; gap:10px; padding:10px 12px; border-radius:13px;
+  background:rgba(var(--c-rgb),.10); box-shadow:inset 0 0 0 2px rgba(var(--c-rgb),.30);
+  text-align:left; transition:.15s;
+}
+.seat:active{ transform:scale(.97); }
+.seat .chip{ width:20px; height:20px; border-radius:50%; background:var(--c); flex:none; box-shadow:inset 0 0 0 3px rgba(255,255,255,.85); }
+.seat b{ display:block; font-size:13.5px; }
+.seat .mode{ display:block; font-size:11.5px; color:var(--muted); font-weight:700; letter-spacing:.04em; text-transform:uppercase; }
+.seat.is-off{ opacity:.45; box-shadow:inset 0 0 0 2px var(--line); background:transparent; }
+.opt{ margin-bottom:14px; }
+.opt > b{ display:block; font-size:12px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin-bottom:7px; }
+.segs{ display:flex; gap:6px; flex-wrap:wrap; }
+.seg{
+  padding:8px 13px; border-radius:10px; font-size:13px; font-weight:700;
+  background:var(--cellbg); box-shadow:inset 0 0 0 1.5px var(--line); transition:.15s;
+}
+.seg.on{ background:var(--ink); color:var(--surface); box-shadow:none; }
+.seg:active{ transform:scale(.95); }
+.primary{
+  width:100%; height:48px; border-radius:14px; background:var(--ink); color:var(--surface);
+  font-size:15.5px; font-weight:800; margin-top:6px; transition:.15s;
+}
+.primary:active{ transform:scale(.98); }
+.ghostbtn{ width:100%; height:44px; border-radius:14px; box-shadow:inset 0 0 0 1.5px var(--line); font-weight:700; margin-top:8px; }
+.rules{ font-size:14px; line-height:1.62; }
+.rules h3{ font-size:13px; letter-spacing:.07em; text-transform:uppercase; color:var(--muted); margin:16px 0 6px; }
+.rules ul{ margin:0; padding-left:19px; }
+.rules li{ margin:5px 0; }
+.rules .kbd{ font:600 12px ui-monospace,monospace; background:var(--cellbg); padding:1.5px 6px; border-radius:5px; box-shadow:inset 0 0 0 1px var(--line); }
+.win-ring{
+  width:76px; height:76px; border-radius:50%; margin:0 auto 12px; background:var(--c);
+  box-shadow:inset 0 0 0 9px rgba(255,255,255,.9), 0 0 0 6px rgba(var(--c-rgb),.22);
+}
+.confetti{ position:fixed; inset:0; pointer-events:none; z-index:99; overflow:hidden; }
+.confetti i{
+  position:absolute; width:9px; height:15px; border-radius:2px; top:-20px;
+  animation:fall linear forwards;
+}
+@keyframes fall{ to{ transform:translateY(105vh) rotate(720deg); opacity:.15; } }
+
+/* Narrow screens: tuck each dice alongside its yard instead of outside it, so
+   the sides stop adding width and the board can grow. */
+@media (max-width:640px){
+  :root{ --cs: min(calc((100vw - 22px) / 8.3), calc((100vh - 158px) / 9.4), 64px); --span: 8.3; }
+  .side-top   { flex-direction:row; }
+  .side-bottom{ flex-direction:row-reverse; }
+  .side-right { flex-direction:column; }
+  .side-left  { flex-direction:column-reverse; }
+}
+@media (max-width:520px){
+  .brand small{ display:none; }
+  .brand h1{ font-size:16px; }
+  .seats{ grid-template-columns:1fr; }
+  .sheet{ padding:18px; }
+}
+@media (prefers-reduced-motion:reduce){
+  *{ animation-duration:.01ms !important; transition-duration:.06s !important; }
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div class="brand">
+    <div class="marks">
+      <i style="background:var(--blue)"></i><i style="background:var(--red)"></i>
+      <i style="background:var(--yellow)"></i><i style="background:var(--green)"></i>
+    </div>
+    <div>
+      <h1>Ludo Circuit</h1>
+      <small>Lap &middot; Cut &middot; Inner ring &middot; Home</small>
+    </div>
+  </div>
+  <button class="tbtn" id="btn-sound" title="Sound">&#9834; <span>On</span></button>
+  <button class="tbtn" id="btn-rules" title="Rules (R)">Rules</button>
+  <button class="tbtn" id="btn-new" title="New game (N)">New</button>
+</div>
+
+<main id="table">
+  <div class="side side-top"    data-color="blue"></div>
+  <div class="side side-right"  data-color="red"></div>
+  <div class="side side-bottom" data-color="green"></div>
+  <div class="side side-left"   data-color="yellow"></div>
+  <div id="board"></div>
+  <div id="tokens"><div id="ghost"></div></div>
+</main>
+
+<div id="status"><span class="dot"></span><span id="status-text">Welcome</span></div>
+
+<!-- ------------------------------------------------------------- setup -->
+<div class="overlay on" id="ov-setup">
+  <div class="sheet">
+    <h2>New game</h2>
+    <p class="sub">Tap a seat to switch between human, computer and empty. At least two seats must play.</p>
+    <div class="seats" id="seats"></div>
+
+    <div class="opt">
+      <b>Tokens to bring home to win</b>
+      <div class="segs" data-opt="tokensToWin">
+        <button class="seg" data-val="1">1 &middot; Sprint</button>
+        <button class="seg" data-val="2">2 &middot; Standard</button>
+        <button class="seg" data-val="4">4 &middot; Full</button>
+      </div>
+    </div>
+    <div class="opt">
+      <b>Cut credit needed for the inner ring</b>
+      <div class="segs" data-opt="cutMode">
+        <button class="seg" data-val="token">Per token &middot; strict</button>
+        <button class="seg" data-val="player">Per player &middot; relaxed</button>
+      </div>
+    </div>
+    <div class="opt">
+      <b>Release a token from the yard on</b>
+      <div class="segs" data-opt="releaseOnOne">
+        <button class="seg" data-val="1">1 or 6</button>
+        <button class="seg" data-val="0">6 only</button>
+      </div>
+    </div>
+    <button class="primary" id="btn-start">Start game</button>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------- rules -->
+<div class="overlay" id="ov-rules">
+  <div class="sheet">
+    <h2>How to play</h2>
+    <p class="sub">A compact ludo on a 5&times;5 circuit: an outer lap, a guarded inner ring, and the crown in the middle.</p>
+    <div class="rules">
+      <h3>The track</h3>
+      <ul>
+        <li>Every token starts in its yard and enters the board on its own <b>coloured block</b>.</li>
+        <li>The <b>outer ring</b> (16 squares) runs clockwise. The <b>inner ring</b> (8 squares) runs anti-clockwise. The centre is home.</li>
+        <li>The four coloured blocks are <b>safe squares</b> &mdash; nobody can be cut while standing on one.</li>
+      </ul>
+      <h3>Getting in</h3>
+      <ul>
+        <li>Roll a <b>6</b> (or a <b>1</b>, if enabled) to bring a token out of the yard. A 6 also earns a bonus roll.</li>
+        <li>Three sixes in a row forfeits the turn.</li>
+      </ul>
+      <h3>Cutting</h3>
+      <ul>
+        <li>Land on a lone opponent outside a safe square and it is <b>cut</b> &mdash; straight back to its yard. You get a bonus roll.</li>
+        <li>Two or more of your tokens on one square form a <b>blockade</b>: opponents cannot land on it, though they may pass.</li>
+        <li>Cutting works in the inner ring too.</li>
+      </ul>
+      <h3>Into the inner ring</h3>
+      <ul>
+        <li>A token may only turn inwards after it has <b>completed a full lap</b> and has <b>cut an opponent at least once</b>.</li>
+        <li>A token that has earned its cut carries a <b>white star</b>. Without the star it simply laps again.</li>
+        <li>The turn-in happens automatically at the arrow beside your own block.</li>
+      </ul>
+      <h3>Home</h3>
+      <ul>
+        <li>Follow the inner ring all the way round to the square facing the centre, then step in with an <b>exact roll</b>.</li>
+        <li>Reaching home earns a bonus roll. First player to bring the required number of tokens home wins.</li>
+      </ul>
+      <h3>Controls</h3>
+      <ul>
+        <li><span class="kbd">Space</span> roll &middot; <span class="kbd">1</span>&hellip;<span class="kbd">4</span> pick a token &middot; <span class="kbd">R</span> rules &middot; <span class="kbd">N</span> new game</li>
+      </ul>
+    </div>
+    <button class="ghostbtn" id="btn-rules-close">Close</button>
+  </div>
+</div>
+
+<!-- ------------------------------------------------------------ result -->
+<div class="overlay" id="ov-result">
+  <div class="sheet" id="result-sheet" style="text-align:center">
+    <div class="win-ring"></div>
+    <h2 id="result-title">Blue wins</h2>
+    <p class="sub" id="result-sub">All tokens home.</p>
+    <button class="primary" id="btn-again">Play again</button>
+    <button class="ghostbtn" id="btn-setup">Change setup</button>
+  </div>
+</div>
+
+<!-- =================================================================== -->
+<!--  Pure rules engine — no DOM. Also loaded head-less by test/simulate  -->
+<!-- =================================================================== -->
+<script id="ludo-rules">
+(function (root) {
+  'use strict';
+
+  /* Board geometry ------------------------------------------------------
+     5x5 grid.  Outer ring = 16 perimeter squares, clockwise.
+     Inner ring = 8 squares of the 3x3 core, anti-clockwise.  Centre = home.  */
+  var OUTER = [
+    [0,0],[0,1],[0,2],[0,3],[0,4],
+    [1,4],[2,4],[3,4],[4,4],
+    [4,3],[4,2],[4,1],[4,0],
+    [3,0],[2,0],[1,0]
+  ];
+  var INNER = [[1,1],[2,1],[3,1],[3,2],[3,3],[2,3],[1,3],[1,2]];
+  var CENTER = [2,2];
+
+  var COLORS   = ['blue','red','green','yellow'];   // clockwise seating & play order
+  var BASE_AT  = { blue:2,  red:6,  green:10, yellow:14 };  // index into OUTER
+  var INNER_AT = { blue:0,  red:6,  green:4,  yellow:2  };  // index into INNER
+
+  var OUTER_LEN = 16, INNER_LEN = 8;
+  var BRANCH = 15;      // last outer step before the turn-in
+  var INNER_START = 16; // first inner step
+  var HOME = 24;        // the centre
+
+  var SAFE = {};
+  COLORS.forEach(function (c) { SAFE[OUTER[BASE_AT[c]].join()] = true; });
+
+  /* Track square for `color` at step `idx` (0 = own block .. 24 = centre) */
+  function cellAt(color, idx) {
+    if (idx < INNER_START) return OUTER[(BASE_AT[color] + idx) % OUTER_LEN];
+    if (idx < HOME) return INNER[(INNER_AT[color] + idx - INNER_START) % INNER_LEN];
+    return CENTER;
+  }
+  function isSafe(cell) { return !!SAFE[cell.join()]; }
+  function same(a, b) { return a[0] === b[0] && a[1] === b[1]; }
+
+  /* State ---------------------------------------------------------------- */
+  function createGame(opts) {
+    var colors = COLORS.filter(function (c) { return opts.seats[c] !== 'off'; });
+    var g = {
+      colors: colors,
+      seats: opts.seats,
+      cutMode: opts.cutMode || 'token',          // 'token' | 'player'
+      tokensToWin: opts.tokensToWin || 2,
+      releaseOnOne: opts.releaseOnOne !== false,
+      tokens: [],
+      playerCut: {},
+      turn: 0,
+      dice: null,
+      sixStreak: 0,
+      phase: 'roll',
+      winner: null,
+      moveCount: 0
+    };
+    colors.forEach(function (c) {
+      g.playerCut[c] = false;
+      for (var i = 0; i < 4; i++) {
+        g.tokens.push({ id: c + i, color: c, seat: i, state: 'yard', idx: 0, laps: 0, cut: false });
+      }
+    });
+    return g;
+  }
+
+  function tokenById(g, id) {
+    for (var i = 0; i < g.tokens.length; i++) if (g.tokens[i].id === id) return g.tokens[i];
+    return null;
+  }
+  function current(g) { return g.colors[g.turn]; }
+  function onCell(g, cell, exceptId) {
+    return g.tokens.filter(function (t) {
+      return t.state === 'board' && t.id !== exceptId && same(cellAt(t.color, t.idx), cell);
+    });
+  }
+  function canEnterInner(g, t) {
+    return g.cutMode === 'player' ? !!g.playerCut[t.color] : !!t.cut;
+  }
+
+  /* Can `t` finish on step `dest`?  Returns null when the move is illegal. */
+  function landing(g, t, dest) {
+    if (dest === HOME) return { captures: [] };
+    var cell = cellAt(t.color, dest);
+    var others = onCell(g, cell, t.id);
+    var opp = others.filter(function (o) { return o.color !== t.color; });
+    if (!opp.length) return { captures: [] };
+    if (isSafe(cell)) return { captures: [] };          // coloured block: nobody is cut
+    var byColor = {};
+    for (var i = 0; i < opp.length; i++) byColor[opp[i].color] = (byColor[opp[i].color] || 0) + 1;
+    for (var k in byColor) if (byColor[k] >= 2) return null;   // blockade
+    return { captures: opp.map(function (o) { return o.id; }) };
+  }
+
+  /* Full plan for moving `t` by `dice`, or null. */
+  function planMove(g, t, dice) {
+    if (t.state === 'home') return null;
+
+    if (t.state === 'yard') {
+      if (!(dice === 6 || (g.releaseOnOne && dice === 1))) return null;
+      var land0 = landing(g, t, 0);
+      if (!land0) return null;
+      return {
+        tokenId: t.id, color: t.color, dice: dice, path: [0], dest: 0, laps: t.laps,
+        captures: land0.captures, release: true, entersInner: false, home: false
+      };
+    }
+
+    var i = t.idx, laps = t.laps, entersInner = false, path = [];
+    for (var s = 0; s < dice; s++) {
+      if (i === BRANCH) {
+        laps++;
+        if (canEnterInner(g, t)) { i = INNER_START; entersInner = true; }
+        else i = 0;
+      } else if (i >= HOME) {
+        return null;                                     // would overshoot the centre
+      } else {
+        i++;
+      }
+      path.push(i);
+    }
+    var land = landing(g, t, i);
+    if (!land) return null;
+    return {
+      tokenId: t.id, color: t.color, dice: dice, path: path, dest: i, laps: laps,
+      captures: land.captures, release: false, entersInner: entersInner, home: i === HOME
+    };
+  }
+
+  function legalMoves(g, dice) {
+    var color = current(g), out = [];
+    g.tokens.forEach(function (t) {
+      if (t.color !== color) return;
+      var m = planMove(g, t, dice);
+      if (m) out.push(m);
+    });
+    return out;
+  }
+
+  /* Commit a plan.  Safe to call after the UI has already walked the path. */
+  function applyMove(g, m) {
+    var t = tokenById(g, m.tokenId);
+    t.idx = m.dest;
+    t.laps = m.laps;
+    t.state = m.dest === HOME ? 'home' : 'board';
+
+    var captured = m.captures.map(function (id) {
+      var o = tokenById(g, id);
+      o.state = 'yard'; o.idx = 0; o.laps = 0;
+      return o;
+    });
+    if (captured.length) { t.cut = true; g.playerCut[t.color] = true; }
+
+    var homeCount = g.tokens.filter(function (x) {
+      return x.color === t.color && x.state === 'home';
+    }).length;
+
+    g.moveCount++;
+    var extra = m.dice === 6 || captured.length > 0 || m.home;
+    if (homeCount >= g.tokensToWin) { g.phase = 'over'; g.winner = t.color; extra = false; }
+    return { captures: captured, home: m.home, extra: extra, homeCount: homeCount, entersInner: m.entersInner };
+  }
+
+  function endTurn(g) {
+    g.turn = (g.turn + 1) % g.colors.length;
+    g.dice = null;
+    g.sixStreak = 0;
+    g.phase = 'roll';
+  }
+
+  /* Computer player ------------------------------------------------------ */
+  function progress(t) {
+    return t.state === 'home' ? 30 : t.state === 'yard' ? -1 : t.idx;
+  }
+  /* How many opponent tokens could reach `cell` on their next roll? */
+  function threat(g, color, cell, ignoreId) {
+    if (isSafe(cell)) return 0;
+    var n = 0;
+    g.tokens.forEach(function (o) {
+      if (o.color === color || o.state !== 'board' || o.id === ignoreId) return;
+      for (var d = 1; d <= 6; d++) {
+        var p = planMove(g, o, d);
+        if (p && same(cellAt(o.color, p.dest), cell)) { n++; return; }
+      }
+    });
+    return n;
+  }
+  function scoreMove(g, m) {
+    var t = tokenById(g, m.tokenId), s = 0, i;
+
+    if (m.home) s += 130;
+    if (m.entersInner) s += 60;
+    if (m.captures.length) {
+      s += 75;
+      for (i = 0; i < m.captures.length; i++) s += 4 * progress(tokenById(g, m.captures[i]));
+      if (!t.cut) s += 30;                       // the cut this token still needs
+    }
+    if (m.release) {
+      var idle = g.tokens.filter(function (x) { return x.color === t.color && x.state === 'yard'; }).length;
+      s += 24 + 5 * idle;
+    }
+    s += m.dest * 0.7;                            // general advancement
+
+    var destCell = cellAt(t.color, m.dest);
+    if (m.dest !== HOME) {
+      if (isSafe(destCell)) s += 15;
+      s -= 13 * threat(g, t.color, destCell, t.id);
+      var mates = onCell(g, destCell, t.id).filter(function (o) { return o.color === t.color; });
+      if (mates.length) s += 8;
+      if (t.state === 'board') s += 9 * threat(g, t.color, cellAt(t.color, t.idx), t.id);
+    }
+    /* A starred token should press on; an unstarred one should hunt. */
+    if (!t.cut && m.dest === BRANCH) s -= 8;
+    if (t.cut && m.dest >= INNER_START) s += 6;
+    return s;
+  }
+  function pickCpuMove(g, moves, rnd) {
+    rnd = rnd || Math.random;
+    var best = null, bestScore = -1e9;
+    for (var i = 0; i < moves.length; i++) {
+      var s = scoreMove(g, moves[i]) + rnd() * 4;
+      if (s > bestScore) { bestScore = s; best = moves[i]; }
+    }
+    return best;
+  }
+
+  root.LudoRules = {
+    COLORS: COLORS, OUTER: OUTER, INNER: INNER, CENTER: CENTER,
+    BASE_AT: BASE_AT, INNER_AT: INNER_AT,
+    OUTER_LEN: OUTER_LEN, INNER_LEN: INNER_LEN,
+    BRANCH: BRANCH, INNER_START: INNER_START, HOME: HOME,
+    cellAt: cellAt, isSafe: isSafe, same: same, onCell: onCell,
+    createGame: createGame, tokenById: tokenById, current: current,
+    planMove: planMove, legalMoves: legalMoves, applyMove: applyMove, endTurn: endTurn,
+    canEnterInner: canEnterInner, pickCpuMove: pickCpuMove, scoreMove: scoreMove
+  };
+})(typeof window !== 'undefined' ? window : globalThis);
+</script>
+
+<!-- =================================================================== -->
+<!--  Presentation                                                       -->
+<!-- =================================================================== -->
+<script id="ludo-ui">
+(function () {
+  'use strict';
+  var R = window.LudoRules;
+  var $ = function (s, el) { return (el || document).querySelector(s); };
+
+  var table = $('#table'), board = $('#board'), layer = $('#tokens'), ghost = $('#ghost');
+  var statusEl = $('#status'), statusText = $('#status-text');
+
+  var STEP = 155, TOSS = 760;
+  var NAME = { blue: 'Blue', red: 'Red', green: 'Green', yellow: 'Yellow' };
+
+  var G = null, busy = false, moves = [], tokenEls = {}, cellEls = {}, dice = {};
+  var settings = load();
+
+  /* --------------------------------------------------------------- board */
+  function angleBetween(a, b) {
+    var dr = b[0] - a[0], dc = b[1] - a[1];
+    return Math.round(Math.atan2(dr, dc) * 180 / Math.PI);
+  }
+  function chevron(deg, cls) {
+    return '<svg class="chev ' + (cls || '') + '" viewBox="0 0 24 24" style="transform:rotate(' + deg + 'deg)">' +
+      '<path d="M9 5l7 7-7 7" fill="none" stroke="currentColor" stroke-width="3.4" ' +
+      'stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  }
+  function buildBoard() {
+    var meta = {};
+    R.OUTER.forEach(function (c, i) {
+      meta[c.join()] = { type: 'outer', deg: angleBetween(c, R.OUTER[(i + 1) % R.OUTER_LEN]) };
+    });
+    R.INNER.forEach(function (c, i) {
+      meta[c.join()] = { type: 'inner', deg: angleBetween(c, R.INNER[(i + 1) % R.INNER_LEN]) };
+    });
+    meta[R.CENTER.join()] = { type: 'center' };
+    R.COLORS.forEach(function (col) {
+      var base = R.OUTER[R.BASE_AT[col]];
+      meta[base.join()].base = col;
+      var branch = R.OUTER[(R.BASE_AT[col] + R.BRANCH) % R.OUTER_LEN];
+      var entry = R.INNER[R.INNER_AT[col]];
+      meta[branch.join()].branch = { color: col, deg: angleBetween(branch, entry) };
+    });
+
+    var html = '';
+    for (var r = 0; r < 5; r++) for (var c = 0; c < 5; c++) {
+      var m = meta[r + ',' + c], cls = 'cell ' + m.type, attr = '';
+      if (m.base) { cls += ' base'; attr = ' data-color="' + m.base + '"'; }
+      html += '<div class="' + cls + '" data-cell="' + r + ',' + c + '"' + attr + '>';
+      if (m.base || m.type === 'center') html += '<div class="xfill"></div>';
+      if (m.base) html += '<div class="safe-dot"></div>';
+      if (m.type === 'center') html += '<div class="hub"></div>';
+      if (m.deg !== undefined) html += chevron(m.deg);
+      if (m.branch) html += '<div data-color="' + m.branch.color + '" style="position:absolute;inset:0">' +
+        chevron(m.branch.deg, 'branch') + '</div>';
+      html += '</div>';
+    }
+    board.innerHTML = html;
+    board.querySelectorAll('[data-cell]').forEach(function (el) { cellEls[el.dataset.cell] = el; });
+  }
+
+  /* ---------------------------------------------------------------- dice */
+  var PIPS = { 1: [4], 2: [0, 8], 3: [0, 4, 8], 4: [0, 2, 6, 8], 5: [0, 2, 4, 6, 8], 6: [0, 2, 3, 5, 6, 8] };
+  var FACE_TZ = 'translateZ(calc(var(--d) / 2))';
+  var FACES = [
+    { v: 1, t: '' }, { v: 6, t: 'rotateY(180deg)' }, { v: 3, t: 'rotateY(90deg)' },
+    { v: 4, t: 'rotateY(-90deg)' }, { v: 5, t: 'rotateX(90deg)' }, { v: 2, t: 'rotateX(-90deg)' }
+  ];
+  var FACE_ROT = { 1: [0, 0], 6: [0, 180], 3: [0, -90], 4: [0, 90], 5: [-90, 0], 2: [90, 0] };
+
+  function buildDice(color, sideEl) {
+    var wrap = document.createElement('div');
+    wrap.className = 'dicewrap';
+    var shell = document.createElement('div');
+    shell.className = 'dice-shell';
+    var cube = document.createElement('div');
+    cube.className = 'dice3d';
+    FACES.forEach(function (f) {
+      var face = document.createElement('div');
+      face.className = 'face';
+      face.style.transform = f.t + ' ' + FACE_TZ;
+      for (var i = 0; i < 9; i++) {
+        var slot = document.createElement('span');
+        if (PIPS[f.v].indexOf(i) >= 0) slot.className = 'p';
+        face.appendChild(slot);
+      }
+      cube.appendChild(face);
+    });
+    shell.appendChild(cube);
+    var label = document.createElement('div');
+    label.className = 'dlabel';
+    wrap.appendChild(shell); wrap.appendChild(label);
+    sideEl.appendChild(wrap);
+    wrap.addEventListener('click', function () { if (wrap.classList.contains('rollable')) doRoll(); });
+    dice[color] = { wrap: wrap, cube: cube, label: label, x: 0, y: 0 };
+    showFace(color, 6, false);
+  }
+  function showFace(color, v, animate) {
+    var d = dice[color], rot = FACE_ROT[v];
+    if (animate) {
+      d.x += 360 * (2 + Math.floor(Math.random() * 2));
+      d.y += 360 * (2 + Math.floor(Math.random() * 2));
+    }
+    d.cube.style.transition = animate ? '' : 'none';
+    d.cube.style.transform = 'rotateX(' + (d.x + rot[0]) + 'deg) rotateY(' + (d.y + rot[1]) + 'deg)';
+    if (!animate) { d.cube.getBoundingClientRect(); d.cube.style.transition = ''; }
+  }
+  function rollDice(color, v) {
+    var d = dice[color];
+    d.wrap.classList.remove('tossing');
+    void d.wrap.offsetWidth;
+    d.wrap.classList.add('tossing');
+    showFace(color, v, true);
+    sfx.roll();
+    return wait(TOSS + 60).then(function () { d.wrap.classList.remove('tossing'); });
+  }
+
+  /* -------------------------------------------------------------- layout */
+  function centerOf(el) {
+    var a = el.getBoundingClientRect(), b = table.getBoundingClientRect();
+    return { x: a.left - b.left + a.width / 2, y: a.top - b.top + a.height / 2 };
+  }
+  function cellCenter(cell) { return centerOf(cellEls[cell.join()]); }
+  function cluster(n, i, size) {
+    if (n <= 1) return { x: 0, y: 0, s: 1 };
+    if (n === 2) return { x: (i - 0.5) * size * 0.40, y: 0, s: 0.72 };
+    if (n <= 4) {
+      var col = i % 2, row = Math.floor(i / 2);
+      return { x: (col - 0.5) * size * 0.40, y: (row - 0.5) * size * 0.40, s: 0.60 };
+    }
+    var a = (i / n) * Math.PI * 2 - Math.PI / 2;
+    return { x: Math.cos(a) * size * 0.28, y: Math.sin(a) * size * 0.28, s: 0.52 };
+  }
+  function place(el, x, y, s) {
+    el.style.transform = 'translate(' + x + 'px,' + y + 'px) translate(-50%,-50%) scale(' + s + ')';
+  }
+  function layout() {
+    if (!G) return;
+    var size = parseFloat(getComputedStyle(table).getPropertyValue('--cs')) || 50;
+    var groups = {};
+    G.tokens.forEach(function (t) {
+      if (t.state === 'yard') return;
+      var k = R.cellAt(t.color, t.idx).join();
+      (groups[k] = groups[k] || []).push(t);
+    });
+    G.tokens.forEach(function (t) {
+      var el = tokenEls[t.id];
+      if (!el) return;
+      if (t.state === 'yard') {
+        var p = centerOf($('[data-slot="' + t.id + '"]'));
+        place(el, p.x, p.y, 1);
+      } else {
+        var cell = R.cellAt(t.color, t.idx), arr = groups[cell.join()];
+        var off = cluster(arr.length, arr.indexOf(t), size), c = cellCenter(cell);
+        place(el, c.x + off.x, c.y + off.y, off.s);
+      }
+      el.classList.toggle('cut', t.cut);
+    });
+  }
+  function relayout() {
+    layer.classList.add('no-anim');
+    layout();
+    requestAnimationFrame(function () { requestAnimationFrame(function () { layer.classList.remove('no-anim'); }); });
+  }
+  window.addEventListener('resize', relayout);
+
+  /* -------------------------------------------------------------- pieces */
+  function buildSides() {
+    R.COLORS.forEach(function (color) {
+      var side = $('.side[data-color="' + color + '"]');
+      side.innerHTML = '';
+      dice[color] = null;
+      var playing = G.colors.indexOf(color) >= 0;
+      side.classList.toggle('off', !playing);
+      if (!playing) return;
+      var yard = document.createElement('div');
+      yard.className = 'yard';
+      for (var i = 0; i < 4; i++) {
+        var s = document.createElement('div');
+        s.className = 'slot';
+        s.dataset.slot = color + i;
+        yard.appendChild(s);
+      }
+      side.appendChild(yard);
+      buildDice(color, side);
+    });
+  }
+  function buildTokens() {
+    layer.querySelectorAll('.token').forEach(function (n) { n.remove(); });
+    tokenEls = {};
+    G.tokens.forEach(function (t) {
+      var el = document.createElement('div');
+      el.className = 'token';
+      el.dataset.color = t.color;
+      el.dataset.id = t.id;
+      el.innerHTML = '<div class="body"></div>' +
+        '<svg class="star" viewBox="0 0 24 24"><path fill="currentColor" ' +
+        'd="M12 2.6l2.7 5.9 6.4.7-4.8 4.3 1.3 6.3L12 16.7 6.4 19.8l1.3-6.3L2.9 9.2l6.4-.7z"/></svg>';
+      el.addEventListener('click', function () { onTokenClick(t.id); });
+      el.addEventListener('pointerenter', function () { previewOn(t.id); });
+      el.addEventListener('pointerleave', previewOff);
+      layer.appendChild(el);
+      tokenEls[t.id] = el;
+    });
+  }
+
+  /* --------------------------------------------------------------- sound */
+  var sfx = {
+    on: settings.sound !== false, ctx: null,
+    ready: function () {
+      if (!this.on) return null;
+      try {
+        if (!this.ctx) this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+        if (this.ctx.state === 'suspended') this.ctx.resume();
+        return this.ctx;
+      } catch (e) { return null; }
+    },
+    tone: function (f, dur, type, vol, slide) {
+      var c = this.ready(); if (!c) return;
+      var o = c.createOscillator(), g = c.createGain();
+      o.type = type || 'sine';
+      o.frequency.setValueAtTime(f, c.currentTime);
+      if (slide) o.frequency.exponentialRampToValueAtTime(slide, c.currentTime + dur);
+      g.gain.setValueAtTime(0.0001, c.currentTime);
+      g.gain.exponentialRampToValueAtTime(vol || 0.10, c.currentTime + 0.012);
+      g.gain.exponentialRampToValueAtTime(0.0001, c.currentTime + dur);
+      o.connect(g); g.connect(c.destination);
+      o.start(); o.stop(c.currentTime + dur + 0.02);
+    },
+    roll: function () { this.tone(180, 0.5, 'triangle', 0.05, 90); },
+    step: function () { this.tone(560, 0.07, 'square', 0.035); },
+    pop:  function () { this.tone(420, 0.14, 'sine', 0.08, 780); },
+    cut:  function () { this.tone(320, 0.32, 'sawtooth', 0.09, 70); },
+    home: function () { var s = this; [523, 659, 784, 1046].forEach(function (f, i) { setTimeout(function () { s.tone(f, 0.20, 'sine', 0.09); }, i * 85); }); },
+    win:  function () { var s = this; [523, 659, 784, 1046, 1318].forEach(function (f, i) { setTimeout(function () { s.tone(f, 0.42, 'triangle', 0.10); }, i * 130); }); }
+  };
+
+  /* --------------------------------------------------------------- utils */
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function status(msg, color) {
+    statusText.textContent = msg;
+    statusEl.dataset.color = color || (G ? R.current(G) : 'blue');
+    statusEl.classList.remove('flash');
+    void statusEl.offsetWidth;
+    statusEl.classList.add('flash');
+  }
+  function floatText(cell, text, color) {
+    var p = cellCenter(cell), el = document.createElement('div');
+    el.className = 'float';
+    el.dataset.color = color;
+    el.textContent = text;
+    el.style.left = p.x + 'px';
+    el.style.top = p.y + 'px';
+    layer.appendChild(el);
+    setTimeout(function () { el.remove(); }, 950);
+  }
+  function isCpu(color) { return G.seats[color] === 'cpu'; }
+
+  /* ------------------------------------------------------------ turn i/o */
+  function paintTurn() {
+    var color = R.current(G);
+    document.querySelectorAll('.side').forEach(function (s) {
+      s.classList.toggle('turn', s.dataset.color === color);
+    });
+    R.COLORS.forEach(function (c) {
+      if (!dice[c]) return;
+      var active = c === color;
+      dice[c].wrap.classList.toggle('active', active);
+      dice[c].wrap.classList.toggle('rollable', active && G.phase === 'roll' && !isCpu(c) && !busy);
+      dice[c].label.textContent = !active ? '' :
+        G.phase === 'roll' ? (isCpu(c) ? 'thinking' : 'tap to roll') : (G.dice ? 'rolled ' + G.dice : '');
+    });
+    board.classList.add('turn-lit');
+    board.style.setProperty('--turnc', getComputedStyle(document.querySelector('.side[data-color="' + color + '"]')).getPropertyValue('--c'));
+  }
+  function markMovable() {
+    clearMarks();
+    moves.forEach(function (m) { tokenEls[m.tokenId].classList.add('movable'); });
+  }
+  function clearMarks() {
+    Object.keys(tokenEls).forEach(function (id) { tokenEls[id].classList.remove('movable', 'picked'); });
+    previewOff();
+  }
+  /* Highlighting must not disturb a cell's own data-color, or a base square
+     would keep the mover's tint after the pointer leaves. */
+  var RGB = { blue: '47,111,237', red: '232,72,63', green: '47,182,115', yellow: '240,180,25' };
+  function previewOn(id) {
+    if (G.phase !== 'move') return;
+    var m = moves.filter(function (x) { return x.tokenId === id; })[0];
+    if (!m) return;
+    var cell = R.cellAt(m.color, m.dest), p = cellCenter(cell), el = cellEls[cell.join()];
+    ghost.dataset.color = m.color;
+    place(ghost, p.x, p.y, 1);
+    ghost.classList.add('on');
+    el.style.setProperty('--tc-rgb', RGB[m.color]);
+    el.classList.add('target');
+  }
+  function previewOff() {
+    ghost.classList.remove('on');
+    board.querySelectorAll('.cell.target').forEach(function (c) { c.classList.remove('target'); });
+  }
+
+  /* ----------------------------------------------------------- game flow */
+  function newGame() {
+    G = R.createGame({
+      seats: settings.seats,
+      cutMode: settings.cutMode,
+      tokensToWin: settings.tokensToWin,
+      releaseOnOne: settings.releaseOnOne
+    });
+    busy = false; moves = [];
+    buildSides(); buildTokens(); relayout(); paintTurn();
+    status(NAME[R.current(G)] + ' starts — roll to bring a token out');
+    startTurn();
+  }
+
+  function startTurn() {
+    if (G.phase === 'over') return;
+    G.phase = 'roll';
+    paintTurn();
+    if (isCpu(R.current(G))) wait(430).then(doRoll);
+  }
+
+  async function doRoll() {
+    if (busy || !G || G.phase !== 'roll') return;
+    busy = true;
+    var color = R.current(G);
+    var v = 1 + Math.floor(Math.random() * 6);
+    G.dice = v;
+    paintTurn();
+    await rollDice(color, v);
+
+    G.sixStreak = v === 6 ? G.sixStreak + 1 : 0;
+    if (G.sixStreak >= 3) {
+      status(NAME[color] + ' rolled three sixes — turn forfeited');
+      await wait(820);
+      busy = false; R.endTurn(G); startTurn(); return;
+    }
+
+    moves = R.legalMoves(G, v);
+    if (!moves.length) {
+      status(NAME[color] + ' rolled ' + v + ' — no legal move');
+      await wait(640);
+      busy = false; R.endTurn(G); startTurn(); return;
+    }
+
+    if (moves.length === 1 || isCpu(color)) {
+      var m = isCpu(color) ? R.pickCpuMove(G, moves) : moves[0];
+      tokenEls[m.tokenId].classList.add('picked');
+      await wait(isCpu(color) ? 420 : 260);
+      await performMove(m);
+    } else {
+      G.phase = 'move';
+      busy = false;
+      markMovable();
+      paintTurn();
+      status(NAME[color] + ' rolled ' + v + ' — choose a token');
+    }
+  }
+
+  function onTokenClick(id) {
+    if (busy || !G || G.phase !== 'move') return;
+    var m = moves.filter(function (x) { return x.tokenId === id; })[0];
+    if (m) performMove(m);
+  }
+
+  async function performMove(m) {
+    busy = true;
+    G.phase = 'anim';
+    clearMarks();
+    paintTurn();
+
+    var t = R.tokenById(G, m.tokenId), el = tokenEls[m.tokenId];
+    el.classList.add('moving');
+
+    if (m.release) {
+      t.state = 'board'; t.idx = 0;
+      layout(); sfx.pop();
+      await wait(300);
+    } else {
+      for (var i = 0; i < m.path.length; i++) {
+        t.idx = m.path[i];
+        layout();
+        el.classList.remove('hop'); void el.offsetWidth; el.classList.add('hop');
+        sfx.step();
+        await wait(STEP);
+      }
+    }
+
+    var res = R.applyMove(G, m);
+
+    if (res.captures.length) {
+      res.captures.forEach(function (o) { tokenEls[o.id].classList.add('returning'); });
+      layout();
+      sfx.cut();
+      floatText(R.cellAt(t.color, t.idx), 'CUT!', t.color);
+      status(NAME[t.color] + ' cut ' + NAME[res.captures[0].color] + ' — bonus roll');
+      await wait(620);
+      res.captures.forEach(function (o) { tokenEls[o.id].classList.remove('returning'); });
+    } else if (res.home) {
+      sfx.home();
+      floatText(R.CENTER, 'HOME!', t.color);
+      status(NAME[t.color] + ' is home (' + res.homeCount + '/' + G.tokensToWin + ') — bonus roll');
+      await wait(560);
+    } else if (res.entersInner) {
+      floatText(R.cellAt(t.color, t.idx), 'INNER', t.color);
+      status(NAME[t.color] + ' turned into the inner ring');
+      await wait(420);
+    }
+    el.classList.remove('moving', 'hop');
+    layout();
+
+    if (G.phase === 'over') { finish(); return; }
+
+    busy = false;
+    if (res.extra) {
+      if (!res.captures.length && !res.home) status(NAME[t.color] + ' rolled a six — bonus roll');
+      startTurn();
+    } else {
+      R.endTurn(G);
+      status(NAME[R.current(G)] + '’s turn');
+      startTurn();
+    }
+  }
+
+  function finish() {
+    busy = true;
+    sfx.win();
+    var c = G.winner;
+    $('#result-sheet').dataset.color = c;
+    $('#result-title').textContent = NAME[c] + ' wins';
+    $('#result-sub').textContent = G.tokensToWin + (G.tokensToWin === 1 ? ' token' : ' tokens') +
+      ' brought home through the inner ring.';
+    confetti();
+    open('#ov-result');
+    status(NAME[c] + ' wins!');
+  }
+
+  function confetti() {
+    var box = document.createElement('div');
+    box.className = 'confetti';
+    var cols = ['--blue', '--red', '--green', '--yellow'];
+    for (var i = 0; i < 70; i++) {
+      var p = document.createElement('i');
+      p.style.left = Math.random() * 100 + 'vw';
+      p.style.background = 'var(' + cols[i % 4] + ')';
+      p.style.animationDuration = (1.9 + Math.random() * 1.8) + 's';
+      p.style.animationDelay = (Math.random() * 0.7) + 's';
+      p.style.transform = 'rotate(' + Math.random() * 360 + 'deg)';
+      box.appendChild(p);
+    }
+    document.body.appendChild(box);
+    setTimeout(function () { box.remove(); }, 4200);
+  }
+
+  /* ------------------------------------------------------------- overlay */
+  function open(sel) { $(sel).classList.add('on'); }
+  function close(sel) { $(sel).classList.remove('on'); }
+
+  /* --------------------------------------------------------- setup sheet */
+  function load() {
+    var d = {
+      seats: { blue: 'human', red: 'cpu', green: 'cpu', yellow: 'cpu' },
+      tokensToWin: 2, cutMode: 'token', releaseOnOne: true, sound: true
+    };
+    try {
+      var s = JSON.parse(localStorage.getItem('ludo-circuit') || '{}');
+      return Object.assign(d, s, { seats: Object.assign(d.seats, s.seats || {}) });
+    } catch (e) { return d; }
+  }
+  function save() {
+    try { localStorage.setItem('ludo-circuit', JSON.stringify(settings)); } catch (e) {}
+  }
+  var CYCLE = { human: 'cpu', cpu: 'off', off: 'human' };
+  var SEATLABEL = { human: 'Human', cpu: 'Computer', off: 'Empty' };
+  function paintSetup() {
+    $('#seats').innerHTML = R.COLORS.map(function (c) {
+      var mode = settings.seats[c];
+      return '<button class="seat' + (mode === 'off' ? ' is-off' : '') + '" data-color="' + c + '" data-seat="' + c + '">' +
+        '<span class="chip"></span><span><b>' + NAME[c] + '</b><span class="mode">' + SEATLABEL[mode] + '</span></span></button>';
+    }).join('');
+    document.querySelectorAll('[data-opt]').forEach(function (grp) {
+      var key = grp.dataset.opt;
+      grp.querySelectorAll('.seg').forEach(function (b) {
+        var val = key === 'releaseOnOne' ? (b.dataset.val === '1') :
+                  key === 'tokensToWin' ? +b.dataset.val : b.dataset.val;
+        b.classList.toggle('on', settings[key] === val);
+      });
+    });
+  }
+  $('#seats').addEventListener('click', function (e) {
+    var b = e.target.closest('[data-seat]'); if (!b) return;
+    var c = b.dataset.seat, next = CYCLE[settings.seats[c]];
+    var playing = R.COLORS.filter(function (x) { return settings.seats[x] !== 'off'; });
+    if (next === 'off' && playing.length <= 2) next = 'human';
+    settings.seats[c] = next;
+    paintSetup();
+  });
+  document.querySelectorAll('[data-opt]').forEach(function (grp) {
+    grp.addEventListener('click', function (e) {
+      var b = e.target.closest('.seg'); if (!b) return;
+      var key = grp.dataset.opt;
+      settings[key] = key === 'releaseOnOne' ? (b.dataset.val === '1') :
+                      key === 'tokensToWin' ? +b.dataset.val : b.dataset.val;
+      paintSetup();
+    });
+  });
+  $('#btn-start').addEventListener('click', function () {
+    save(); close('#ov-setup'); close('#ov-result'); sfx.ready(); newGame();
+  });
+  $('#btn-again').addEventListener('click', function () { close('#ov-result'); newGame(); });
+  $('#btn-setup').addEventListener('click', function () { close('#ov-result'); paintSetup(); open('#ov-setup'); });
+  $('#btn-new').addEventListener('click', function () { paintSetup(); open('#ov-setup'); });
+  $('#btn-rules').addEventListener('click', function () { open('#ov-rules'); });
+  $('#btn-rules-close').addEventListener('click', function () { close('#ov-rules'); });
+  $('#ov-rules').addEventListener('click', function (e) { if (e.target.id === 'ov-rules') close('#ov-rules'); });
+  $('#btn-sound').addEventListener('click', function () {
+    sfx.on = !sfx.on; settings.sound = sfx.on; save();
+    $('#btn-sound span').textContent = sfx.on ? 'On' : 'Off';
+    if (sfx.on) sfx.pop();
+  });
+
+  document.addEventListener('keydown', function (e) {
+    if ($('#ov-setup').classList.contains('on')) return;
+    var k = e.key.toLowerCase();
+    if (k === ' ' || k === 'enter') { e.preventDefault(); doRoll(); }
+    else if (k === 'r') { $('#ov-rules').classList.contains('on') ? close('#ov-rules') : open('#ov-rules'); }
+    else if (k === 'n') { paintSetup(); open('#ov-setup'); }
+    else if (k >= '1' && k <= '4' && G && G.phase === 'move') {
+      var m = moves[+k - 1]; if (m) performMove(m);
+    }
+  });
+
+  /* --------------------------------------------------------------- start */
+  buildBoard();
+  paintSetup();
+  $('#btn-sound span').textContent = sfx.on ? 'On' : 'Off';
+  status('Choose your seats to begin');
+})();
+</script>
+</body>
+</html>
