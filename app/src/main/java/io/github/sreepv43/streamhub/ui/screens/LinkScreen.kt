@@ -64,6 +64,12 @@ fun LinkScreen(initialUrl: String?) {
     val dialogs = rememberStreamDialogState()
     val handlers = rememberStreamHandlers(dialogs) { watch }
     StreamDialogs(dialogs, watch)
+    val hint = when {
+        text.isBlank() -> null
+        stream == null -> "Not a playable link"
+        StreamResolver.isTorrent(stream) -> "Torrent · ${watch?.title}"
+        else -> "Direct link · ${watch?.title}"
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
@@ -81,12 +87,7 @@ fun LinkScreen(initialUrl: String?) {
             label = { Text("Link") },
             singleLine = true,
             isError = text.isNotBlank() && stream == null,
-            supportingText = when {
-                text.isBlank() -> null
-                stream == null -> @Composable { Text("Not a playable link") }
-                StreamResolver.isTorrent(stream) -> @Composable { Text("Torrent · ${watch?.title}") }
-                else -> @Composable { Text("Direct link · ${watch?.title}") }
-            },
+            supportingText = hint?.let { message -> @Composable { Text(message) } },
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
             modifier = Modifier.fillMaxWidth().widthIn(max = 900.dp).tvFocus(),
         )
