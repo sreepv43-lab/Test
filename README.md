@@ -59,10 +59,21 @@ seeder. It uses the desktop (Linux x86-64) libtorrent build and is skipped on ot
 
 ## Install
 
-- **Tablet or phone:** copy the APK to the device and open it (allow "install unknown apps").
+The newest APK is always here (no sign-in needed):
+
+**https://github.com/sreepv43-lab/Test/releases/latest/download/app-universal-debug.apk**
+
+All builds and the smaller per-CPU APKs are on the
+[Releases page](https://github.com/sreepv43-lab/Test/releases).
+
 - **Android TV:**
-  - `adb connect <tv-ip> && adb install app-debug.apk`, or
-  - use a sideloading app such as *Downloader* or *Send Files to TV*.
+  1. Install the free **Downloader** app (by AFTVnews) from the Play Store.
+  2. Allow it to install unknown apps. The TV asks the first time, or go to Settings → Apps →
+     Security & restrictions.
+  3. Type the link above into Downloader and install the APK when the download finishes.
+- **Tablet / phone:** open the link above in the browser, open the downloaded file, and allow
+  "install unknown apps" when asked.
+- **With adb:** `adb connect <tv-ip> && adb install -r app-universal-debug.apk`
 
 ## Project layout
 

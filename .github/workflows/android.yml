@@ -9,6 +9,8 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -29,6 +31,32 @@ jobs:
         with:
           name: streamhub-apks
           path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/apk/release/*.apk
+
+      # Publishes the APKs as a GitHub Release so they have public links that a TV can open
+      # (e.g. in the "Downloader" app). The newest one is always at
+      # https://github.com/<owner>/<repo>/releases/latest/download/app-universal-debug.apk
+      - name: Publish release
+        if: >-
+          github.event_name == 'push' &&
+          (github.ref_name == github.event.repository.default_branch ||
+           github.ref_name == 'claude/stremio-android-tv-app-by6t0b')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: StreamHub build ${{ github.run_number }}
+          make_latest: "true"
+          body: |
+            StreamHub APKs built from ${{ github.sha }} (branch `${{ github.ref_name }}`).
+
+            **Which file?** If unsure, use `app-universal-debug.apk` (works on every device).
+            The `armeabi-v7a` / `arm64-v8a` / `x86` / `x86_64` files are smaller builds for one CPU type.
+
+            Direct link to the newest build, e.g. for the Downloader app on Android TV:
+            https://github.com/${{ github.repository }}/releases/latest/download/app-universal-debug.apk
+          files: |
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
 
