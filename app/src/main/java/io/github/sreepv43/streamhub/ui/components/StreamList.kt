@@ -42,7 +42,6 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import io.github.sreepv43.streamhub.addon.AddonRepository
 import io.github.sreepv43.streamhub.addon.AddonStreams
-import io.github.sreepv43.streamhub.addon.PlaybackTarget
 import io.github.sreepv43.streamhub.addon.Stream
 import io.github.sreepv43.streamhub.addon.StreamResolver
 import io.github.sreepv43.streamhub.container
@@ -165,7 +164,7 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
         ) {
             Icon(Icons.Default.PlayArrow, contentDescription = "Play")
             Text(
-                (stream.name ?: "Stream") + if (torrent) "\n[torrent]" else "",
+                (stream.name ?: "Stream") + if (torrent) "\n⇅ torrent" else "",
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.width(150.dp).padding(horizontal = 12.dp),
@@ -187,20 +186,16 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
     }
 }
 
-/**
- * Handles the dialogs around stream actions: where to download to, and what to do with torrent
- * streams when no streaming server is configured.
- */
+/** State of the "where to download to" dialog. */
 class StreamDialogState {
     var downloadStream by mutableStateOf<Stream?>(null)
-    var torrentStream by mutableStateOf<Stream?>(null)
 }
 
 @Composable
 fun rememberStreamDialogState() = remember { StreamDialogState() }
 
 @Composable
-fun StreamDialogs(state: StreamDialogState, watch: WatchContext?, onOpenSettings: () -> Unit) {
+fun StreamDialogs(state: StreamDialogState, watch: WatchContext?) {
     val context = LocalContext.current
     val settings = context.container.settings
 
@@ -231,55 +226,17 @@ fun StreamDialogs(state: StreamDialogState, watch: WatchContext?, onOpenSettings
             },
         )
     }
-
-    state.torrentStream?.let { stream ->
-        AlertDialog(
-            onDismissRequest = { state.torrentStream = null },
-            title = { Text("Torrent stream") },
-            text = {
-                Text(
-                    "This is a torrent (P2P) stream. To play or download it inside the app, set a Stremio " +
-                        "streaming server address in Settings (for example Stremio Service running on your " +
-                        "PC or NAS). You can also open it in an installed torrent app.",
-                )
-            },
-            confirmButton = {
-                TextButton(modifier = Modifier.tvFocus(), onClick = {
-                    state.torrentStream = null
-                    onOpenSettings()
-                }) { Text("Settings") }
-            },
-            dismissButton = {
-                TextButton(modifier = Modifier.tvFocus(), onClick = {
-                    state.torrentStream = null
-                    (StreamActions.target(context, stream) as? PlaybackTarget.External)?.let {
-                        StreamActions.openUrl(context, it.url)
-                    }
-                }) { Text("Open torrent app") }
-            },
-        )
-    }
 }
 
-/** Standard handlers wired to the dialogs; torrent streams without a server go to the explainer. */
+/** Standard handlers for stream rows: play, download (asks where) and open externally. */
 @Composable
 fun rememberStreamHandlers(dialogs: StreamDialogState, watch: () -> WatchContext?): StreamHandlers {
     val context = LocalContext.current
     val currentWatch by rememberUpdatedState(watch)
     return remember(dialogs) {
-        fun needsServer(stream: Stream) =
-            StreamResolver.isTorrent(stream) && context.container.settings.streamingServerUrl.value == null
         StreamHandlers(
-            onPlay = { stream ->
-                val w = currentWatch()
-                when {
-                    needsServer(stream) -> dialogs.torrentStream = stream
-                    w != null -> StreamActions.play(context, stream, w)
-                }
-            },
-            onDownload = { stream ->
-                if (needsServer(stream)) dialogs.torrentStream = stream else dialogs.downloadStream = stream
-            },
+            onPlay = { stream -> currentWatch()?.let { StreamActions.play(context, stream, it) } },
+            onDownload = { stream -> dialogs.downloadStream = stream },
             onExternal = { stream ->
                 StreamActions.openInExternalPlayer(context, stream, currentWatch()?.title.orEmpty())
             },

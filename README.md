@@ -28,10 +28,18 @@ videos to **any connected drive**, such as internal storage, an SD card or a USB
   - Downloads resume after pauses, network drops or app restarts (HTTP range requests). They
     run in a foreground service with a progress notification.
   - Downloaded videos play from the Downloads screen.
-- **Torrent streams.** Many addons return torrent (`infoHash`) streams. To play or download them
-  in the app, enter the address of a Stremio streaming server in Settings, for example Stremio
-  Service running on a PC or NAS: `http://192.168.1.20:11470`. Without one, torrent streams can
-  be handed to an installed torrent app.
+- **Built-in torrent engine.** Torrent (`infoHash` / magnet) streams from addons play and download
+  directly, with no external streaming server. The engine is libtorrent (via libtorrent4j):
+  - It fetches only the selected file, in order, and prioritises the pieces the player needs next,
+    so playback starts quickly and seeking works.
+  - A small local HTTP server makes torrent files look like normal video URLs. The same player,
+    downloader and "Open in external player" work for torrents too.
+  - Streaming data goes to a temporary cache on the drive with the most free space. It's deleted a
+    few minutes after you stop, and you can also clear it in Settings.
+  - While a torrent is connecting or buffering, the player shows peers, speed and progress.
+- **Open any link.** The "Open link" screen plays or downloads any video URL (MP4/MKV/HLS/DASH…),
+  magnet link, info hash or `.torrent` link. Magnet links, `.torrent` files, video links and shared
+  text from other apps open there as well.
 
 ## Build
 
@@ -43,7 +51,11 @@ Requirements: JDK 17 and the Android SDK (API 35).
 ```
 
 Every push also builds the APKs on GitHub Actions (**Actions → Android build → Artifacts →
-streamhub-apks**).
+streamhub-apks**). There is one APK per CPU type plus `app-universal-*.apk`. Most Android TV boxes
+need `armeabi-v7a` (or `arm64-v8a`). If you're unsure, use the universal APK.
+
+The JVM unit tests include an end-to-end test of the torrent engine against a local libtorrent
+seeder. It uses the desktop (Linux x86-64) libtorrent build and is skipped on other platforms.
 
 ## Install
 
@@ -60,10 +72,12 @@ app/src/main/java/io/github/sreepv43/streamhub/
 ├── data/       Settings and watch history
 ├── download/   Download engine, storage (SAF + mounted volumes), foreground service
 ├── player/     ExoPlayer activity
+├── torrent/    Torrent engine (libtorrent4j) and local HTTP streaming server
 └── ui/         Compose UI: navigation, screens, TV-focus components
 ```
 
 ## Notes
 
 Only stream or download content you have the rights to. Addons are third-party services, and
-StreamHub doesn't host or provide any content.
+StreamHub doesn't host or provide any content. The torrent engine uploads to other peers while
+it downloads, as all BitTorrent clients do.

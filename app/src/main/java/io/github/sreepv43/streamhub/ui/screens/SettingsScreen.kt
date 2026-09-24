@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import android.text.format.Formatter
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -7,24 +8,21 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.streamhub.BuildConfig
@@ -35,16 +33,14 @@ import io.github.sreepv43.streamhub.ui.components.tvFocus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import okhttp3.Request
 
 @Composable
 fun SettingsScreen() {
     val context = LocalContext.current
     val container = context.container
     val settings = container.settings
-    val server by settings.streamingServerUrl.collectAsStateWithLifecycle()
     val location by settings.downloadLocation.collectAsStateWithLifecycle()
-    var serverText by rememberSaveable { mutableStateOf(server.orEmpty()) }
+    var cacheSize by remember { mutableStateOf<Long?>(null) }
     val scope = rememberCoroutineScope()
 
     Column(
@@ -66,39 +62,29 @@ fun SettingsScreen() {
         }
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))
-        Text("Torrent streaming server", style = MaterialTheme.typography.titleLarge)
+        Text("Torrents", style = MaterialTheme.typography.titleLarge)
         Text(
-            "Many addons return torrent streams. To play or download them, run the Stremio streaming server " +
-                "(Stremio Service / Stremio desktop) on a computer or NAS in your network and enter its address, " +
-                "e.g. http://192.168.1.20:11470. Leave empty to only use direct (HTTP) streams.",
+            "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
+                "is fetched, in order, so playback starts after a few seconds when there are enough peers. " +
+                "Streaming data is kept in a temporary cache on the drive with the most free space and deleted " +
+                "a few minutes after you stop watching.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+        LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
         Row(verticalAlignment = Alignment.CenterVertically) {
-            OutlinedTextField(
-                value = serverText,
-                onValueChange = { serverText = it },
-                label = { Text("Server URL") },
-                singleLine = true,
-                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-                modifier = Modifier.widthIn(min = 320.dp, max = 520.dp).tvFocus(),
-            )
-            Button(
+            Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))
+            OutlinedButton(
                 onClick = {
-                    settings.setStreamingServerUrl(serverText)
-                    serverText = settings.streamingServerUrl.value.orEmpty()
-                    val url = settings.streamingServerUrl.value
-                    if (url != null) scope.launch {
-                        val ok = withContext(Dispatchers.IO) {
-                            runCatching {
-                                container.http.newCall(Request.Builder().url("$url/settings").build()).execute()
-                                    .use { it.isSuccessful }
-                            }.getOrDefault(false)
+                    scope.launch {
+                        cacheSize = withContext(Dispatchers.IO) {
+                            container.torrents.clearCache()
+                            container.torrents.cacheSizeBytes()
                         }
-                        StreamActions.toast(context, if (ok) "Streaming server reachable" else "Saved, but the server did not respond")
+                        StreamActions.toast(context, "Torrent cache cleared (torrents in use were kept)")
                     }
                 },
-                modifier = Modifier.padding(start = 12.dp).tvFocus(),
-            ) { Text("Save & test") }
+                modifier = Modifier.padding(start = 16.dp).tvFocus(),
+            ) { Text("Clear torrent cache") }
         }
 
         HorizontalDivider(Modifier.padding(vertical = 12.dp))

@@ -12,3 +12,7 @@
 -dontwarn org.conscrypt.**
 -dontwarn org.bouncycastle.**
 -dontwarn org.openjsse.**
+
+# libtorrent4j (JNI/SWIG)
+-keep class org.libtorrent4j.swig.** { *; }
+-keep class org.libtorrent4j.** { *; }

@@ -5,6 +5,7 @@ import android.content.Intent
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
+import io.github.sreepv43.streamhub.torrent.TorrentLinks
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -34,10 +35,12 @@ class Downloader(
     http: OkHttpClient,
     private val repository: DownloadRepository,
     private val storage: DownloadStorage,
+    /** Maps stored URLs (e.g. logical torrent URLs) to the URL to fetch right now. */
+    private val resolveUrl: (String) -> String = { it },
 ) {
     // Downloads can take hours: no read timeout, but notice dead connections.
     private val http = http.newBuilder()
-        .readTimeout(2, TimeUnit.MINUTES)
+        .readTimeout(10, TimeUnit.MINUTES)
         .callTimeout(0, TimeUnit.MILLISECONDS)
         .build()
 
@@ -179,7 +182,7 @@ class Downloader(
         }
         val existing = item.fileUri?.takeIf(storage::exists)?.let(storage::length) ?: 0L
 
-        val request = Request.Builder().url(item.url).apply {
+        val request = Request.Builder().url(resolveUrl(item.url)).apply {
             item.headers.forEach { (name, value) -> header(name, value) }
             if (existing > 0) header("Range", "bytes=$existing-")
         }.build()
@@ -212,7 +215,7 @@ class Downloader(
                 val fileName = item.fileName ?: FileNames.choose(
                     suggested = item.suggestedFileName,
                     contentDisposition = response.header("Content-Disposition"),
-                    url = response.request.url.toString(),
+                    url = if (TorrentLinks.isLogicalUrl(item.url)) "" else response.request.url.toString(),
                     title = listOfNotNull(item.title, item.subtitle).joinToString(" "),
                     mime = response.header("Content-Type"),
                 )

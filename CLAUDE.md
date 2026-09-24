@@ -6,7 +6,7 @@ This file provides guidance for AI assistants (Claude and others) working in thi
 
 - **Repository:** sreepv43-lab/Test
 - **App:** StreamHub, an Android TV + tablet app compatible with Stremio addons, with downloads to any connected drive
-- **Stack:** Kotlin 2.0, Jetpack Compose (Material 3), Media3 ExoPlayer, OkHttp, kotlinx.serialization, Coil
+- **Stack:** Kotlin 2.0, Jetpack Compose (Material 3), Media3 ExoPlayer, OkHttp, kotlinx.serialization, Coil, libtorrent4j (built-in torrent engine)
 - **Build:** Gradle (wrapper 8.11.1), AGP 8.7, compileSdk/targetSdk 35, minSdk 23, single `:app` module
 
 ## Repository Structure
@@ -22,12 +22,15 @@ This file provides guidance for AI assistants (Claude and others) working in thi
     │   ├── data/       # Settings, WatchHistory (SharedPreferences)
     │   ├── download/   # Downloader, DownloadService, DownloadStorage (SAF + volumes)
     │   ├── player/     # PlayerActivity (Media3)
+    │   ├── torrent/    # TorrentEngine (libtorrent4j), TorrentHttpServer (local HTTP), TorrentLinks
     │   └── ui/         # Compose navigation, screens, components (tvFocus)
-    └── test/           # JVM unit tests (protocol, URLs, file names)
+    └── test/           # JVM unit tests (protocol, URLs, file names, torrent engine end-to-end)
 ```
 
 Conventions:
-- Keep `addon/Models.kt`, `AddonUrls.kt`, `StreamResolver.kt`, `AddonClient.kt` and `download/FileNames.kt` free of Android imports so they stay unit-testable on the JVM.
+- Keep `addon/Models.kt`, `AddonUrls.kt`, `StreamResolver.kt`, `AddonClient.kt`, `download/FileNames.kt` and everything in `torrent/` free of Android imports so they stay unit-testable on the JVM.
+- Torrents are addressed inside the app by logical URLs `torrent:?src=<magnet or .torrent url>&file=<idx>` (stored in downloads, passed to the player); `AppContainer.playableUrl()` / `TorrentHttpServer.urlFor()` turn them into `http://127.0.0.1:<port>/stream?...` at use time because the port changes per launch.
+- The torrent engine test needs the desktop libtorrent native library and `LD_PRELOAD=libjsig.so` (libtorrent installs signal handlers); `app/build.gradle.kts` sets both up for `Test` tasks.
 - Every focusable UI element should use `Modifier.tvFocus()` (placed before `clickable`) so it is visible when navigating with a remote.
 - Dependencies are wired manually in `AppContainer` (`StreamHubApp.kt`); ViewModels are created with `appViewModel { container, savedState -> ... }`.
 

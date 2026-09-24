@@ -8,6 +8,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
@@ -36,6 +37,7 @@ import io.github.sreepv43.streamhub.ui.screens.CatalogScreen
 import io.github.sreepv43.streamhub.ui.screens.DetailScreen
 import io.github.sreepv43.streamhub.ui.screens.DownloadsScreen
 import io.github.sreepv43.streamhub.ui.screens.HomeScreen
+import io.github.sreepv43.streamhub.ui.screens.LinkScreen
 import io.github.sreepv43.streamhub.ui.screens.SearchScreen
 import io.github.sreepv43.streamhub.ui.screens.SettingsScreen
 import io.github.sreepv43.streamhub.ui.screens.StreamsScreen
@@ -45,6 +47,7 @@ private data class Section(val route: String, val base: String, val label: Strin
 private val sections = listOf(
     Section(Routes.HOME, Routes.HOME, "Home", Icons.Default.Home),
     Section(Routes.SEARCH, Routes.SEARCH, "Search", Icons.Default.Search),
+    Section(Routes.link(), "link", "Open link", Icons.Default.Link),
     Section(Routes.DOWNLOADS, Routes.DOWNLOADS, "Downloads", Icons.Default.Download),
     Section(Routes.addons(), "addons", "Addons", Icons.Default.Extension),
     Section(Routes.SETTINGS, Routes.SETTINGS, "Settings", Icons.Default.Settings),
@@ -96,7 +99,6 @@ private fun SideRail(nav: NavHostController) {
 
 @Composable
 private fun AppNavHost(nav: NavHostController, modifier: Modifier) {
-    val openSettings = { nav.navigate(Routes.SETTINGS) }
     NavHost(nav, startDestination = Routes.HOME, modifier = modifier) {
         composable(Routes.HOME) {
             HomeScreen(
@@ -124,6 +126,12 @@ private fun AppNavHost(nav: NavHostController, modifier: Modifier) {
         }
         composable(Routes.SETTINGS) { SettingsScreen() }
         composable(
+            Routes.LINK,
+            arguments = listOf(navArgument("url") { type = NavType.StringType; nullable = true; defaultValue = null }),
+        ) { entry ->
+            LinkScreen(initialUrl = entry.arguments?.getString("url"))
+        }
+        composable(
             Routes.CATALOG,
             arguments = listOf(
                 navArgument("addon") { type = NavType.StringType },
@@ -136,11 +144,10 @@ private fun AppNavHost(nav: NavHostController, modifier: Modifier) {
         composable(Routes.DETAIL) {
             DetailScreen(
                 onOpenEpisode = { type, metaId, videoId -> nav.navigate(Routes.streams(type, metaId, videoId)) },
-                onOpenSettings = openSettings,
             )
         }
         composable(Routes.STREAMS) {
-            StreamsScreen(onOpenSettings = openSettings)
+            StreamsScreen()
         }
     }
 }

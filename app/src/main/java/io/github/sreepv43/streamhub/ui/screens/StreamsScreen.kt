@@ -18,7 +18,7 @@ import io.github.sreepv43.streamhub.ui.components.streamItems
 
 /** Streams for one episode of a series (or any specific video id). */
 @Composable
-fun StreamsScreen(onOpenSettings: () -> Unit) {
+fun StreamsScreen() {
     val vm = appViewModel { c, handle -> MetaViewModel(c.addons, handle) }
     val state by vm.state.collectAsStateWithLifecycle()
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
@@ -36,7 +36,7 @@ fun StreamsScreen(onOpenSettings: () -> Unit) {
         meta?.let { WatchContext(it.id, it.type, checkNotNull(vm.videoId), it.name, episodeTitle, it.poster) }
     }
     val handlers = rememberStreamHandlers(dialogs, watch)
-    StreamDialogs(dialogs, watch(), onOpenSettings)
+    StreamDialogs(dialogs, watch())
 
     if (state.loading || meta == null) {
         CenteredLoading()

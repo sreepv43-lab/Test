@@ -3,9 +3,15 @@ package io.github.sreepv43.streamhub.player
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
+import android.graphics.Color
 import android.os.Bundle
+import android.text.format.Formatter
+import android.view.Gravity
+import android.view.View
 import android.view.KeyEvent
 import android.view.ViewGroup
+import android.widget.FrameLayout
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.annotation.OptIn
@@ -28,7 +34,12 @@ import androidx.media3.ui.PlayerView
 import io.github.sreepv43.streamhub.StreamHubApp
 import io.github.sreepv43.streamhub.addon.Subtitle
 import io.github.sreepv43.streamhub.data.WatchEntry
+import io.github.sreepv43.streamhub.torrent.TorrentLinks
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
 
 /** Full-screen ExoPlayer that works with a TV remote (D-pad / media keys) and touch. */
@@ -36,6 +47,7 @@ import kotlinx.coroutines.withTimeoutOrNull
 class PlayerActivity : ComponentActivity() {
 
     private lateinit var playerView: PlayerView
+    private lateinit var statusView: TextView
     private var player: ExoPlayer? = null
     private lateinit var request: PlayRequest
 
@@ -57,13 +69,32 @@ class PlayerActivity : ComponentActivity() {
             setShowPreviousButton(false)
             controllerAutoShow = true
         }
-        setContentView(playerView)
+        statusView = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 16f
+            setBackgroundColor(0x99000000.toInt())
+            setPadding(24, 12, 24, 12)
+            visibility = View.GONE
+        }
+        val root = FrameLayout(this).apply {
+            addView(playerView)
+            addView(
+                statusView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.START,
+                ).apply { setMargins(48, 48, 48, 48) },
+            )
+        }
+        setContentView(root)
         initPlayer(savedInstanceState?.getLong(STATE_POSITION))
     }
 
     private fun initPlayer(savedPosition: Long?) {
         val container = (application as StreamHubApp).container
-        val httpFactory = OkHttpDataSource.Factory(container.mediaHttp)
+        val torrent = TorrentLinks.parseLogicalUrl(request.url)
+        val httpFactory = OkHttpDataSource.Factory(if (torrent != null) container.torrentHttp else container.mediaHttp)
             .setDefaultRequestProperties(request.headers)
         val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
         val renderers = DefaultRenderersFactory(this)
@@ -104,14 +135,41 @@ class PlayerActivity : ComponentActivity() {
                 }.orEmpty()
             } else emptyList()
             if (player !== exo) return@launch
-            exo.setMediaItem(buildMediaItem(request.subtitles + addonSubtitles), start)
+            // Torrents are read through the built-in engine's local HTTP server.
+            val url = if (torrent != null) {
+                withContext(Dispatchers.IO) { container.torrentServer.urlFor(torrent.first, torrent.second) }
+            } else {
+                container.playableUrl(request.url)
+            }
+            exo.setMediaItem(buildMediaItem(url, request.subtitles + addonSubtitles), start)
             exo.prepare()
+        }
+        if (torrent != null) showTorrentStatus(exo, torrent.first, torrent.second)
+    }
+
+    /** Shows peers / speed / progress while a torrent is starting or buffering. */
+    private fun showTorrentStatus(exo: ExoPlayer, source: String, fileIdx: Int) {
+        val engine = (application as StreamHubApp).container.torrents
+        lifecycleScope.launch {
+            while (isActive && player === exo) {
+                val waiting = exo.playbackState != Player.STATE_READY || !exo.isPlaying
+                val stats = withContext(Dispatchers.IO) { engine.stats(source, fileIdx) }
+                statusView.visibility = if (waiting) View.VISIBLE else View.GONE
+                statusView.text = when {
+                    stats == null -> "Starting torrent…"
+                    !stats.hasMetadata -> "Fetching torrent info… ${stats.peers} peers"
+                    else -> "${stats.peers} peers (${stats.seeds} seeds) · " +
+                        Formatter.formatShortFileSize(this@PlayerActivity, stats.downloadRate.toLong()) + "/s · " +
+                        "${(stats.fileProgress * 100).toInt()}% downloaded"
+                }
+                delay(1_000)
+            }
         }
     }
 
-    private fun buildMediaItem(subtitles: List<Subtitle>): MediaItem =
+    private fun buildMediaItem(url: String, subtitles: List<Subtitle>): MediaItem =
         MediaItem.Builder()
-            .setUri(Uri.parse(request.url))
+            .setUri(Uri.parse(url))
             .setSubtitleConfigurations(subtitles.distinctBy { it.url }.take(MAX_SUBTITLES).map { sub ->
                 MediaItem.SubtitleConfiguration.Builder(Uri.parse(sub.url))
                     .setMimeType(subtitleMime(sub.url))

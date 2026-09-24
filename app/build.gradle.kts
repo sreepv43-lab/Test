@@ -33,11 +33,22 @@ android {
     kotlinOptions {
         jvmTarget = "17"
     }
+    // One small APK per CPU type plus a universal APK (the torrent engine is native code).
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
+            isUniversalApk = true
+        }
+    }
     buildFeatures {
         compose = true
         buildConfig = true
     }
 }
+
+val torrentDesktopNative: Configuration by configurations.creating
 
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2024.12.01")
@@ -68,7 +79,30 @@ dependencies {
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
     implementation("androidx.media3:media3-ui:$media3")
 
+    val libtorrent = "2.1.0-39"
+    implementation("org.libtorrent4j:libtorrent4j:$libtorrent")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm:$libtorrent")
+    implementation("org.libtorrent4j:libtorrent4j-android-arm64:$libtorrent")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86:$libtorrent")
+    implementation("org.libtorrent4j:libtorrent4j-android-x86_64:$libtorrent")
+    torrentDesktopNative("org.libtorrent4j:libtorrent4j-linux:$libtorrent")
+
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+}
+
+// JVM unit tests run the real torrent engine against the desktop build of libtorrent (Linux x86-64).
+val extractTorrentNative by tasks.registering(Copy::class) {
+    from({ torrentDesktopNative.map { zipTree(it) } }) { include("lib/x86_64/*.so") }
+    into(layout.buildDirectory.dir("torrent-native"))
+}
+
+tasks.withType<Test>().configureEach {
+    dependsOn(extractTorrentNative)
+    val native = layout.buildDirectory.file("torrent-native/lib/x86_64/libtorrent4j.so").get().asFile
+    systemProperty("libtorrent4j.jni.path", native.absolutePath)
+    // libtorrent installs signal handlers; HotSpot needs signal chaining to coexist with them.
+    val jsig = File(System.getProperty("java.home"), "lib/libjsig.so")
+    if (jsig.exists()) environment("LD_PRELOAD", jsig.absolutePath)
 }

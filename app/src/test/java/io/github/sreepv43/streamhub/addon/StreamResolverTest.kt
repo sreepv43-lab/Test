@@ -14,33 +14,34 @@ class StreamResolverTest {
         )
         assertEquals(
             PlaybackTarget.Direct("https://cdn.example/v.mp4", mapOf("Referer" to "https://x")),
-            StreamResolver.resolve(stream, null),
+            StreamResolver.resolve(stream),
         )
     }
 
     @Test
-    fun torrentUsesStreamingServerWhenConfigured() {
-        val stream = Stream(infoHash = "ABCDEF", fileIdx = 2)
-        assertEquals(
-            PlaybackTarget.Direct("http://192.168.1.5:11470/abcdef/2", emptyMap()),
-            StreamResolver.resolve(stream, "http://192.168.1.5:11470/"),
-        )
-        assertEquals(
-            PlaybackTarget.Direct("http://srv:11470/abcdef/-1", emptyMap()),
-            StreamResolver.resolve(Stream(infoHash = "abcdef"), "http://srv:11470"),
-        )
-    }
-
-    @Test
-    fun torrentWithoutServerBecomesMagnet() {
+    fun infoHashBecomesTorrentWithTrackers() {
         val stream = Stream(
-            infoHash = "abcdef",
+            infoHash = "ABCDEF",
+            fileIdx = 2,
             sources = listOf("tracker:udp://t.example:80/announce", "dht:abcdef"),
             behaviorHints = StreamHints(filename = "a b.mkv"),
         )
         assertEquals(
-            PlaybackTarget.External("magnet:?xt=urn:btih:abcdef&dn=a%20b.mkv&tr=udp%3A%2F%2Ft.example%3A80%2Fannounce"),
-            StreamResolver.resolve(stream, null),
+            PlaybackTarget.Torrent("magnet:?xt=urn:btih:abcdef&dn=a%20b.mkv&tr=udp%3A%2F%2Ft.example%3A80%2Fannounce", 2),
+            StreamResolver.resolve(stream),
+        )
+        assertEquals(PlaybackTarget.Torrent("magnet:?xt=urn:btih:abcdef", -1), StreamResolver.resolve(Stream(infoHash = "abcdef")))
+    }
+
+    @Test
+    fun magnetAndTorrentFileUrlsAreTorrents() {
+        assertEquals(
+            PlaybackTarget.Torrent("magnet:?xt=urn:btih:abc", -1),
+            StreamResolver.resolve(Stream(url = "magnet:?xt=urn:btih:abc")),
+        )
+        assertEquals(
+            PlaybackTarget.Torrent("https://site.example/files/x.torrent?k=1", 3),
+            StreamResolver.resolve(Stream(url = "https://site.example/files/x.torrent?k=1", fileIdx = 3)),
         )
     }
 
@@ -48,12 +49,12 @@ class StreamResolverTest {
     fun youtubeAndExternal() {
         assertEquals(
             PlaybackTarget.External("https://www.youtube.com/watch?v=abc"),
-            StreamResolver.resolve(Stream(ytId = "abc"), null),
+            StreamResolver.resolve(Stream(ytId = "abc")),
         )
         assertEquals(
             PlaybackTarget.External("https://site.example/x"),
-            StreamResolver.resolve(Stream(externalUrl = "https://site.example/x"), null),
+            StreamResolver.resolve(Stream(externalUrl = "https://site.example/x")),
         )
-        assertNull(StreamResolver.resolve(Stream(), null))
+        assertNull(StreamResolver.resolve(Stream()))
     }
 }

@@ -115,7 +115,7 @@ class MetaViewModel(repository: AddonRepository, handle: SavedStateHandle) : Vie
 }
 
 @Composable
-fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) -> Unit, onOpenSettings: () -> Unit) {
+fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) -> Unit) {
     val vm = appViewModel { c, handle -> MetaViewModel(c.addons, handle) }
     val state by vm.state.collectAsStateWithLifecycle()
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
@@ -125,7 +125,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
         state.meta?.let { WatchContext(it.id, it.type, it.movieVideoId, it.name, poster = it.poster) }
     }
     val handlers = rememberStreamHandlers(dialogs, watch)
-    StreamDialogs(dialogs, watch(), onOpenSettings)
+    StreamDialogs(dialogs, watch())
 
     val meta = state.meta
     when {
