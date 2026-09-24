@@ -4,21 +4,32 @@ This file provides guidance for AI assistants (Claude and others) working in thi
 
 ## Project Overview
 
-> **Note:** This is a newly initialized repository. Update this section once the project purpose, language, and framework are defined.
-
 - **Repository:** sreepv43-lab/Test
-- **Status:** Initial setup — no source code yet
-- **Purpose:** TBD
+- **App:** StreamHub, an Android TV + tablet app compatible with Stremio addons, with downloads to any connected drive
+- **Stack:** Kotlin 2.0, Jetpack Compose (Material 3), Media3 ExoPlayer, OkHttp, kotlinx.serialization, Coil
+- **Build:** Gradle (wrapper 8.11.1), AGP 8.7, compileSdk/targetSdk 35, minSdk 23, single `:app` module
 
 ## Repository Structure
 
-> Update this section as files and directories are added.
-
 ```
 /
-├── CLAUDE.md          # This file — AI assistant guidance
-└── (add directories and files here as the project grows)
+├── CLAUDE.md
+├── README.md
+├── .github/workflows/android.yml   # CI: unit tests + debug/release APKs
+└── app/src/
+    ├── main/java/io/github/sreepv43/streamhub/
+    │   ├── addon/      # Stremio protocol (pure Kotlin + AddonRepository)
+    │   ├── data/       # Settings, WatchHistory (SharedPreferences)
+    │   ├── download/   # Downloader, DownloadService, DownloadStorage (SAF + volumes)
+    │   ├── player/     # PlayerActivity (Media3)
+    │   └── ui/         # Compose navigation, screens, components (tvFocus)
+    └── test/           # JVM unit tests (protocol, URLs, file names)
 ```
+
+Conventions:
+- Keep `addon/Models.kt`, `AddonUrls.kt`, `StreamResolver.kt`, `AddonClient.kt` and `download/FileNames.kt` free of Android imports so they stay unit-testable on the JVM.
+- Every focusable UI element should use `Modifier.tvFocus()` (placed before `clickable`) so it is visible when navigating with a remote.
+- Dependencies are wired manually in `AppContainer` (`StreamHubApp.kt`); ViewModels are created with `appViewModel { container, savedState -> ... }`.
 
 ## Development Workflow
 
@@ -108,34 +119,21 @@ Only retry on network errors, not on authentication (403) or permission failures
 
 ## Environment Setup
 
-> Update this section once the tech stack is defined.
+Requires JDK 17 and the Android SDK (API 35).
 
 ```bash
-# Example (replace with actual commands):
-# npm install
-# pip install -r requirements.txt
-# cargo build
+./gradlew assembleDebug
 ```
 
 ## Running Tests
 
-> Update this section once a test framework is in place.
-
 ```bash
-# Example:
-# npm test
-# pytest
-# cargo test
+./gradlew testDebugUnitTest
 ```
 
 ## CI/CD
 
-> Update this section once a CI/CD pipeline is configured.
-
-Planned locations for pipeline configuration:
-- GitHub Actions: `.github/workflows/`
-- GitLab CI: `.gitlab-ci.yml`
-- Other: TBD
+GitHub Actions (`.github/workflows/android.yml`) runs unit tests and builds debug + release APKs on every push; APKs are uploaded as the `streamhub-apks` artifact.
 
 ## Updating This File
 
