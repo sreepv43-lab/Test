@@ -139,6 +139,31 @@ class DownloadStorage(private val context: Context) {
         } else null
     }
 
+    /** Root directories and names of mounted removable drives (USB sticks/disks, SD cards). */
+    private fun removableVolumeRoots(): List<Pair<File, String>> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return emptyList()
+        val manager = context.getSystemService(StorageManager::class.java) ?: return emptyList()
+        return manager.storageVolumes
+            .filter { it.isRemovable && it.state == Environment.MEDIA_MOUNTED }
+            .mapNotNull { volume ->
+                val root = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    volume.directory
+                } else {
+                    // StorageVolume.getPathFile() is hidden before Android 11.
+                    runCatching { volume.javaClass.getMethod("getPathFile").invoke(volume) as File }.getOrNull()
+                }
+                root?.let { it to (volume.getDescription(context) ?: "USB drive") }
+            }
+    }
+
+    fun defaultLocation(): DownloadLocation =
+        options().firstOrNull { it.location.kind == DownloadLocation.Kind.DIRECTORY }?.location
+            ?: DownloadLocation(
+                DownloadLocation.Kind.DIRECTORY,
+                File(context.filesDir, "downloads").absolutePath,
+                "App storage",
+            )
+
     /** Null when downloads can be written to [location], otherwise a human-readable reason. */
     fun unavailableReason(location: DownloadLocation): String? = when (location.kind) {
         DownloadLocation.Kind.DIRECTORY -> {
