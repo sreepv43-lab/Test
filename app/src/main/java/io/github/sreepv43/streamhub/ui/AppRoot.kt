@@ -1,5 +1,21 @@
 package io.github.sreepv43.streamhub.ui
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.foundation.focusGroup
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.platform.LocalFocusManager
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -68,12 +84,20 @@ private val sections = listOf(
 )
 
 /**
- * Side menu + content. The menu is a slim icon strip while browsing and expands (over the content,
- * so nothing reflows) when focus moves into it. Works with a TV remote and with touch.
+ * Side menu + content. The menu is a slim, unfocusable icon strip while browsing, so opening a
+ * page never pulls the selection into it. It opens only when the user is at the left edge of the
+ * page and presses Left again, and closes as soon as an item is chosen (or on Right/Back).
  */
+@OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
     val nav = rememberNavController()
+    val entry by nav.currentBackStackEntryAsState()
+    val focusManager = LocalFocusManager.current
+    val contentFocus = remember { FocusRequester() }
+    val menuFocus = remember { FocusRequester() }
+    var menuOpen by remember { mutableStateOf(false) }
+    var contentHasFocus by remember { mutableStateOf(false) }
 
     LaunchedEffect(navRequest) {
         if (navRequest != null) {
@@ -82,10 +106,47 @@ fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
         }
     }
 
+    // Put the selection into every newly opened page (retrying while it is still loading).
+    LaunchedEffect(entry?.id, menuOpen) {
+        if (menuOpen) {
+            delay(50)
+            runCatching { menuFocus.requestFocus() }
+            return@LaunchedEffect
+        }
+        repeat(40) {
+            delay(100)
+            if (contentHasFocus) return@LaunchedEffect
+            runCatching { contentFocus.requestFocus() }
+        }
+    }
+
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
         Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            AppNavHost(nav, Modifier.fillMaxSize().padding(start = RailCollapsed))
-            SideMenu(nav, Modifier.align(Alignment.CenterStart))
+            AppNavHost(
+                nav,
+                Modifier
+                    .fillMaxSize()
+                    .padding(start = RailCollapsed)
+                    .onFocusChanged { contentHasFocus = it.hasFocus }
+                    .focusRequester(contentFocus)
+                    // Coming back from the menu returns to the poster that was selected before.
+                    .focusRestorer()
+                    .focusGroup()
+                    // Runs only when nothing on the page used the key: at the left edge, Left opens the menu.
+                    .onKeyEvent { event ->
+                        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft && !menuOpen) {
+                            if (!focusManager.moveFocus(FocusDirection.Left)) menuOpen = true
+                            true
+                        } else false
+                    },
+            )
+            SideMenu(
+                nav = nav,
+                open = menuOpen,
+                selectedFocus = menuFocus,
+                onClose = { menuOpen = false },
+                modifier = Modifier.align(Alignment.CenterStart),
+            )
         }
     }
 }
@@ -94,26 +155,42 @@ private val RailCollapsed = 76.dp
 private val RailExpanded = 220.dp
 
 @Composable
-private fun SideMenu(nav: NavHostController, modifier: Modifier) {
+private fun SideMenu(
+    nav: NavHostController,
+    open: Boolean,
+    selectedFocus: FocusRequester,
+    onClose: () -> Unit,
+    modifier: Modifier,
+) {
     val entry by nav.currentBackStackEntryAsState()
     val currentBase = entry?.destination?.route?.substringBefore('?')?.substringBefore('/')
-    var expanded by remember { mutableStateOf(false) }
+    val selectedIndex = sections.indexOfFirst { it.base == currentBase }.coerceAtLeast(0)
 
     Column(
         modifier
             .fillMaxHeight()
-            .width(if (expanded) RailExpanded else RailCollapsed)
-            .background(if (expanded) Panel else Ink)
-            .onFocusChanged { expanded = it.hasFocus }
+            .width(if (open) RailExpanded else RailCollapsed)
+            .background(if (open) Panel else Ink)
+            .onFocusChanged { if (open && !it.hasFocus) onClose() }
+            // Right simply moves into the page (which closes the menu); Back closes it too.
+            .onKeyEvent { event ->
+                if (open && event.type == KeyEventType.KeyDown && event.key == Key.Back) {
+                    onClose()
+                    true
+                } else false
+            }
             .padding(horizontal = 12.dp, vertical = 24.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
     ) {
-        sections.forEach { section ->
+        sections.forEachIndexed { index, section ->
             MenuItem(
                 section = section,
                 selected = currentBase == section.base,
-                expanded = expanded,
+                expanded = open,
+                focusable = open,
+                modifier = if (index == selectedIndex) Modifier.focusRequester(selectedFocus) else Modifier,
                 onClick = {
+                    onClose()
                     if (section.base == Routes.HOME) {
                         // Always land on the home page itself, dropping whatever was opened from it.
                         if (!nav.popBackStack(Routes.HOME, inclusive = false)) nav.navigate(Routes.HOME)
@@ -130,7 +207,14 @@ private fun SideMenu(nav: NavHostController, modifier: Modifier) {
 }
 
 @Composable
-private fun MenuItem(section: Section, selected: Boolean, expanded: Boolean, onClick: () -> Unit) {
+private fun MenuItem(
+    section: Section,
+    selected: Boolean,
+    expanded: Boolean,
+    focusable: Boolean,
+    modifier: Modifier,
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
     val tint = when {
@@ -139,9 +223,11 @@ private fun MenuItem(section: Section, selected: Boolean, expanded: Boolean, onC
         else -> Color.White.copy(alpha = 0.7f)
     }
     Row(
-        Modifier
+        modifier
             .fillMaxWidth()
             .height(48.dp)
+            // Unreachable with the remote while the menu is closed; taps still work on tablets.
+            .focusProperties { canFocus = focusable }
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
             .background(if (focused) Color.White else Color.Transparent, shape)
@@ -164,7 +250,14 @@ private fun MenuItem(section: Section, selected: Boolean, expanded: Boolean, onC
 
 @Composable
 private fun AppNavHost(nav: NavHostController, modifier: Modifier) {
-    NavHost(nav, startDestination = Routes.HOME, modifier = modifier) {
+    // No page transition animations: they cost frames on TV hardware and delay focus.
+    NavHost(
+        nav,
+        startDestination = Routes.HOME,
+        modifier = modifier,
+        enterTransition = { EnterTransition.None },
+        exitTransition = { ExitTransition.None },
+    ) {
         composable(Routes.HOME) {
             HomeScreen(
                 onOpenMeta = { nav.navigate(Routes.detail(it.type, it.id)) },

@@ -96,9 +96,7 @@ class DownloadStorage(private val context: Context) {
      */
     private fun writeProblem(dir: File): String? {
         if (!dir.isDirectory && !dir.mkdirs()) {
-            return if (dir.parentFile?.canWrite() == false || !dir.exists()) {
-                "can't create the ${dir.name} folder (the drive may be read-only on this TV, e.g. NTFS)"
-            } else "can't create the ${dir.name} folder"
+            return mountProblem(dir) ?: "can't create the ${dir.name} folder on this drive"
         }
         val probe = File(dir, ".streamhub-write-test")
         return try {
@@ -106,9 +104,7 @@ class DownloadStorage(private val context: Context) {
             null
         } catch (e: IOException) {
             val reason = e.message.orEmpty()
-            when {
-                "Read-only" in reason || "EROFS" in reason ->
-                    "the drive is read-only on this TV (NTFS drives often are; exFAT or FAT32 work)"
+            mountProblem(dir) ?: when {
                 "Permission denied" in reason || "EACCES" in reason ->
                     "permission denied (turn on All files access for StreamHub)"
                 else -> reason.ifEmpty { "writing failed" }
@@ -118,30 +114,30 @@ class DownloadStorage(private val context: Context) {
         }
     }
 
-    /** Root directories and names of mounted removable drives (USB sticks/disks, SD cards). */
-    private fun removableVolumeRoots(): List<Pair<File, String>> {
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return emptyList()
-        val manager = context.getSystemService(StorageManager::class.java) ?: return emptyList()
-        return manager.storageVolumes
-            .filter { it.isRemovable && it.state == Environment.MEDIA_MOUNTED }
-            .mapNotNull { volume ->
-                val root = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
-                    volume.directory
-                } else {
-                    // StorageVolume.getPathFile() is hidden before Android 11.
-                    runCatching { volume.javaClass.getMethod("getPathFile").invoke(volume) as File }.getOrNull()
-                }
-                root?.let { it to (volume.getDescription(context) ?: "USB drive") }
-            }
+    /**
+     * Explains a write failure from how the TV actually mounted the drive (/proc/mounts), e.g.
+     * "NTFS, read-only". Null when the mount looks writable or can't be inspected.
+     */
+    private fun mountProblem(dir: File): String? {
+        val root = removableVolumeRoots().map { it.first }.firstOrNull { dir.path.startsWith(it.path) } ?: return null
+        val mount = runCatching { File("/proc/self/mounts").readLines() }.getOrDefault(emptyList())
+            .map { it.split(' ') }
+            .filter { it.size >= 4 }
+            // The drive is mounted at /mnt/media_rw/<id> and exposed to apps at /storage/<id>.
+            .firstOrNull { it[1] == "/mnt/media_rw/${root.name}" || it[1] == root.path }
+            ?: return null
+        val type = mount[2].lowercase()
+        val readOnly = mount[3].split(',').any { it == "ro" }
+        val format = when {
+            "ntfs" in type || type == "fuseblk" || type == "tntfs" || type == "ufsd" -> "NTFS"
+            "exfat" in type || type == "texfat" -> "exFAT"
+            "vfat" in type || "fat" in type -> "FAT32"
+            else -> type
+        }
+        return if (readOnly) {
+            "this TV mounts the drive read-only ($format). Reformat it as exFAT on a computer to download to it"
+        } else null
     }
-
-    fun defaultLocation(): DownloadLocation =
-        options().firstOrNull { it.location.kind == DownloadLocation.Kind.DIRECTORY }?.location
-            ?: DownloadLocation(
-                DownloadLocation.Kind.DIRECTORY,
-                File(context.filesDir, "downloads").absolutePath,
-                "App storage",
-            )
 
     /** Null when downloads can be written to [location], otherwise a human-readable reason. */
     fun unavailableReason(location: DownloadLocation): String? = when (location.kind) {
