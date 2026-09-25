@@ -1,13 +1,11 @@
 package io.github.sreepv43.streamhub.ui.screens
 
 import android.text.format.Formatter
-import android.os.Build
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.Switch
-import io.github.sreepv43.streamhub.ui.components.GlassButton
-import io.github.sreepv43.streamhub.ui.components.glass
+import io.github.sreepv43.streamhub.ui.components.FlatButton
+import io.github.sreepv43.streamhub.ui.components.panel
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -54,8 +52,6 @@ fun SettingsScreen() {
     }
     val scope = rememberCoroutineScope()
 
-    val glassBlur by settings.glassBlur.collectAsStateWithLifecycle()
-
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
@@ -75,29 +71,6 @@ fun SettingsScreen() {
             }
         }
 
-        SettingsSection("Appearance") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(Modifier.weight(1f)) {
-                    Text("Glass blur", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                            "Frosted blur behind the menu. Turn off if scrolling feels slow on this device."
-                        } else {
-                            "Needs Android 12 or newer; a tinted glass look is used instead."
-                        },
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                Switch(
-                    checked = glassBlur,
-                    onCheckedChange = settings::setGlassBlur,
-                    enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
-                    modifier = Modifier.tvFocus(RoundedCornerShape(50)),
-                )
-            }
-        }
-
         SettingsSection("Torrents") {
             Text(
                 "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
@@ -109,7 +82,7 @@ fun SettingsScreen() {
             LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))
-                GlassButton(
+                FlatButton(
                     text = "Clear torrent cache",
                     onClick = {
                         scope.launch {
@@ -126,7 +99,7 @@ fun SettingsScreen() {
         }
 
         SettingsSection("Addons") {
-            GlassButton(
+            FlatButton(
                 text = "Update all addon manifests",
                 onClick = {
                     scope.launch {
@@ -150,7 +123,7 @@ fun SettingsScreen() {
 private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(24.dp)
     Column(
-        Modifier.fillMaxWidth().glass(shape, fillAlpha = 0.05f).padding(24.dp),
+        Modifier.fillMaxWidth().panel(shape).padding(24.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Text(title, style = MaterialTheme.typography.titleLarge)

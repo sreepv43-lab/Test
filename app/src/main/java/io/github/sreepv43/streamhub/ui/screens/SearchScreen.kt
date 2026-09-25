@@ -37,8 +37,8 @@ import io.github.sreepv43.streamhub.ui.appViewModel
 import io.github.sreepv43.streamhub.ui.components.CenteredMessage
 import io.github.sreepv43.streamhub.ui.components.MetaRow
 import io.github.sreepv43.streamhub.ui.components.RowState
-import io.github.sreepv43.streamhub.ui.components.GlassButton
-import io.github.sreepv43.streamhub.ui.components.glassTextFieldColors
+import io.github.sreepv43.streamhub.ui.components.FlatButton
+import io.github.sreepv43.streamhub.ui.components.flatTextFieldColors
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,7 +87,7 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
-                colors = glassTextFieldColors(),
+                colors = flatTextFieldColors(),
                 value = text,
                 onValueChange = { text = it },
                 label = { Text("Search movies & series") },
@@ -96,7 +96,7 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
                 keyboardActions = KeyboardActions(onSearch = { submit() }),
                 modifier = Modifier.weight(1f).tvFocus(),
             )
-            GlassButton(
+            FlatButton(
                 text = "Search",
                 icon = Icons.Default.Search,
                 onClick = submit,

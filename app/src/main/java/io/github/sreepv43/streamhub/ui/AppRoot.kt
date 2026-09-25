@@ -1,31 +1,19 @@
 package io.github.sreepv43.streamhub.ui
 
-import android.os.Build
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.LocalContentColor
-import androidx.compose.material3.NavigationRailItemDefaults
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.remember
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
-import dev.chrisbanes.haze.HazeState
-import dev.chrisbanes.haze.haze
-import io.github.sreepv43.streamhub.container
-import io.github.sreepv43.streamhub.ui.components.AmbientBackground
-import io.github.sreepv43.streamhub.ui.components.AmbientController
-import io.github.sreepv43.streamhub.ui.components.LocalAmbient
-import io.github.sreepv43.streamhub.ui.components.LocalGlassBlur
-import io.github.sreepv43.streamhub.ui.components.LocalHazeState
-import io.github.sreepv43.streamhub.ui.components.frostedGlass
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
@@ -34,17 +22,23 @@ import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import androidx.navigation.NavGraph.Companion.findStartDestination
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -52,8 +46,6 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import io.github.sreepv43.streamhub.ui.components.TvPivotBringIntoViewSpec
-import io.github.sreepv43.streamhub.ui.components.tvFocus
 import io.github.sreepv43.streamhub.ui.screens.AddonsScreen
 import io.github.sreepv43.streamhub.ui.screens.CatalogScreen
 import io.github.sreepv43.streamhub.ui.screens.DetailScreen
@@ -75,8 +67,10 @@ private val sections = listOf(
     Section(Routes.SETTINGS, Routes.SETTINGS, "Settings", Icons.Default.Settings),
 )
 
-/** Side navigation rail + content: works with a TV remote (D-pad) and with touch on tablets. */
-@OptIn(ExperimentalFoundationApi::class)
+/**
+ * Side menu + content. The menu is a slim icon strip while browsing and expands (over the content,
+ * so nothing reflows) when focus moves into it. Works with a TV remote and with touch.
+ */
 @Composable
 fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
     val nav = rememberNavController()
@@ -88,65 +82,81 @@ fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
         }
     }
 
-    val context = LocalContext.current
-    val blurSetting by context.container.settings.glassBlur.collectAsState()
-    val blur = blurSetting && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val hazeState = remember { HazeState() }
-    val ambient = remember { AmbientController() }
-
-    CompositionLocalProvider(
-        LocalBringIntoViewSpec provides TvPivotBringIntoViewSpec,
-        LocalHazeState provides hazeState,
-        LocalGlassBlur provides blur,
-        LocalAmbient provides ambient,
-        LocalContentColor provides MaterialTheme.colorScheme.onBackground,
-    ) {
-        Box(Modifier.fillMaxSize()) {
-            // Everything drawn here is what the floating glass menu frosts.
-            Box(Modifier.fillMaxSize().then(if (blur) Modifier.haze(hazeState) else Modifier)) {
-                AmbientBackground(ambient.image)
-                AppNavHost(nav, Modifier.fillMaxSize().padding(start = RailWidth + 16.dp))
-            }
-            SideRail(nav, Modifier.align(Alignment.CenterStart).padding(start = 16.dp, top = 24.dp, bottom = 24.dp))
+    CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
+        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+            AppNavHost(nav, Modifier.fillMaxSize().padding(start = RailCollapsed))
+            SideMenu(nav, Modifier.align(Alignment.CenterStart))
         }
     }
 }
 
-private val RailWidth = 96.dp
+private val RailCollapsed = 76.dp
+private val RailExpanded = 220.dp
 
 @Composable
-private fun SideRail(nav: NavHostController, modifier: Modifier) {
+private fun SideMenu(nav: NavHostController, modifier: Modifier) {
     val entry by nav.currentBackStackEntryAsState()
     val currentBase = entry?.destination?.route?.substringBefore('?')?.substringBefore('/')
-    val colors = NavigationRailItemDefaults.colors(
-        selectedIconColor = Color.White,
-        selectedTextColor = Color.White,
-        indicatorColor = Color.White.copy(alpha = 0.16f),
-        unselectedIconColor = Color.White.copy(alpha = 0.62f),
-        unselectedTextColor = Color.White.copy(alpha = 0.62f),
-    )
+    var expanded by remember { mutableStateOf(false) }
+
     Column(
         modifier
-            .width(RailWidth)
-            .frostedGlass(RoundedCornerShape(32.dp))
-            .padding(vertical = 20.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .fillMaxHeight()
+            .width(if (expanded) RailExpanded else RailCollapsed)
+            .background(if (expanded) Panel else Ink)
+            .onFocusChanged { expanded = it.hasFocus }
+            .padding(horizontal = 12.dp, vertical = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
     ) {
         sections.forEach { section ->
-            NavigationRailItem(
+            MenuItem(
+                section = section,
                 selected = currentBase == section.base,
+                expanded = expanded,
                 onClick = {
-                    nav.navigate(section.route) {
-                        popUpTo(nav.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
+                    if (section.base == Routes.HOME) {
+                        // Always land on the home page itself, dropping whatever was opened from it.
+                        if (!nav.popBackStack(Routes.HOME, inclusive = false)) nav.navigate(Routes.HOME)
+                    } else {
+                        nav.navigate(section.route) {
+                            popUpTo(Routes.HOME)
+                            launchSingleTop = true
+                        }
                     }
                 },
-                icon = { Icon(section.icon, contentDescription = section.label) },
-                label = { Text(section.label, style = MaterialTheme.typography.labelSmall) },
-                colors = colors,
-                modifier = Modifier.tvFocus(RoundedCornerShape(18.dp)),
+            )
+        }
+    }
+}
+
+@Composable
+private fun MenuItem(section: Section, selected: Boolean, expanded: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(12.dp)
+    val tint = when {
+        focused -> Ink
+        selected -> Accent
+        else -> Color.White.copy(alpha = 0.7f)
+    }
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .clip(shape)
+            .background(if (focused) Color.White else Color.Transparent, shape)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(section.icon, contentDescription = section.label, tint = tint, modifier = Modifier.size(24.dp))
+        if (expanded) {
+            Text(
+                section.label,
+                style = MaterialTheme.typography.titleMedium,
+                color = tint,
+                maxLines = 1,
+                modifier = Modifier.padding(start = 16.dp),
             )
         }
     }

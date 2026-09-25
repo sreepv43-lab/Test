@@ -55,9 +55,9 @@ fun PosterCard(
                 .fillMaxWidth()
                 .aspectRatio(if (landscape) 16f / 9f else 2f / 3f)
                 .then(if (onFocused != null) Modifier.onFocusChanged { if (it.hasFocus) onFocused() } else Modifier)
-                .tvFocus(shape, scale = 1.08f)
+                .tvFocus(shape, scale = 1.07f)
                 .clip(shape)
-                .glass(shape)
+                .panel(shape)
                 .clickable(onClick = onClick),
         ) {
             if (image != null) {
@@ -74,12 +74,6 @@ fun PosterCard(
                     modifier = Modifier.align(Alignment.Center).padding(8.dp),
                 )
             }
-            // Glass sheen over the artwork: a faint highlight at the top edge.
-            Box(
-                Modifier.matchParentSize().background(
-                    Brush.verticalGradient(0f to Color.White.copy(alpha = 0.10f), 0.35f to Color.Transparent),
-                ),
-            )
             if (progress != null) {
                 LinearProgressIndicator(
                     progress = { progress },
@@ -144,7 +138,7 @@ fun MetaRow(
         Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterStart))
             if (onSeeAll != null) {
-                GlassButton(
+                FlatButton(
                     text = "See all",
                     onClick = onSeeAll,
                     modifier = Modifier.align(Alignment.CenterEnd),

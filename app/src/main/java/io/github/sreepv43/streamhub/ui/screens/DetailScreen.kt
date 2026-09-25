@@ -29,10 +29,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import io.github.sreepv43.streamhub.ui.Ink
-import io.github.sreepv43.streamhub.ui.components.AmbientImage
-import io.github.sreepv43.streamhub.ui.components.GlassButton
-import io.github.sreepv43.streamhub.ui.components.GlassChip
-import io.github.sreepv43.streamhub.ui.components.glass
+import io.github.sreepv43.streamhub.ui.components.FlatButton
+import io.github.sreepv43.streamhub.ui.components.FlatChip
+import io.github.sreepv43.streamhub.ui.components.panel
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -48,6 +47,8 @@ import io.github.sreepv43.streamhub.addon.AddonRepository
 import io.github.sreepv43.streamhub.addon.Meta
 import io.github.sreepv43.streamhub.addon.Video
 import io.github.sreepv43.streamhub.ui.appViewModel
+import io.github.sreepv43.streamhub.ui.rememberHistory
+import io.github.sreepv43.streamhub.ui.components.resumeNote
 import io.github.sreepv43.streamhub.ui.components.CenteredLoading
 import io.github.sreepv43.streamhub.ui.components.CenteredMessage
 import io.github.sreepv43.streamhub.ui.components.StreamActions
@@ -123,6 +124,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
     val dialogs = rememberStreamDialogState()
+    val history by rememberHistory()
     val watch = {
         state.meta?.let { WatchContext(it.id, it.type, it.movieVideoId, it.name, poster = it.poster) }
     }
@@ -148,7 +150,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(seasons) { season ->
-                                GlassChip(
+                                FlatChip(
                                     text = if (season == 0) "Specials" else "Season $season",
                                     selected = state.season == season,
                                     onClick = { vm.selectSeason(season) },
@@ -167,6 +169,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
                 item(key = "streams-title") {
                     Text("Streams", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 }
+                resumeNote(history.firstOrNull { it.videoId == meta.movieVideoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs)
                 streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal)
             }
         }
@@ -174,12 +177,10 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
 }
 
 /**
- * Cinematic header: the backdrop fills the top of the screen and melts into the page, with the
- * title set in large light type over it. The same artwork tints the ambient background.
+ * Header: the backdrop fills the top of the screen and fades into the page, with the title over it.
  */
 @Composable
 fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: String? = null) {
-    AmbientImage(meta.background ?: meta.poster)
     Box(Modifier.fillMaxWidth().heightIn(min = 360.dp)) {
         (meta.background ?: meta.poster)?.let {
             AsyncImage(
@@ -247,7 +248,7 @@ fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: Stri
             }
             val trailer = meta.trailers.firstOrNull { it.type == null || it.type == "Trailer" }?.source
             if (trailer != null && onTrailer != null) {
-                GlassButton(
+                FlatButton(
                     text = "Trailer",
                     icon = Icons.Default.Movie,
                     onClick = { onTrailer(trailer) },
@@ -267,7 +268,7 @@ private fun EpisodeRow(video: Video, onClick: () -> Unit) {
             .padding(horizontal = 24.dp, vertical = 4.dp)
             .tvFocus(shape, scale = 1.02f)
             .clip(shape)
-            .glass(shape)
+            .panel(shape)
             .clickable(onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,

@@ -36,7 +36,7 @@ import io.github.sreepv43.streamhub.ui.appViewModel
 import io.github.sreepv43.streamhub.ui.components.CenteredMessage
 import io.github.sreepv43.streamhub.ui.components.MetaCard
 import io.github.sreepv43.streamhub.ui.components.PosterWidth
-import io.github.sreepv43.streamhub.ui.components.GlassChip
+import io.github.sreepv43.streamhub.ui.components.FlatChip
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -134,10 +134,10 @@ fun CatalogScreen(onOpenMeta: (Meta) -> Unit) {
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
                 item {
-                    GlassChip("All", selected = state.genre == null, onClick = { vm.selectGenre(null) })
+                    FlatChip("All", selected = state.genre == null, onClick = { vm.selectGenre(null) })
                 }
                 items(state.genres) { genre ->
-                    GlassChip(genre, selected = state.genre == genre, onClick = { vm.selectGenre(genre) })
+                    FlatChip(genre, selected = state.genre == genre, onClick = { vm.selectGenre(genre) })
                 }
             }
         }

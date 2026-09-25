@@ -125,7 +125,7 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
             }
         }
         if (canPickFolder) {
-            GlassButton(
+            FlatButton(
                 text = "Choose a folder on any drive…",
                 icon = Icons.Default.CreateNewFolder,
                 onClick = {
@@ -160,8 +160,8 @@ private fun DriveAccessDialog(option: StorageOption, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val settingsIntent = remember { allFilesAccessIntent(context) }
     AlertDialog(
-        containerColor = GlassDialogColor,
-        shape = GlassDialogShape,
+        containerColor = DialogColor,
+        shape = DialogShape,
         onDismissRequest = onDismiss,
         title = { Text("Allow access to ${option.location.label.substringBefore(" › ")}") },
         text = {

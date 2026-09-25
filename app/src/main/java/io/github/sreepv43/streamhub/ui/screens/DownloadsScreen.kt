@@ -45,10 +45,10 @@ import io.github.sreepv43.streamhub.download.DownloadItem
 import io.github.sreepv43.streamhub.ui.components.CenteredMessage
 import io.github.sreepv43.streamhub.ui.components.StreamActions
 import io.github.sreepv43.streamhub.ui.components.WatchContext
-import io.github.sreepv43.streamhub.ui.components.GlassDialogColor
-import io.github.sreepv43.streamhub.ui.components.GlassDialogShape
-import io.github.sreepv43.streamhub.ui.components.GlassIconButton
-import io.github.sreepv43.streamhub.ui.components.glass
+import io.github.sreepv43.streamhub.ui.components.DialogColor
+import io.github.sreepv43.streamhub.ui.components.DialogShape
+import io.github.sreepv43.streamhub.ui.components.FlatIconButton
+import io.github.sreepv43.streamhub.ui.components.panel
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 
 @Composable
@@ -97,8 +97,8 @@ fun DownloadsScreen() {
 
     toDelete?.let { item ->
         AlertDialog(
-            containerColor = GlassDialogColor,
-            shape = GlassDialogShape,
+            containerColor = DialogColor,
+            shape = DialogShape,
             onDismissRequest = { toDelete = null },
             title = { Text("Remove download?") },
             text = { Text(item.fileName ?: item.title) },
@@ -131,7 +131,7 @@ private fun DownloadRow(
         Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .glass(RoundedCornerShape(20.dp))
+            .panel(RoundedCornerShape(20.dp))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -178,10 +178,10 @@ private fun DownloadRow(
             )
         }
         when (item.status) {
-            DownloadItem.Status.COMPLETED -> GlassIconButton(Icons.Default.PlayArrow, "Play", onPlay, Modifier.padding(start = 8.dp))
-            DownloadItem.Status.RUNNING, DownloadItem.Status.QUEUED -> GlassIconButton(Icons.Default.Pause, "Pause", onPause, Modifier.padding(start = 8.dp))
-            DownloadItem.Status.PAUSED, DownloadItem.Status.FAILED -> GlassIconButton(Icons.Default.Refresh, "Resume", onResume, Modifier.padding(start = 8.dp))
+            DownloadItem.Status.COMPLETED -> FlatIconButton(Icons.Default.PlayArrow, "Play", onPlay, Modifier.padding(start = 8.dp))
+            DownloadItem.Status.RUNNING, DownloadItem.Status.QUEUED -> FlatIconButton(Icons.Default.Pause, "Pause", onPause, Modifier.padding(start = 8.dp))
+            DownloadItem.Status.PAUSED, DownloadItem.Status.FAILED -> FlatIconButton(Icons.Default.Refresh, "Resume", onResume, Modifier.padding(start = 8.dp))
         }
-        GlassIconButton(Icons.Default.Delete, "Delete", onDelete, Modifier.padding(start = 8.dp))
+        FlatIconButton(Icons.Default.Delete, "Delete", onDelete, Modifier.padding(start = 8.dp))
     }
 }

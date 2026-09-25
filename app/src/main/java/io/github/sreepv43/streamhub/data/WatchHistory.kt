@@ -33,8 +33,13 @@ class WatchHistory(context: Context) {
     private val _entries = MutableStateFlow(load())
     val entries: StateFlow<List<WatchEntry>> = _entries.asStateFlow()
 
+    /** Where to resume [videoId] (any stream or downloaded file of it), or 0 to start fresh. */
     fun positionFor(videoId: String): Long =
-        _entries.value.firstOrNull { it.videoId == videoId && !it.isFinished }?.positionMs ?: 0L
+        _entries.value.firstOrNull { it.videoId == videoId && !it.isFinished }
+            ?.positionMs?.takeIf { it > MIN_RESUME_MS } ?: 0L
+
+    fun entryFor(videoId: String): WatchEntry? =
+        _entries.value.firstOrNull { it.videoId == videoId && !it.isFinished && it.positionMs > MIN_RESUME_MS }
 
     fun record(entry: WatchEntry) {
         _entries.update { list ->
@@ -56,5 +61,6 @@ class WatchHistory(context: Context) {
     private companion object {
         const val KEY = "entries"
         const val MAX_ENTRIES = 50
+        const val MIN_RESUME_MS = 30_000L
     }
 }

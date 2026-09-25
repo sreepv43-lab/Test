@@ -143,6 +143,17 @@ class PlayerActivity : ComponentActivity() {
             }
             exo.setMediaItem(buildMediaItem(url, request.subtitles + addonSubtitles), start)
             exo.prepare()
+            if (start > RESUME_MIN_MS) {
+                Toast.makeText(this@PlayerActivity, "Resuming from ${formatTime(start)}", Toast.LENGTH_SHORT).show()
+            }
+        }
+        // Save the position regularly, not only on exit: turning the TV off kills the app without
+        // giving it a chance to save.
+        lifecycleScope.launch {
+            while (isActive && player === exo) {
+                delay(PROGRESS_SAVE_INTERVAL_MS)
+                if (exo.isPlaying) saveProgress()
+            }
         }
         if (torrent != null) showTorrentStatus(exo, torrent.first, torrent.second)
     }
@@ -220,6 +231,14 @@ class PlayerActivity : ComponentActivity() {
         player = null
     }
 
+    private fun formatTime(ms: Long): String {
+        val total = ms / 1000
+        val h = total / 3600
+        val m = (total % 3600) / 60
+        val sec = total % 60
+        return if (h > 0) "%d:%02d:%02d".format(h, m, sec) else "%d:%02d".format(m, sec)
+    }
+
     private fun saveProgress() {
         val exo = player ?: return
         val metaId = request.metaId ?: return
@@ -243,6 +262,8 @@ class PlayerActivity : ComponentActivity() {
         private const val STATE_POSITION = "position"
         private const val MAX_SUBTITLES = 40
         private const val SUBTITLE_TIMEOUT_MS = 4_000L
+        private const val PROGRESS_SAVE_INTERVAL_MS = 10_000L
+        private const val RESUME_MIN_MS = 30_000L
 
         fun start(context: Context, request: PlayRequest) {
             context.startActivity(request.toIntent(context))

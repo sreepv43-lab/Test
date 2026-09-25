@@ -156,7 +156,7 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
                 .weight(1f)
                 .tvFocus(shape, scale = 1.02f)
                 .clip(shape)
-                .glass(shape)
+                .panel(shape)
                 .clickable(onClick = onPlay)
                 .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -176,8 +176,8 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
                 modifier = Modifier.weight(1f),
             )
         }
-        GlassIconButton(Icons.Default.Download, "Download", onDownload, Modifier.padding(start = 12.dp))
-        GlassIconButton(Icons.Default.OpenInNew, "Open in external player", onExternal, Modifier.padding(start = 10.dp))
+        FlatIconButton(Icons.Default.Download, "Download", onDownload, Modifier.padding(start = 12.dp))
+        FlatIconButton(Icons.Default.OpenInNew, "Open in external player", onExternal, Modifier.padding(start = 10.dp))
     }
 }
 
@@ -198,8 +198,8 @@ fun StreamDialogs(state: StreamDialogState, watch: WatchContext?) {
         val saved by settings.downloadLocation.collectAsState()
         var selected by remember { mutableStateOf(saved ?: context.container.storage.defaultLocation()) }
         AlertDialog(
-            containerColor = GlassDialogColor,
-            shape = GlassDialogShape,
+            containerColor = DialogColor,
+            shape = DialogShape,
             onDismissRequest = { state.downloadStream = null },
             title = { Text("Download to") },
             text = {
@@ -246,3 +246,19 @@ class StreamHandlers(
     val onDownload: (Stream) -> Unit,
     val onExternal: (Stream) -> Unit,
 )
+
+/** "Resume from 42:10" note shown above the streams of a title that was partly watched. */
+fun LazyListScope.resumeNote(positionMs: Long?) {
+    if (positionMs == null) return
+    item(key = "resume") {
+        val total = positionMs / 1000
+        val time = if (total >= 3600) "%d:%02d:%02d".format(total / 3600, (total % 3600) / 60, total % 60)
+        else "%d:%02d".format(total / 60, total % 60)
+        Text(
+            "▶ Resumes from $time with any stream below",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+        )
+    }
+}

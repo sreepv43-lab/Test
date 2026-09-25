@@ -1,9 +1,5 @@
 package io.github.sreepv43.streamhub.ui.components
 
-import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.gestures.BringIntoViewSpec
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -21,51 +17,27 @@ import androidx.compose.ui.unit.dp
 import io.github.sreepv43.streamhub.ui.FocusColor
 
 /**
- * Makes focus obvious when navigating with a TV remote: the element grows slightly and gets a
- * glowing glass rim. Must be placed before the clickable/focusable modifier in the chain.
- *
- * Focus state is only read in the draw phase, so moving focus redraws the two affected items
- * without recomposing them.
+ * Focus highlight for TV remotes: the element grows a little and gets a thin glowing outline.
+ * No animation, so moving focus never makes anything wobble. Place before clickable/focusable.
  */
 fun Modifier.tvFocus(
     shape: Shape = RoundedCornerShape(12.dp),
-    scale: Float = 1.06f,
+    scale: Float = 1.05f,
 ): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
-    val animatedScale by animateFloatAsState(
-        targetValue = if (focused) scale else 1f,
-        animationSpec = tween(durationMillis = 120),
-        label = "focusScale",
-    )
     this
         .onFocusChanged { focused = it.hasFocus }
         .graphicsLayer {
-            scaleX = animatedScale
-            scaleY = animatedScale
+            val s = if (focused) scale else 1f
+            scaleX = s
+            scaleY = s
         }
         .drawWithContent {
             drawContent()
             if (focused) {
                 val outline = shape.createOutline(size, layoutDirection, this)
-                // Soft halo, then a crisp specular rim: reads as light catching a glass edge.
-                drawOutline(outline, color = FocusColor.copy(alpha = 0.12f), style = Stroke(width = 10.dp.toPx()))
-                drawOutline(outline, color = FocusColor.copy(alpha = 0.95f), style = Stroke(width = 2.dp.toPx()))
+                drawOutline(outline, color = FocusColor.copy(alpha = 0.25f), style = Stroke(width = 5.dp.toPx()))
+                drawOutline(outline, color = FocusColor, style = Stroke(width = 2.dp.toPx()))
             }
         }
 }
-
-/**
- * TV-style scrolling: the focused item is kept about a third of the way into a row or column,
- * so lists glide at a steady position instead of jumping when focus reaches the edge.
- */
-@OptIn(ExperimentalFoundationApi::class)
-val TvPivotBringIntoViewSpec = object : BringIntoViewSpec {
-    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
-        val target = PIVOT * containerSize
-        // Items that can't fit at the pivot are aligned to the far edge instead.
-        val leadingEdge = if (size <= containerSize && containerSize - target < size) containerSize - size else target
-        return offset - leadingEdge
-    }
-}
-
-private const val PIVOT = 0.3f

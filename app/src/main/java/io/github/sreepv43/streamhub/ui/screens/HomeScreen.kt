@@ -4,17 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.style.TextOverflow
-import io.github.sreepv43.streamhub.ui.EyebrowStyle
-import io.github.sreepv43.streamhub.ui.components.GlassButton
-import io.github.sreepv43.streamhub.ui.components.LocalAmbient
-import kotlinx.coroutines.delay
+import io.github.sreepv43.streamhub.ui.components.FlatButton
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -97,17 +87,15 @@ fun HomeScreen(
         CenteredLoading()
         return
     }
-    // The focused title drives the hero text and the blurred ambient artwork behind the screen.
-    var focused by remember { mutableStateOf<Meta?>(null) }
-    val ambient = LocalAmbient.current
-    LaunchedEffect(focused) {
-        val meta = focused ?: return@LaunchedEffect
-        delay(250) // don't swap artwork while the user is scrolling quickly
-        ambient.image = meta.background ?: meta.poster
-    }
-
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 28.dp, bottom = 48.dp)) {
-        item(key = "hero") { HomeHero(focused) }
+    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp)) {
+        item(key = "title") {
+            Text(
+                "StreamHub",
+                style = MaterialTheme.typography.headlineMedium,
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp),
+            )
+        }
         val continueWatching = history.filterNot { it.isFinished }
         if (continueWatching.isNotEmpty()) {
             item(key = "continue") {
@@ -128,7 +116,6 @@ fun HomeScreen(
                                 caption = entry.videoTitle,
                                 progress = entry.progress,
                                 onClick = { onOpenHistory(entry) },
-                                onFocused = { entry.poster?.let { ambient.image = it } },
                             )
                         }
                     }
@@ -139,7 +126,7 @@ fun HomeScreen(
             item {
                 Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
                     Text("No catalogs yet. Install addons to start browsing.")
-                    GlassButton(
+                    FlatButton(
                         text = "Manage addons",
                         onClick = onOpenAddons,
                         prominent = true,
@@ -154,42 +141,6 @@ fun HomeScreen(
                 state = rowState,
                 onMetaClick = onOpenMeta,
                 onSeeAll = { onSeeAll(ref) },
-                onMetaFocused = { focused = it },
-            )
-        }
-    }
-}
-
-/** Large, quiet header describing whatever poster has focus. */
-@Composable
-private fun HomeHero(meta: Meta?) {
-    Column(
-        Modifier
-            .fillMaxWidth()
-            .heightIn(min = 190.dp)
-            .padding(horizontal = 24.dp, vertical = 8.dp),
-    ) {
-        Text("STREAMHUB", style = EyebrowStyle, color = Color.White.copy(alpha = 0.55f))
-        Text(
-            meta?.name ?: "Tonight's picks",
-            style = MaterialTheme.typography.displaySmall,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 8.dp),
-        )
-        val info = listOfNotNull(meta?.releaseInfo, meta?.imdbRating?.let { "★ $it" }, meta?.genres?.take(3)?.joinToString(" · ")?.ifEmpty { null })
-            .joinToString("   ")
-        if (info.isNotEmpty()) {
-            Text(info, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.7f), modifier = Modifier.padding(top = 6.dp))
-        }
-        meta?.description?.let {
-            Text(
-                it,
-                style = MaterialTheme.typography.bodyMedium,
-                color = Color.White.copy(alpha = 0.78f),
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.padding(top = 10.dp).fillMaxWidth(0.6f),
             )
         }
     }

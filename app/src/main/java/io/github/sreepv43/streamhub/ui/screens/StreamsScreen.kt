@@ -9,6 +9,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.streamhub.ui.appViewModel
+import io.github.sreepv43.streamhub.ui.rememberHistory
+import io.github.sreepv43.streamhub.ui.components.resumeNote
 import io.github.sreepv43.streamhub.ui.components.CenteredLoading
 import io.github.sreepv43.streamhub.ui.components.StreamDialogs
 import io.github.sreepv43.streamhub.ui.components.WatchContext
@@ -23,6 +25,7 @@ fun StreamsScreen() {
     val state by vm.state.collectAsStateWithLifecycle()
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
     val dialogs = rememberStreamDialogState()
+    val history by rememberHistory()
 
     val meta = state.meta
     val video = meta?.videos?.firstOrNull { it.id == vm.videoId }
@@ -44,6 +47,7 @@ fun StreamsScreen() {
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item(key = "header") { MetaHeader(meta, subtitle = episodeTitle) }
+        resumeNote(history.firstOrNull { it.videoId == vm.videoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs)
         streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal)
     }
 }
