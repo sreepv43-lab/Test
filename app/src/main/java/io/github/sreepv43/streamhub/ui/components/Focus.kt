@@ -21,7 +21,8 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
-import io.github.sreepv43.streamhub.ui.LocalFocusMemory
+import io.github.sreepv43.streamhub.ui.LocalTvPage
+import io.github.sreepv43.streamhub.ui.LocalTvShell
 import io.github.sreepv43.streamhub.ui.LocalPalette
 
 /**
@@ -34,20 +35,21 @@ fun Modifier.tvFocus(
 ): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
     val ring = LocalPalette.current.focus
-    val memory = LocalFocusMemory.current
+    val shell = LocalTvShell.current
+    val page = LocalTvPage.current
     val requester = remember { FocusRequester() }
     val id = currentCompositeKeyHash
-    if (memory != null) {
-        DisposableEffect(memory, id) {
-            memory.register(id, requester)
-            onDispose { memory.unregister(id, requester) }
+    if (shell != null) {
+        DisposableEffect(shell, page, id) {
+            shell.register(page, id, requester)
+            onDispose { shell.unregister(page, id, requester) }
         }
     }
     this
         .focusRequester(requester)
         .onFocusChanged {
             focused = it.hasFocus
-            if (it.hasFocus) memory?.focused(id)
+            if (it.hasFocus) shell?.focused(page, id)
         }
         .graphicsLayer {
             val s = if (focused) scale else 1f

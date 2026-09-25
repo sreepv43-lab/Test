@@ -18,8 +18,10 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], application = android.app.Application::class, qualifiers = "w1280dp-h720dp-land-television-mdpi")
 class MetaRowTest {
     @get:Rule
@@ -44,6 +46,6 @@ class MetaRowTest {
         }
         val height = { tag: String -> rule.onNodeWithTag(tag).getBoundsInRoot().let { it.bottom - it.top } }
         val loaded = height("loaded")
-        for (tag in listOf("loading", "failed", "empty")) assertEquals(tag, loaded, height(tag))
+        for (tag in listOf("loading", "failed", "empty")) assertEquals("$tag vs loaded", loaded, height(tag))
     }
 }

@@ -23,6 +23,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
@@ -33,6 +34,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
@@ -63,39 +65,72 @@ val RailCollapsed = 76.dp
 private val RailExpanded = 220.dp
 
 /**
- * Remembers the element selected last on each page (every [tvFocus] element reports itself), so
- * closing the menu or coming back to a page with Back puts the selection where it was. Elements
- * are identified by their place in the UI, which stays the same when a page is reopened.
+ * Shared by [TvShell] with its pages and with every [tvFocus] element: which page is shown, which
+ * page holds the selection, and the element selected last on each page, so closing the menu or
+ * coming back to a page with Back puts the selection where it was. Elements are identified by
+ * their place in the UI, which stays the same when a page is reopened.
  */
-class FocusMemory {
-    internal var page: Any? = null
+class TvShellState internal constructor() {
+    internal var shownPage: Any? = null
+    internal var focusedPage by mutableStateOf<Any?>(null)
     private val lastByPage = object : LinkedHashMap<Any?, Int>() {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any?, Int>?) = size > MAX_PAGES
     }
-    private val elements = HashMap<Int, FocusRequester>()
+    private val elements = HashMap<Pair<Any?, Int>, FocusRequester>()
 
-    internal fun register(id: Int, requester: FocusRequester) {
-        elements[id] = requester
+    internal fun register(page: Any?, id: Int, requester: FocusRequester) {
+        elements[page to id] = requester
     }
 
-    internal fun unregister(id: Int, requester: FocusRequester) {
-        if (elements[id] === requester) elements.remove(id)
+    internal fun unregister(page: Any?, id: Int, requester: FocusRequester) {
+        if (elements[page to id] === requester) elements.remove(page to id)
     }
 
-    internal fun focused(id: Int) {
+    internal fun focused(page: Any?, id: Int) {
         lastByPage[page] = id
+    }
+
+    internal fun pageFocusChanged(page: Any?, hasFocus: Boolean) {
+        if (hasFocus) focusedPage = page else if (focusedPage == page) focusedPage = null
     }
 
     internal fun remembers(page: Any?) = page in lastByPage
 
     /** Asks the element selected last on [page] to take focus; false if it isn't on screen. */
     internal fun restore(page: Any?): Boolean {
-        val requester = lastByPage[page]?.let { elements[it] } ?: return false
+        val requester = lastByPage[page]?.let { elements[page to it] } ?: return false
         return runCatching { requester.requestFocus() }.isSuccess
     }
+
+    override fun toString() = "shown=$shownPage focused=$focusedPage last=$lastByPage elements=${elements.size}"
 }
 
-val LocalFocusMemory = staticCompositionLocalOf<FocusMemory?> { null }
+val LocalTvShell = staticCompositionLocalOf<TvShellState?> { null }
+internal val LocalTvPage = staticCompositionLocalOf<Any?> { null }
+
+/**
+ * One page inside [TvShell] (wrap each NavHost destination). While the next page is replacing it,
+ * the old one can't take the selection.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+@Composable
+fun TvPage(key: Any?, content: @Composable () -> Unit) {
+    val shell = LocalTvShell.current
+    if (shell != null) {
+        DisposableEffect(shell, key) { onDispose { shell.pageFocusChanged(key, false) } }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .onFocusChanged { shell?.pageFocusChanged(key, it.hasFocus) }
+            .focusProperties {
+                enter = { if (shell == null || shell.shownPage == key) FocusRequester.Default else FocusRequester.Cancel }
+            }
+            .focusGroup(),
+    ) {
+        CompositionLocalProvider(LocalTvPage provides key, content = content)
+    }
+}
 
 /**
  * TV navigation: a slim side menu next to the page.
@@ -118,18 +153,18 @@ fun TvShell(
 ) {
     val focusManager = LocalFocusManager.current
     val inputModes = LocalInputModeManager.current
-    val memory = remember { FocusMemory() }
+    val shell = remember { TvShellState() }
     val pageFocus = remember { FocusRequester() }
     val menuFocus = remember { FocusRequester() }
     // Visual state (labels shown, drawn over the page) and whether the items can take focus.
     // Both are read live by the focus system, so changes apply without waiting for a frame.
     var expanded by remember { mutableStateOf(false) }
     var menuActive by remember { mutableStateOf(false) }
-    var pageHasFocus by remember { mutableStateOf(false) }
     var menuHasFocus by remember { mutableStateOf(false) }
     var refocus by remember { mutableIntStateOf(0) }
 
-    SideEffect { memory.page = pageKey }
+    SideEffect { shell.shownPage = pageKey }
+    fun pageHasFocus() = shell.focusedPage == pageKey
 
     fun openMenu() {
         menuActive = true
@@ -139,7 +174,7 @@ fun TvShell(
 
     fun closeMenu() {
         expanded = false
-        if (!memory.restore(pageKey)) runCatching { pageFocus.requestFocus() }
+        if (!shell.restore(pageKey)) runCatching { pageFocus.requestFocus() }
         refocus++
     }
 
@@ -152,15 +187,15 @@ fun TvShell(
         if (inputMode == InputMode.Touch) return@LaunchedEffect
         withFrameNanos { }
         var waited = 0L
-        while (!pageHasFocus && !expanded && waited < GIVE_UP_MS) {
-            val restored = waited < RESTORE_WAIT_MS && memory.restore(pageKey)
-            if (!restored && (waited >= RESTORE_WAIT_MS || !memory.remembers(pageKey))) {
+        while (!pageHasFocus() && !expanded && waited < GIVE_UP_MS) {
+            val restored = waited < RESTORE_WAIT_MS && shell.restore(pageKey)
+            if (!restored && (waited >= RESTORE_WAIT_MS || !shell.remembers(pageKey))) {
                 runCatching { pageFocus.requestFocus() }
             }
             val step = if (waited < 1_000) 50L else 250L
             delay(step)
             waited += step
-            if (!pageHasFocus && !menuHasFocus && waited >= PARK_AFTER_MS) {
+            if (!pageHasFocus() && !menuHasFocus && waited >= PARK_AFTER_MS) {
                 menuActive = true
                 runCatching { menuFocus.requestFocus() }
             }
@@ -169,7 +204,7 @@ fun TvShell(
 
     // Focus can vanish when the focused element is removed (a list reloads, a download is
     // deleted); bring it back.
-    val anyFocus = pageHasFocus || menuHasFocus
+    val anyFocus = pageHasFocus() || menuHasFocus
     LaunchedEffect(anyFocus) {
         if (!anyFocus) {
             delay(200)
@@ -179,23 +214,26 @@ fun TvShell(
 
     val edgeScroll = remember { EdgeBringIntoViewSpec() }
     Box(modifier.fillMaxSize()) {
-        CompositionLocalProvider(LocalFocusMemory provides memory, LocalBringIntoViewSpec provides edgeScroll) {
+        CompositionLocalProvider(LocalTvShell provides shell, LocalBringIntoViewSpec provides edgeScroll) {
             content(
                 Modifier
                     .fillMaxSize()
                     .padding(start = RailCollapsed)
-                    .onFocusChanged { pageHasFocus = it.hasFocus }
                     .focusRequester(pageFocus)
                     .focusGroup()
-                    // Seen before the focused element: at the left edge, Left opens the menu.
+                    // Arrows move the selection before the focused element sees them, so text fields
+                    // can't trap it (not every remote is recognised as a D-pad). At the left edge,
+                    // a new press of Left opens the menu.
                     .onPreviewKeyEvent { event ->
-                        if (event.key != Key.DirectionLeft || event.type != KeyEventType.KeyDown) {
-                            false
-                        } else {
-                            if (!focusManager.moveFocus(FocusDirection.Left) && event.nativeKeyEvent.repeatCount == 0) {
-                                openMenu()
+                        val direction = arrowDirection(event)
+                        when {
+                            direction == null -> false
+                            focusManager.moveFocus(direction) -> true
+                            direction == FocusDirection.Left -> {
+                                if (event.nativeKeyEvent.repeatCount == 0) openMenu()
+                                true
                             }
-                            true
+                            else -> false
                         }
                     },
             )
@@ -237,6 +275,17 @@ fun TvShell(
                 )
             }
         }
+    }
+}
+
+private fun arrowDirection(event: KeyEvent): FocusDirection? {
+    if (event.type != KeyEventType.KeyDown) return null
+    return when (event.key) {
+        Key.DirectionLeft -> FocusDirection.Left
+        Key.DirectionRight -> FocusDirection.Right
+        Key.DirectionUp -> FocusDirection.Up
+        Key.DirectionDown -> FocusDirection.Down
+        else -> null
     }
 }
 

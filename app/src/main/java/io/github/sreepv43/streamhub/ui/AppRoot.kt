@@ -21,6 +21,9 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.navigation.NamedNavArgument
+import androidx.navigation.NavBackStackEntry
+import androidx.navigation.NavGraphBuilder
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -114,7 +117,7 @@ private fun AppNavHost(nav: NavHostController, modifier: Modifier) {
         enterTransition = { EnterTransition.None },
         exitTransition = { ExitTransition.None },
     ) {
-        composable(Routes.HOME) {
+        page(Routes.HOME) {
             HomeScreen(
                 onOpenMeta = { nav.navigate(Routes.detail(it.type, it.id)) },
                 onOpenHistory = { entry ->
@@ -128,24 +131,24 @@ private fun AppNavHost(nav: NavHostController, modifier: Modifier) {
                 onOpenAddons = { nav.navigate(Routes.addons()) },
             )
         }
-        composable(Routes.SEARCH) {
+        page(Routes.SEARCH) {
             SearchScreen(onOpenMeta = { nav.navigate(Routes.detail(it.type, it.id)) })
         }
-        composable(Routes.DOWNLOADS) { DownloadsScreen() }
-        composable(
+        page(Routes.DOWNLOADS) { DownloadsScreen() }
+        page(
             Routes.ADDONS,
             arguments = listOf(navArgument("install") { type = NavType.StringType; nullable = true; defaultValue = null }),
         ) { entry ->
             AddonsScreen(initialUrl = entry.arguments?.getString("install"))
         }
-        composable(Routes.SETTINGS) { SettingsScreen() }
-        composable(
+        page(Routes.SETTINGS) { SettingsScreen() }
+        page(
             Routes.LINK,
             arguments = listOf(navArgument("url") { type = NavType.StringType; nullable = true; defaultValue = null }),
         ) { entry ->
             LinkScreen(initialUrl = entry.arguments?.getString("url"))
         }
-        composable(
+        page(
             Routes.CATALOG,
             arguments = listOf(
                 navArgument("addon") { type = NavType.StringType },
@@ -155,13 +158,22 @@ private fun AppNavHost(nav: NavHostController, modifier: Modifier) {
         ) {
             CatalogScreen(onOpenMeta = { nav.navigate(Routes.detail(it.type, it.id)) })
         }
-        composable(Routes.DETAIL) {
+        page(Routes.DETAIL) {
             DetailScreen(
                 onOpenEpisode = { type, metaId, videoId -> nav.navigate(Routes.streams(type, metaId, videoId)) },
             )
         }
-        composable(Routes.STREAMS) {
+        page(Routes.STREAMS) {
             StreamsScreen()
         }
     }
+}
+
+/** A destination that is also a [TvPage], so an outgoing page can't take the selection. */
+private fun NavGraphBuilder.page(
+    route: String,
+    arguments: List<NamedNavArgument> = emptyList(),
+    content: @Composable (NavBackStackEntry) -> Unit,
+) {
+    composable(route, arguments) { entry -> TvPage(entry.id) { content(entry) } }
 }

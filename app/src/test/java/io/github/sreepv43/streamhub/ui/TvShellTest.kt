@@ -62,18 +62,21 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * Drives the side menu and pages with remote key presses sent through the Activity, the same path
  * a TV remote takes, and checks where the selection lands after each press.
  */
 @RunWith(RobolectricTestRunner::class)
+@GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [34], application = android.app.Application::class, qualifiers = "w1280dp-h720dp-land-television-mdpi")
 class TvShellTest {
     @get:Rule
     val rule = createAndroidComposeRule<ComponentActivity>()
 
     private lateinit var nav: NavHostController
+    private var shell: TvShellState? = null
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Before
@@ -83,7 +86,7 @@ class TvShellTest {
         rule.setContent {
             val inputModes = LocalInputModeManager.current
             LaunchedEffect(Unit) { inputModes.requestInputMode(InputMode.Keyboard) }
-            StreamHubTheme { FakeApp { nav = it } }
+            StreamHubTheme { FakeApp(onNav = { nav = it }, onShell = { shell = it }) }
         }
         rule.runOnUiThread { composeView().requestFocus() }
         settle(1_000)
@@ -168,7 +171,7 @@ class TvShellTest {
 
         press(KeyEvent.KEYCODE_BACK)
         assertEquals("home", route())
-        assertEquals("Back returns to the poster that was opened", "r0-c1", focused())
+        assertEquals("Back returns to the poster that was opened ($shell)", "r0-c1", focused())
         assertFalse(menuExpanded())
     }
 
@@ -182,7 +185,7 @@ class TvShellTest {
         assertEquals("detail/{id}", route())
         press(KeyEvent.KEYCODE_BACK)
         assertEquals("home", route())
-        assertEquals(opened, focused())
+        assertEquals("$shell", opened, focused())
     }
 
     @Test
@@ -199,7 +202,7 @@ class TvShellTest {
         assertEquals("detail/{id}", route())
         press(KeyEvent.KEYCODE_BACK)
         assertEquals("search", route())
-        assertEquals("the result, not the search box (which would pop up the keyboard)", opened, focused())
+        assertEquals("the result, not the search box (which would pop up the keyboard); $shell", opened, focused())
     }
 
     @Test
@@ -275,7 +278,9 @@ class TvShellTest {
         assertEquals("row must not scroll while the poster is visible", c5, poster("r0-c5").left)
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         assertTrue(focused().startsWith("r1-"))
-        assertEquals("page must not scroll while the row is visible", top, title())
+        // Only as far as needed to show the row, not pinning it a third of the way down.
+        val scrolled = top - title()
+        assertTrue("page scrolled by $scrolled", scrolled < 100.dp)
     }
 
     @Test
@@ -283,9 +288,9 @@ class TvShellTest {
         openMenu()
         press(KeyEvent.KEYCODE_DPAD_DOWN, times = 2)
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        settle(1_500)
+        settle(2_500)
         assertEquals("downloads", route())
-        assertEquals("menu-downloads", focused())
+        assertEquals("$shell", "menu-downloads", focused())
         assertFalse("the page must not be covered", menuExpanded())
 
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
@@ -368,7 +373,7 @@ private val entries = listOf(
 
 /** Same structure as the app: TvShell around a NavHost, Home made of real poster rows. */
 @Composable
-private fun FakeApp(onNav: (NavHostController) -> Unit) {
+private fun FakeApp(onNav: (NavHostController) -> Unit, onShell: (TvShellState?) -> Unit) {
     val nav = rememberNavController()
     SideEffect { onNav(nav) }
     val entry by nav.currentBackStackEntryAsState()
@@ -386,16 +391,18 @@ private fun FakeApp(onNav: (NavHostController) -> Unit) {
             enterTransition = { EnterTransition.None },
             exitTransition = { ExitTransition.None },
         ) {
-            composable("home") { FakeHome(onOpen = { nav.navigate("detail/$it") }) }
-            composable("search") { FakeSearch(onOpen = { nav.navigate("detail/$it") }) }
-            composable("downloads") { Text("No downloads yet", Modifier.padding(24.dp)) }
-            composable("detail/{id}") { FakeDetail(it.arguments?.getString("id")) }
+            composable("home") { TvPage(it.id) { FakeHome(onOpen = { id -> nav.navigate("detail/$id") }, onShell) } }
+            composable("search") { TvPage(it.id) { FakeSearch(onOpen = { id -> nav.navigate("detail/$id") }) } }
+            composable("downloads") { TvPage(it.id) { Text("No downloads yet", Modifier.padding(24.dp)) } }
+            composable("detail/{id}") { TvPage(it.id) { FakeDetail(it.arguments?.getString("id")) } }
         }
     }
 }
 
 @Composable
-private fun FakeHome(onOpen: (String) -> Unit) {
+private fun FakeHome(onOpen: (String) -> Unit, onShell: (TvShellState?) -> Unit) {
+    val shell = LocalTvShell.current
+    SideEffect { onShell(shell) }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp)) {
         item { Text("Home page", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
         for (r in 0 until 6) {

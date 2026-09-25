@@ -116,4 +116,8 @@ tasks.withType<Test>().configureEach {
     // libtorrent installs signal handlers; HotSpot needs signal chaining to coexist with them.
     val jsig = File(System.getProperty("java.home"), "lib/libjsig.so")
     if (jsig.exists()) environment("LD_PRELOAD", jsig.absolutePath)
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }
