@@ -2,34 +2,7 @@ package io.github.sreepv43.streamhub.ui
 
 import androidx.compose.animation.EnterTransition
 import androidx.compose.animation.ExitTransition
-import androidx.compose.foundation.focusGroup
-import androidx.compose.ui.focus.FocusDirection
-import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusProperties
-import androidx.compose.ui.focus.focusRequester
-import androidx.compose.ui.focus.focusRestorer
-import androidx.compose.ui.ExperimentalComposeUiApi
-import androidx.compose.ui.input.key.Key
-import androidx.compose.ui.input.key.KeyEventType
-import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.onKeyEvent
-import androidx.compose.ui.input.key.type
-import androidx.compose.ui.platform.LocalFocusManager
-import kotlinx.coroutines.delay
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
@@ -37,24 +10,17 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Link
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
@@ -72,32 +38,28 @@ import io.github.sreepv43.streamhub.ui.screens.SearchScreen
 import io.github.sreepv43.streamhub.ui.screens.SettingsScreen
 import io.github.sreepv43.streamhub.ui.screens.StreamsScreen
 
-private data class Section(val route: String, val base: String, val label: String, val icon: ImageVector)
+private data class Section(val route: String, val pattern: String, val label: String, val icon: ImageVector) {
+    val base get() = routeBase(pattern)
+}
 
 private val sections = listOf(
     Section(Routes.HOME, Routes.HOME, "Home", Icons.Default.Home),
     Section(Routes.SEARCH, Routes.SEARCH, "Search", Icons.Default.Search),
-    Section(Routes.link(), "link", "Open link", Icons.Default.Link),
+    Section(Routes.link(), Routes.LINK, "Open link", Icons.Default.Link),
     Section(Routes.DOWNLOADS, Routes.DOWNLOADS, "Downloads", Icons.Default.Download),
-    Section(Routes.addons(), "addons", "Addons", Icons.Default.Extension),
+    Section(Routes.addons(), Routes.ADDONS, "Addons", Icons.Default.Extension),
     Section(Routes.SETTINGS, Routes.SETTINGS, "Settings", Icons.Default.Settings),
 )
 
-/**
- * Side menu + content. The menu is a slim, unfocusable icon strip while browsing, so opening a
- * page never pulls the selection into it. It opens only when the user is at the left edge of the
- * page and presses Left again, and closes as soon as an item is chosen (or on Right/Back).
- */
-@OptIn(ExperimentalComposeUiApi::class)
+private val menuEntries = sections.map { MenuEntry(it.base, it.label, it.icon) }
+
+internal fun routeBase(route: String) = route.substringBefore('?').substringBefore('/')
+
+/** Side menu ([TvShell]) around the pages. */
 @Composable
 fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
     val nav = rememberNavController()
     val entry by nav.currentBackStackEntryAsState()
-    val focusManager = LocalFocusManager.current
-    val contentFocus = remember { FocusRequester() }
-    val menuFocus = remember { FocusRequester() }
-    var menuOpen by remember { mutableStateOf(false) }
-    var contentHasFocus by remember { mutableStateOf(false) }
 
     LaunchedEffect(navRequest) {
         if (navRequest != null) {
@@ -106,145 +68,39 @@ fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
         }
     }
 
-    // Put the selection into every newly opened page (retrying while it is still loading).
-    LaunchedEffect(entry?.id, menuOpen) {
-        if (menuOpen) {
-            delay(50)
-            runCatching { menuFocus.requestFocus() }
-            return@LaunchedEffect
-        }
-        repeat(40) {
-            delay(100)
-            if (contentHasFocus) return@LaunchedEffect
-            runCatching { contentFocus.requestFocus() }
-        }
-    }
+    // Pages opened from a section (details, streams…) keep that section highlighted.
+    val current = entry?.destination?.route?.let(::routeBase)
+    val section = sections.firstOrNull { it.base == current }
+    var lastSection by rememberSaveable { mutableStateOf(Routes.HOME) }
+    LaunchedEffect(section) { if (section != null) lastSection = section.base }
 
     CompositionLocalProvider(LocalContentColor provides MaterialTheme.colorScheme.onBackground) {
-        Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-            AppNavHost(
-                nav,
-                Modifier
-                    .fillMaxSize()
-                    .padding(start = RailCollapsed)
-                    .onFocusChanged { contentHasFocus = it.hasFocus }
-                    .focusRequester(contentFocus)
-                    // Coming back from the menu returns to the poster that was selected before.
-                    .focusRestorer()
-                    .focusGroup()
-                    // Runs only when nothing on the page used the key: at the left edge, Left opens the menu.
-                    .onKeyEvent { event ->
-                        if (event.type == KeyEventType.KeyDown && event.key == Key.DirectionLeft && !menuOpen) {
-                            if (!focusManager.moveFocus(FocusDirection.Left)) menuOpen = true
-                            true
-                        } else false
-                    },
-            )
-            SideMenu(
-                nav = nav,
-                open = menuOpen,
-                selectedFocus = menuFocus,
-                onClose = { menuOpen = false },
-                modifier = Modifier.align(Alignment.CenterStart),
-            )
+        TvShell(
+            entries = menuEntries,
+            selectedKey = section?.base ?: lastSection,
+            pageKey = entry?.id,
+            onSelect = { chosen ->
+                val target = sections.first { it.base == chosen.key }
+                nav.openSection(target.route, target.pattern)
+            },
+            modifier = Modifier.background(MaterialTheme.colorScheme.background),
+        ) { pageModifier ->
+            AppNavHost(nav, pageModifier)
         }
     }
 }
 
-private val RailCollapsed = 76.dp
-private val RailExpanded = 220.dp
-
-@Composable
-private fun SideMenu(
-    nav: NavHostController,
-    open: Boolean,
-    selectedFocus: FocusRequester,
-    onClose: () -> Unit,
-    modifier: Modifier,
-) {
-    val entry by nav.currentBackStackEntryAsState()
-    val currentBase = entry?.destination?.route?.substringBefore('?')?.substringBefore('/')
-    val selectedIndex = sections.indexOfFirst { it.base == currentBase }.coerceAtLeast(0)
-
-    Column(
-        modifier
-            .fillMaxHeight()
-            .width(if (open) RailExpanded else RailCollapsed)
-            .background(if (open) AppColors.panel else AppColors.background)
-            .onFocusChanged { if (open && !it.hasFocus) onClose() }
-            // Right simply moves into the page (which closes the menu); Back closes it too.
-            .onKeyEvent { event ->
-                if (open && event.type == KeyEventType.KeyDown && event.key == Key.Back) {
-                    onClose()
-                    true
-                } else false
-            }
-            .padding(horizontal = 12.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-    ) {
-        sections.forEachIndexed { index, section ->
-            MenuItem(
-                section = section,
-                selected = currentBase == section.base,
-                expanded = open,
-                focusable = open,
-                modifier = if (index == selectedIndex) Modifier.focusRequester(selectedFocus) else Modifier,
-                onClick = {
-                    onClose()
-                    if (section.base == Routes.HOME) {
-                        // Always land on the home page itself, dropping whatever was opened from it.
-                        if (!nav.popBackStack(Routes.HOME, inclusive = false)) nav.navigate(Routes.HOME)
-                    } else {
-                        nav.navigate(section.route) {
-                            popUpTo(Routes.HOME)
-                            launchSingleTop = true
-                        }
-                    }
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun MenuItem(
-    section: Section,
-    selected: Boolean,
-    expanded: Boolean,
-    focusable: Boolean,
-    modifier: Modifier,
-    onClick: () -> Unit,
-) {
-    var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
-    val tint = when {
-        focused -> AppColors.background
-        selected -> AppColors.accent
-        else -> AppColors.textDim
-    }
-    Row(
-        modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            // Unreachable with the remote while the menu is closed; taps still work on tablets.
-            .focusProperties { canFocus = focusable }
-            .onFocusChanged { focused = it.isFocused }
-            .clip(shape)
-            .background(if (focused) AppColors.text else Color.Transparent, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(section.icon, contentDescription = section.label, tint = tint, modifier = Modifier.size(24.dp))
-        if (expanded) {
-            Text(
-                section.label,
-                style = MaterialTheme.typography.titleMedium,
-                color = tint,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 16.dp),
-            )
-        }
+/**
+ * Opens a menu section. Home returns to the home page itself, dropping whatever was opened on top
+ * of it; other sections go back to their page if it is open underneath, or replace everything
+ * above Home. Choosing the page that is already showing does nothing.
+ */
+internal fun NavHostController.openSection(route: String, pattern: String, home: String = Routes.HOME) {
+    if (currentDestination?.route == pattern) return
+    if (popBackStack(pattern, inclusive = false)) return
+    navigate(route) {
+        popUpTo(home)
+        launchSingleTop = true
     }
 }
 

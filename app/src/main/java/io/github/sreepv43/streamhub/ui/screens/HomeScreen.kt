@@ -30,6 +30,7 @@ import io.github.sreepv43.streamhub.ui.components.CenteredLoading
 import io.github.sreepv43.streamhub.ui.components.MetaRow
 import io.github.sreepv43.streamhub.ui.components.PosterCard
 import io.github.sreepv43.streamhub.ui.components.RowState
+import io.github.sreepv43.streamhub.ui.components.tvRow
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -106,6 +107,7 @@ fun HomeScreen(
                         modifier = Modifier.padding(horizontal = 24.dp),
                     )
                     LazyRow(
+                        modifier = Modifier.tvRow(),
                         contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(16.dp),
                     ) {

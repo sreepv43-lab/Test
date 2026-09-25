@@ -7,13 +7,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.composed
+import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
+import io.github.sreepv43.streamhub.ui.LocalFocusMemory
 import io.github.sreepv43.streamhub.ui.LocalPalette
 
 /**
@@ -26,8 +32,14 @@ fun Modifier.tvFocus(
 ): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
     val ring = LocalPalette.current.focus
+    val memory = LocalFocusMemory.current
+    val requester = remember { FocusRequester() }
     this
-        .onFocusChanged { focused = it.hasFocus }
+        .focusRequester(requester)
+        .onFocusChanged {
+            focused = it.hasFocus
+            if (it.hasFocus) memory?.last = requester
+        }
         .graphicsLayer {
             val s = if (focused) scale else 1f
             scaleX = s
@@ -41,4 +53,15 @@ fun Modifier.tvFocus(
                 drawOutline(outline, color = ring, style = Stroke(width = 2.dp.toPx()))
             }
         }
+}
+
+/**
+ * For horizontal lists: Left/Right never leave the list, so at the first item Left opens the side
+ * menu instead of jumping diagonally into a neighbouring, partly scrolled row.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+fun Modifier.tvRow(): Modifier = focusProperties {
+    exit = { direction ->
+        if (direction == FocusDirection.Left || direction == FocusDirection.Right) FocusRequester.Cancel else FocusRequester.Default
+    }
 }

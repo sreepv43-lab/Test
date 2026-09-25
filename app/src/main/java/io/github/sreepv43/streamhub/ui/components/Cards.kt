@@ -15,6 +15,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.layout.Row
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material3.Icon
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.LinearProgressIndicator
@@ -97,15 +101,60 @@ fun PosterCard(
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 10.dp),
         )
-        if (caption != null) {
-            Text(
-                caption,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        // Always takes its line, so every card (and every row) has the same height.
+        Text(
+            caption.orEmpty(),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+/** Last tile of a row, the same size as a poster. */
+@Composable
+fun SeeAllCard(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(16.dp)
+    CardFrame {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .tvFocus(shape, scale = 1.07f)
+                .clip(shape)
+                .panel(shape)
+                .clickable(onClick = onClick),
+            verticalArrangement = Arrangement.Center,
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = AppColors.accent)
+            Text("See all", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
         }
+    }
+}
+
+/** Grey poster-shaped block shown while a row loads. */
+@Composable
+private fun PlaceholderCard(visible: Boolean) {
+    val shape = RoundedCornerShape(16.dp)
+    CardFrame {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(2f / 3f)
+                .then(if (visible) Modifier.panel(shape) else Modifier),
+        )
+    }
+}
+
+/** Poster-sized column with the two text lines a [PosterCard] has. */
+@Composable
+private fun CardFrame(image: @Composable () -> Unit) {
+    Column(Modifier.width(PosterWidth)) {
+        image()
+        Text(" ", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 10.dp))
+        Text(" ", style = MaterialTheme.typography.bodySmall)
     }
 }
 
@@ -137,50 +186,52 @@ fun MetaRow(
     onMetaFocused: ((Meta) -> Unit)? = null,
 ) {
     Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
-        Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
-            Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterStart))
-            if (onSeeAll != null) {
-                FlatButton(
-                    text = "See all",
-                    onClick = onSeeAll,
-                    modifier = Modifier.align(Alignment.CenterEnd),
-                    compact = true,
-                )
+        Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
+        val metas = (state as? RowState.Loaded)?.metas?.let { remember(it) { it.distinctBy { meta -> meta.type + meta.id } } }
+        if (metas.isNullOrEmpty()) {
+            // Same height as a loaded row, so nothing below moves when the row finishes loading.
+            val message = when (state) {
+                RowState.Loading -> null
+                is RowState.Failed -> state.message
+                is RowState.Loaded -> "Nothing here"
             }
-        }
-        when (state) {
-            RowState.Loading -> Box(Modifier.fillMaxWidth().height(120.dp), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
-            is RowState.Failed -> Text(
-                state.message,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-            )
-            is RowState.Loaded -> if (state.metas.isEmpty()) {
-                Text(
-                    "Nothing here",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
-                )
-            } else {
-                val metas = remember(state.metas) { state.metas.distinctBy { it.type + it.id } }
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    items(metas, key = { it.type + it.id }, contentType = { "poster" }) { meta ->
-                        MetaCard(
-                            meta,
-                            onClick = { onMetaClick(meta) },
-                            onFocused = onMetaFocused?.let { callback -> { callback(meta) } },
-                        )
-                    }
+                    repeat(PLACEHOLDER_CARDS) { PlaceholderCard(visible = message == null) }
+                }
+                if (message != null) {
+                    Text(
+                        message,
+                        color = if (state is RowState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 24.dp),
+                    )
+                }
+            }
+        } else {
+            LazyRow(
+                modifier = Modifier.tvRow(),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                items(metas, key = { it.type + it.id }, contentType = { "poster" }) { meta ->
+                    MetaCard(
+                        meta,
+                        onClick = { onMetaClick(meta) },
+                        onFocused = onMetaFocused?.let { callback -> { callback(meta) } },
+                    )
+                }
+                if (onSeeAll != null) {
+                    item(key = "see-all", contentType = "see-all") { SeeAllCard(onSeeAll) }
                 }
             }
         }
     }
 }
+
+private const val PLACEHOLDER_CARDS = 10
 
 @Composable
 fun CenteredMessage(text: String, modifier: Modifier = Modifier) {

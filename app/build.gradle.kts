@@ -46,6 +46,10 @@ android {
         compose = true
         buildConfig = true
     }
+    // Robolectric runs the Compose UI tests (remote navigation) on the JVM.
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 val torrentDesktopNative: Configuration by configurations.creating
@@ -93,6 +97,10 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:4.12.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
 
 // JVM unit tests run the real torrent engine against the desktop build of libtorrent (Linux x86-64).

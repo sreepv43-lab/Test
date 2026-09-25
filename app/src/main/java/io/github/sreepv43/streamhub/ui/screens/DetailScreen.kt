@@ -32,6 +32,7 @@ import io.github.sreepv43.streamhub.ui.AppColors
 import io.github.sreepv43.streamhub.ui.components.FlatButton
 import io.github.sreepv43.streamhub.ui.components.FlatChip
 import io.github.sreepv43.streamhub.ui.components.panel
+import io.github.sreepv43.streamhub.ui.components.tvRow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -146,6 +147,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
                 if (seasons.size > 1) {
                     item(key = "seasons") {
                         LazyRow(
+                            modifier = Modifier.tvRow(),
                             contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {

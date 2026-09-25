@@ -38,6 +38,7 @@ import io.github.sreepv43.streamhub.ui.components.MetaCard
 import io.github.sreepv43.streamhub.ui.components.PosterWidth
 import io.github.sreepv43.streamhub.ui.components.FlatChip
 import io.github.sreepv43.streamhub.ui.components.tvFocus
+import io.github.sreepv43.streamhub.ui.components.tvRow
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -130,6 +131,7 @@ fun CatalogScreen(onOpenMeta: (Meta) -> Unit) {
         Text(state.title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(24.dp))
         if (state.genres.isNotEmpty()) {
             LazyRow(
+                modifier = Modifier.tvRow(),
                 contentPadding = PaddingValues(horizontal = 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
@@ -151,7 +153,7 @@ fun CatalogScreen(onOpenMeta: (Meta) -> Unit) {
             contentPadding = PaddingValues(24.dp),
             verticalArrangement = Arrangement.spacedBy(20.dp),
             horizontalArrangement = Arrangement.spacedBy(16.dp),
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().tvRow(),
         ) {
             items(state.items, key = { it.type + it.id }) { meta ->
                 MetaCard(meta, onClick = { onOpenMeta(meta) })
