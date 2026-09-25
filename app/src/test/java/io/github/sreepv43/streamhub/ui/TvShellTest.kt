@@ -26,7 +26,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -168,8 +168,38 @@ class TvShellTest {
 
         press(KeyEvent.KEYCODE_BACK)
         assertEquals("home", route())
-        assertTrue("selection returns to a poster, got ${focused()}", focused().startsWith("r0-"))
+        assertEquals("Back returns to the poster that was opened", "r0-c1", focused())
         assertFalse(menuExpanded())
+    }
+
+    @Test
+    fun backReturnsToTheOpenedPosterFurtherDownAndAlong() {
+        press(KeyEvent.KEYCODE_DPAD_DOWN, times = 3)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT, times = 9)
+        val opened = focused()
+        assertTrue(opened, opened.startsWith("r4-"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("detail/{id}", route())
+        press(KeyEvent.KEYCODE_BACK)
+        assertEquals("home", route())
+        assertEquals(opened, focused())
+    }
+
+    @Test
+    fun searchResultsKeepTheSelectionWhenComingBack() {
+        openMenu()
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("search-field", focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        val opened = focused()
+        assertTrue(opened, opened.startsWith("s-c"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("detail/{id}", route())
+        press(KeyEvent.KEYCODE_BACK)
+        assertEquals("search", route())
+        assertEquals("the result, not the search box (which would pop up the keyboard)", opened, focused())
     }
 
     @Test
@@ -357,7 +387,7 @@ private fun FakeApp(onNav: (NavHostController) -> Unit) {
             exitTransition = { ExitTransition.None },
         ) {
             composable("home") { FakeHome(onOpen = { nav.navigate("detail/$it") }) }
-            composable("search") { FakeSearch() }
+            composable("search") { FakeSearch(onOpen = { nav.navigate("detail/$it") }) }
             composable("downloads") { Text("No downloads yet", Modifier.padding(24.dp)) }
             composable("detail/{id}") { FakeDetail(it.arguments?.getString("id")) }
         }
@@ -382,8 +412,8 @@ private fun FakeHome(onOpen: (String) -> Unit) {
 }
 
 @Composable
-private fun FakeSearch() {
-    var text by remember { mutableStateOf("") }
+private fun FakeSearch(onOpen: (String) -> Unit) {
+    var text by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(24.dp)) {
             OutlinedTextField(
@@ -395,6 +425,11 @@ private fun FakeSearch() {
             )
             FlatButton(text = "Go", onClick = {}, modifier = Modifier.padding(start = 12.dp))
         }
+        MetaRow(
+            title = "Results",
+            state = RowState.Loaded(List(10) { c -> Meta(id = "s-c$c", name = "s-c$c") }),
+            onMetaClick = { onOpen(it.id) },
+        )
     }
 }
 

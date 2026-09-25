@@ -24,6 +24,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -46,7 +47,6 @@ import androidx.compose.ui.input.key.Key
 import androidx.compose.ui.input.key.KeyEvent
 import androidx.compose.ui.input.key.KeyEventType
 import androidx.compose.ui.input.key.key
-import androidx.compose.ui.input.key.nativeKeyEvent
 import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
@@ -63,24 +63,35 @@ val RailCollapsed = 76.dp
 private val RailExpanded = 220.dp
 
 /**
- * Remembers the last focused element of the page (every [tvFocus] element reports itself), so
- * closing the side menu puts the selection back exactly where it was.
+ * Remembers the element selected last on each page (every [tvFocus] element reports itself), so
+ * closing the menu or coming back to a page with Back puts the selection where it was. Elements
+ * are identified by their place in the UI, which stays the same when a page is reopened.
  */
 class FocusMemory {
-    internal var last: FocusRequester? = null
-    internal var saved: FocusRequester? = null
-    internal var savedPage: Any? = null
+    internal var page: Any? = null
+    private val lastByPage = object : LinkedHashMap<Any?, Int>() {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any?, Int>?) = size > MAX_PAGES
+    }
+    private val elements = HashMap<Int, FocusRequester>()
 
-    internal fun save(page: Any?) {
-        saved = last
-        savedPage = page
+    internal fun register(id: Int, requester: FocusRequester) {
+        elements[id] = requester
     }
 
-    /** Refocuses the saved element (once) if it belongs to [page] and still exists. */
+    internal fun unregister(id: Int, requester: FocusRequester) {
+        if (elements[id] === requester) elements.remove(id)
+    }
+
+    internal fun focused(id: Int) {
+        lastByPage[page] = id
+    }
+
+    internal fun remembers(page: Any?) = page in lastByPage
+
+    /** Asks the element selected last on [page] to take focus; false if it isn't on screen. */
     internal fun restore(page: Any?): Boolean {
-        val target = saved?.takeIf { savedPage == page } ?: return false
-        saved = null
-        return runCatching { target.requestFocus() }.isSuccess
+        val requester = lastByPage[page]?.let { elements[it] } ?: return false
+        return runCatching { requester.requestFocus() }.isSuccess
     }
 }
 
@@ -118,12 +129,9 @@ fun TvShell(
     var menuHasFocus by remember { mutableStateOf(false) }
     var refocus by remember { mutableIntStateOf(0) }
 
-    fun focusPage() {
-        if (!memory.restore(pageKey)) runCatching { pageFocus.requestFocus() }
-    }
+    SideEffect { memory.page = pageKey }
 
     fun openMenu() {
-        memory.save(pageKey)
         menuActive = true
         expanded = true
         runCatching { menuFocus.requestFocus() }
@@ -131,20 +139,24 @@ fun TvShell(
 
     fun closeMenu() {
         expanded = false
-        focusPage()
+        if (!memory.restore(pageKey)) runCatching { pageFocus.requestFocus() }
         refocus++
     }
 
-    // Moves the selection into the page whenever a page opens or the menu closes, retrying while
-    // the page is still loading. If the page has nothing focusable for a while, the selection
-    // waits on the collapsed menu instead of being nowhere.
+    // Moves the selection into the page whenever a page opens or the menu closes: to the element
+    // selected there last time once it is back on screen, otherwise to the page's first element,
+    // retrying while the page is still loading. If the page has nothing focusable for a while, the
+    // selection waits on the collapsed menu instead of being nowhere.
     val inputMode = inputModes.inputMode
     LaunchedEffect(pageKey, refocus, inputMode) {
         if (inputMode == InputMode.Touch) return@LaunchedEffect
         withFrameNanos { }
         var waited = 0L
         while (!pageHasFocus && !expanded && waited < GIVE_UP_MS) {
-            focusPage()
+            val restored = waited < RESTORE_WAIT_MS && memory.restore(pageKey)
+            if (!restored && (waited >= RESTORE_WAIT_MS || !memory.remembers(pageKey))) {
+                runCatching { pageFocus.requestFocus() }
+            }
             val step = if (waited < 1_000) 50L else 250L
             delay(step)
             waited += step
@@ -316,5 +328,7 @@ private class EdgeBringIntoViewSpec : BringIntoViewSpec {
 }
 
 private const val EDGE_MARGIN = 0.08f
-private const val PARK_AFTER_MS = 1_000L
+private const val RESTORE_WAIT_MS = 300L
+private const val PARK_AFTER_MS = 2_000L
+private const val MAX_PAGES = 64
 private const val GIVE_UP_MS = 30_000L

@@ -1,6 +1,8 @@
 package io.github.sreepv43.streamhub.ui.components
 
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.currentCompositeKeyHash
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -34,11 +36,18 @@ fun Modifier.tvFocus(
     val ring = LocalPalette.current.focus
     val memory = LocalFocusMemory.current
     val requester = remember { FocusRequester() }
+    val id = currentCompositeKeyHash
+    if (memory != null) {
+        DisposableEffect(memory, id) {
+            memory.register(id, requester)
+            onDispose { memory.unregister(id, requester) }
+        }
+    }
     this
         .focusRequester(requester)
         .onFocusChanged {
             focused = it.hasFocus
-            if (it.hasFocus) memory?.last = requester
+            if (it.hasFocus) memory?.focused(id)
         }
         .graphicsLayer {
             val s = if (focused) scale else 1f
