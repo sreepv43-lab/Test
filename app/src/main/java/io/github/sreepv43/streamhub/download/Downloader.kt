@@ -177,8 +177,8 @@ class Downloader(
 
     private suspend fun download(id: String) {
         val item = repository.get(id) ?: return
-        if (!storage.isAvailable(item.location)) {
-            throw IOException("${item.location.label} is not available. Is the drive connected?")
+        storage.unavailableReason(item.location)?.let { reason ->
+            throw PermanentFailure("Can't save to ${item.location.label}: $reason")
         }
         val existing = item.fileUri?.takeIf(storage::exists)?.let(storage::length) ?: 0L
 

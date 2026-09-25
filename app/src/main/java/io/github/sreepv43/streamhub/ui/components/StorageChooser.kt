@@ -88,7 +88,11 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
                     .fillMaxWidth()
                     .tvFocus(RoundedCornerShape(8.dp), scale = 1.02f)
                     .clickable {
-                        if (option.needsAccess) accessPrompt = option else onSelect(option.location)
+                        when {
+                            option.needsAccess -> accessPrompt = option
+                            option.problem != null -> StreamActions.toast(context, "Can't use this drive: ${option.problem}")
+                            else -> onSelect(option.location)
+                        }
                     }
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -115,6 +119,9 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
                         option.freeBytes?.let { append(" · ${Formatter.formatShortFileSize(context, it)} free") }
                     }
                     Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    option.problem?.let {
+                        Text("Can't write: $it", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                    }
                 }
             }
         }

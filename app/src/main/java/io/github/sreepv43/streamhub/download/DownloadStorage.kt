@@ -15,13 +15,15 @@ import java.io.OutputStream
 
 /**
  * An available place to download to, with free space when known. [needsAccess] marks a drive
- * that is connected but can only be written after the user grants "All files access".
+ * that is connected but can only be written after the user grants "All files access";
+ * [problem] explains why a drive can't be written even with access (e.g. mounted read-only).
  */
 data class StorageOption(
     val location: DownloadLocation,
     val freeBytes: Long?,
     val removable: Boolean,
     val needsAccess: Boolean = false,
+    val problem: String? = null,
 )
 
 /**
@@ -64,11 +66,13 @@ class DownloadStorage(private val context: Context) {
         // drives are also offered directly (a "StreamHub" folder at the drive's root).
         val drives = removableVolumeRoots().map { (root, label) ->
             val dir = File(root, DRIVE_FOLDER)
+            val access = hasAllFilesAccess()
             StorageOption(
                 location = DownloadLocation(DownloadLocation.Kind.DIRECTORY, dir.absolutePath, "$label › $DRIVE_FOLDER"),
                 freeBytes = root.usableSpace,
                 removable = true,
-                needsAccess = !canWriteDriveFolder(dir),
+                needsAccess = !access,
+                problem = if (access) writeProblem(dir) else null,
             )
         }
         return trees + drives + appDirs
@@ -84,8 +88,35 @@ class DownloadStorage(private val context: Context) {
         else removableVolumeRoots().map { (root, _) -> File(File(root, DRIVE_FOLDER), child) }
             .filter { canWriteDriveFolder(it) }
 
-    private fun canWriteDriveFolder(dir: File): Boolean =
-        hasAllFilesAccess() && (dir.isDirectory || dir.mkdirs()) && dir.canWrite()
+    private fun canWriteDriveFolder(dir: File): Boolean = hasAllFilesAccess() && writeProblem(dir) == null
+
+    /**
+     * Actually creates a small file, because File.canWrite() is unreliable on USB drives (e.g. NTFS
+     * drives that the TV mounts read-only). Returns null when writing works, otherwise the reason.
+     */
+    private fun writeProblem(dir: File): String? {
+        if (!dir.isDirectory && !dir.mkdirs()) {
+            return if (dir.parentFile?.canWrite() == false || !dir.exists()) {
+                "can't create the ${dir.name} folder (the drive may be read-only on this TV, e.g. NTFS)"
+            } else "can't create the ${dir.name} folder"
+        }
+        val probe = File(dir, ".streamhub-write-test")
+        return try {
+            FileOutputStream(probe).use { it.write(0) }
+            null
+        } catch (e: IOException) {
+            val reason = e.message.orEmpty()
+            when {
+                "Read-only" in reason || "EROFS" in reason ->
+                    "the drive is read-only on this TV (NTFS drives often are; exFAT or FAT32 work)"
+                "Permission denied" in reason || "EACCES" in reason ->
+                    "permission denied (turn on All files access for StreamHub)"
+                else -> reason.ifEmpty { "writing failed" }
+            }
+        } finally {
+            probe.delete()
+        }
+    }
 
     /** Root directories and names of mounted removable drives (USB sticks/disks, SD cards). */
     private fun removableVolumeRoots(): List<Pair<File, String>> {
@@ -112,10 +143,24 @@ class DownloadStorage(private val context: Context) {
                 "App storage",
             )
 
-    fun isAvailable(location: DownloadLocation): Boolean = when (location.kind) {
-        DownloadLocation.Kind.DIRECTORY -> File(location.value).let { (it.exists() || it.mkdirs()) && it.canWrite() }
-        DownloadLocation.Kind.TREE -> DocumentFile.fromTreeUri(context, Uri.parse(location.value))?.canWrite() == true
+    /** Null when downloads can be written to [location], otherwise a human-readable reason. */
+    fun unavailableReason(location: DownloadLocation): String? = when (location.kind) {
+        DownloadLocation.Kind.DIRECTORY -> {
+            val dir = File(location.value)
+            val onDrive = removableVolumeRoots().any { (root, _) -> dir.path.startsWith(root.path) }
+            when {
+                onDrive && !hasAllFilesAccess() -> "All files access is off (Settings → Download location → select the drive)"
+                !onDrive && isOnRemovablePath(dir) -> "the drive is not connected"
+                else -> writeProblem(dir)
+            }
+        }
+        DownloadLocation.Kind.TREE ->
+            if (DocumentFile.fromTreeUri(context, Uri.parse(location.value))?.canWrite() == true) null
+            else "the folder is gone or access was removed"
     }
+
+    private fun isOnRemovablePath(dir: File): Boolean =
+        dir.path.startsWith("/storage/") && !dir.path.startsWith("/storage/emulated/")
 
     /** Keeps write access to a folder chosen with ACTION_OPEN_DOCUMENT_TREE across reboots. */
     fun persistTree(uri: Uri): DownloadLocation {
