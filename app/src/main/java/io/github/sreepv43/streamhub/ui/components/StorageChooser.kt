@@ -1,6 +1,12 @@
 package io.github.sreepv43.streamhub.ui.components
 
+import android.content.ActivityNotFoundException
+import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
+import android.provider.Settings
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,11 +23,13 @@ import androidx.compose.material.icons.filled.CreateNewFolder
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.Usb
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,9 +75,10 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
                 .onFailure { StreamActions.toast(context, "Could not get access to that folder") }
         }
     }
-    val canPickFolder = remember {
-        Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).resolveActivity(context.packageManager) != null
-    }
+    // Android TV often ships placeholder ("stub") apps that claim these screens but only show
+    // "You don't have an app that can do this", so they don't count.
+    val canPickFolder = remember { hasRealHandler(context, Intent(Intent.ACTION_OPEN_DOCUMENT_TREE)) }
+    var accessPrompt by remember { mutableStateOf<StorageOption?>(null) }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         options.forEach { option ->
@@ -78,7 +87,9 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
                 Modifier
                     .fillMaxWidth()
                     .tvFocus(RoundedCornerShape(8.dp), scale = 1.02f)
-                    .clickable { onSelect(option.location) }
+                    .clickable {
+                        if (option.needsAccess) accessPrompt = option else onSelect(option.location)
+                    }
                     .padding(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -95,8 +106,12 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
                 Column(Modifier.weight(1f)) {
                     Text(option.location.label, style = MaterialTheme.typography.bodyLarge)
                     val detail = buildString {
-                        if (option.location.kind == DownloadLocation.Kind.DIRECTORY) append("App folder")
-                        else append("Chosen folder")
+                        when {
+                            option.needsAccess -> append("Connected drive · select to allow access")
+                            option.location.kind == DownloadLocation.Kind.TREE -> append("Chosen folder")
+                            option.removable -> append("Drive folder")
+                            else -> append("App folder")
+                        }
                         option.freeBytes?.let { append(" · ${Formatter.formatShortFileSize(context, it)} free") }
                     }
                     Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -104,17 +119,88 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
             }
         }
         if (canPickFolder) {
-            OutlinedButton(onClick = { pickFolder.launch(null) }, modifier = Modifier.tvFocus()) {
+            OutlinedButton(
+                onClick = {
+                    try {
+                        pickFolder.launch(null)
+                    } catch (e: ActivityNotFoundException) {
+                        StreamActions.toast(context, "This device has no folder picker")
+                    }
+                },
+                modifier = Modifier.tvFocus(),
+            ) {
                 Icon(Icons.Default.CreateNewFolder, contentDescription = null)
                 Text("  Choose a folder on any drive…")
             }
         } else {
             Text(
-                "This device has no folder picker. Connected USB drives and SD cards are listed above " +
-                    "(files go to the app's folder on that drive).",
+                "Connected USB drives and SD cards are listed above. Plug a drive in and it appears here " +
+                    "within a few seconds of returning to this screen.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
     }
+
+    accessPrompt?.let { option ->
+        DriveAccessDialog(option, onDismiss = { accessPrompt = null })
+    }
+}
+
+/**
+ * Explains and requests "All files access", which Android requires before an app may write to a
+ * USB drive directly. Falls back to an adb command on TVs that hide that settings screen.
+ */
+@Composable
+private fun DriveAccessDialog(option: StorageOption, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val settingsIntent = remember { allFilesAccessIntent(context) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Allow access to ${option.location.label.substringBefore(" › ")}") },
+        text = {
+            Text(
+                when {
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.R ->
+                        "This Android version (older than 11) only lets apps write to USB drives through a " +
+                            "folder picker, which this device doesn't have. Downloads can go to internal storage."
+                    settingsIntent != null ->
+                        "Android needs \"All files access\" before StreamHub can save downloads to a USB drive. " +
+                            "On the next screen, turn it on for StreamHub, then press Back."
+                    else ->
+                        "This TV hides the \"All files access\" setting. Grant it once from a computer with adb:\n\n" +
+                            "adb shell appops set ${context.packageName} MANAGE_EXTERNAL_STORAGE allow\n\n" +
+                            "Then come back to this screen."
+                },
+            )
+        },
+        confirmButton = {
+            if (settingsIntent != null) {
+                TextButton(modifier = Modifier.tvFocus(), onClick = {
+                    onDismiss()
+                    try {
+                        context.startActivity(settingsIntent)
+                    } catch (e: ActivityNotFoundException) {
+                        StreamActions.toast(context, "Settings screen not available on this device")
+                    }
+                }) { Text("Open settings") }
+            }
+        },
+        dismissButton = {
+            TextButton(modifier = Modifier.tvFocus(), onClick = onDismiss) { Text("Cancel") }
+        },
+    )
+}
+
+private fun allFilesAccessIntent(context: Context): Intent? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return null
+    return listOf(
+        Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION, Uri.parse("package:${context.packageName}")),
+        Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION),
+    ).firstOrNull { hasRealHandler(context, it) }
+}
+
+private fun hasRealHandler(context: Context, intent: Intent): Boolean {
+    val info = context.packageManager.resolveActivity(intent, PackageManager.MATCH_DEFAULT_ONLY) ?: return false
+    return !info.activityInfo.packageName.contains("stub", ignoreCase = true)
 }

@@ -13,8 +13,16 @@ import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
 
-/** An available place to download to, with free space when known. */
-data class StorageOption(val location: DownloadLocation, val freeBytes: Long?, val removable: Boolean)
+/**
+ * An available place to download to, with free space when known. [needsAccess] marks a drive
+ * that is connected but can only be written after the user grants "All files access".
+ */
+data class StorageOption(
+    val location: DownloadLocation,
+    val freeBytes: Long?,
+    val removable: Boolean,
+    val needsAccess: Boolean = false,
+)
 
 /**
  * Abstracts the two kinds of download destinations: folders picked through the Storage Access
@@ -22,9 +30,13 @@ data class StorageOption(val location: DownloadLocation, val freeBytes: Long?, v
  */
 class DownloadStorage(private val context: Context) {
 
+    private companion object {
+        const val DRIVE_FOLDER = "StreamHub"
+    }
+
     /** Every mounted volume (internal, SD card, USB drives) plus folders the user has granted. */
     fun options(): List<StorageOption> {
-        val volumes = ContextCompat.getExternalFilesDirs(context, Environment.DIRECTORY_MOVIES)
+        val appDirs = ContextCompat.getExternalFilesDirs(context, Environment.DIRECTORY_MOVIES)
             .filterNotNull()
             .mapIndexed { index, dir ->
                 dir.mkdirs()
@@ -48,7 +60,48 @@ class DownloadStorage(private val context: Context) {
                     removable = true,
                 )
             }
-        return trees + volumes
+        // Android TV usually doesn't expose USB drives through app folders or a folder picker, so
+        // drives are also offered directly (a "StreamHub" folder at the drive's root).
+        val drives = removableVolumeRoots().map { (root, label) ->
+            val dir = File(root, DRIVE_FOLDER)
+            StorageOption(
+                location = DownloadLocation(DownloadLocation.Kind.DIRECTORY, dir.absolutePath, "$label › $DRIVE_FOLDER"),
+                freeBytes = root.usableSpace,
+                removable = true,
+                needsAccess = !canWriteDriveFolder(dir),
+            )
+        }
+        return trees + drives + appDirs
+    }
+
+    /** Whether this app may write anywhere on shared storage, including USB drives (Android 11+). */
+    fun hasAllFilesAccess(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
+
+    /** Folders on connected drives the torrent engine may use as cache (when writable). */
+    fun writableDriveFolders(child: String): List<File> =
+        if (!hasAllFilesAccess()) emptyList()
+        else removableVolumeRoots().map { (root, _) -> File(File(root, DRIVE_FOLDER), child) }
+            .filter { canWriteDriveFolder(it) }
+
+    private fun canWriteDriveFolder(dir: File): Boolean =
+        hasAllFilesAccess() && (dir.isDirectory || dir.mkdirs()) && dir.canWrite()
+
+    /** Root directories and names of mounted removable drives (USB sticks/disks, SD cards). */
+    private fun removableVolumeRoots(): List<Pair<File, String>> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return emptyList()
+        val manager = context.getSystemService(StorageManager::class.java) ?: return emptyList()
+        return manager.storageVolumes
+            .filter { it.isRemovable && it.state == Environment.MEDIA_MOUNTED }
+            .mapNotNull { volume ->
+                val root = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    volume.directory
+                } else {
+                    // StorageVolume.getPathFile() is hidden before Android 11.
+                    runCatching { volume.javaClass.getMethod("getPathFile").invoke(volume) as File }.getOrNull()
+                }
+                root?.let { it to (volume.getDescription(context) ?: "USB drive") }
+            }
     }
 
     fun defaultLocation(): DownloadLocation =

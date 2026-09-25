@@ -74,7 +74,7 @@ class AppContainer(context: Context) {
     val torrents = TorrentEngine(
         cacheDirs = {
             (ContextCompat.getExternalFilesDirs(context, null).filterNotNull() + context.filesDir)
-                .map { File(it, "torrent-cache") }
+                .map { File(it, "torrent-cache") } + storage.writableDriveFolders(".torrent-cache")
         },
         fetchTorrentFile = { url -> fetchBytes(context, url) },
     )
