@@ -66,6 +66,9 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    // Installs the libraries' baseline profiles on sideloaded installs, so Compose code is
+    // precompiled instead of interpreted (much smoother scrolling on TV boxes).
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

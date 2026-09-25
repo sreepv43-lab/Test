@@ -16,6 +16,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
@@ -27,6 +28,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.streamhub.BuildConfig
 import io.github.sreepv43.streamhub.container
+import io.github.sreepv43.streamhub.download.DownloadLocation
 import io.github.sreepv43.streamhub.ui.components.StorageChooser
 import io.github.sreepv43.streamhub.ui.components.StreamActions
 import io.github.sreepv43.streamhub.ui.components.tvFocus
@@ -41,6 +43,10 @@ fun SettingsScreen() {
     val settings = container.settings
     val location by settings.downloadLocation.collectAsStateWithLifecycle()
     var cacheSize by remember { mutableStateOf<Long?>(null) }
+    // Looking up storage volumes touches the disk; never do it on the UI thread.
+    val defaultLocation by produceState<DownloadLocation?>(null) {
+        value = withContext(Dispatchers.IO) { container.storage.defaultLocation() }
+    }
     val scope = rememberCoroutineScope()
 
     Column(
@@ -56,7 +62,7 @@ fun SettingsScreen() {
         )
         Column(Modifier.widthIn(max = 640.dp)) {
             StorageChooser(
-                selected = location ?: container.storage.defaultLocation(),
+                selected = location ?: defaultLocation,
                 onSelect = settings::setDownloadLocation,
             )
         }

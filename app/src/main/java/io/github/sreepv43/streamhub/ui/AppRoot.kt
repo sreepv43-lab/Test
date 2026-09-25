@@ -1,5 +1,7 @@
 package io.github.sreepv43.streamhub.ui
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,6 +20,7 @@ import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -31,6 +34,7 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import io.github.sreepv43.streamhub.ui.components.TvPivotBringIntoViewSpec
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 import io.github.sreepv43.streamhub.ui.screens.AddonsScreen
 import io.github.sreepv43.streamhub.ui.screens.CatalogScreen
@@ -54,6 +58,7 @@ private val sections = listOf(
 )
 
 /** Side navigation rail + content: works with a TV remote (D-pad) and with touch on tablets. */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
     val nav = rememberNavController()
@@ -66,9 +71,11 @@ fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
     }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Row {
-            SideRail(nav)
-            AppNavHost(nav, Modifier.weight(1f))
+        CompositionLocalProvider(LocalBringIntoViewSpec provides TvPivotBringIntoViewSpec) {
+            Row {
+                SideRail(nav)
+                AppNavHost(nav, Modifier.weight(1f))
+            }
         }
     }
 }

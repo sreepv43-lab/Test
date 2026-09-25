@@ -2,6 +2,12 @@ package io.github.sreepv43.streamhub
 
 import android.app.Application
 import android.content.Context
+import android.net.Uri
+import androidx.core.content.ContextCompat
+import coil.ImageLoader
+import coil.ImageLoaderFactory
+import coil.disk.DiskCache
+import coil.memory.MemoryCache
 import io.github.sreepv43.streamhub.addon.AddonClient
 import io.github.sreepv43.streamhub.addon.AddonRepository
 import io.github.sreepv43.streamhub.data.Settings
@@ -9,19 +15,17 @@ import io.github.sreepv43.streamhub.data.WatchHistory
 import io.github.sreepv43.streamhub.download.DownloadRepository
 import io.github.sreepv43.streamhub.download.DownloadStorage
 import io.github.sreepv43.streamhub.download.Downloader
-import android.net.Uri
-import androidx.core.content.ContextCompat
 import io.github.sreepv43.streamhub.torrent.TorrentEngine
 import io.github.sreepv43.streamhub.torrent.TorrentHttpServer
 import io.github.sreepv43.streamhub.torrent.TorrentLinks
-import okhttp3.Cache
-import okhttp3.Request
-import java.io.IOException
-import okhttp3.OkHttpClient
 import java.io.File
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+import okhttp3.Cache
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
-class StreamHubApp : Application() {
+class StreamHubApp : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
         private set
 
@@ -29,6 +33,21 @@ class StreamHubApp : Application() {
         super.onCreate()
         container = AppContainer(this)
     }
+
+    /** Poster/backdrop loading tuned for TV boxes with little RAM and slow storage. */
+    override fun newImageLoader(): ImageLoader = ImageLoader.Builder(this)
+        .okHttpClient { container.mediaHttp }
+        .allowRgb565(true)
+        .crossfade(false)
+        .respectCacheHeaders(false)
+        .memoryCache { MemoryCache.Builder(this).maxSizePercent(0.2).build() }
+        .diskCache {
+            DiskCache.Builder()
+                .directory(cacheDir.resolve("images"))
+                .maxSizeBytes(150L * 1024 * 1024)
+                .build()
+        }
+        .build()
 }
 
 /** Hand-rolled dependency container shared by activities, view models and the download service. */
