@@ -77,6 +77,7 @@ class TvShellState internal constructor() {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any?, Int>?) = size > MAX_PAGES
     }
     private val elements = HashMap<Pair<Any?, Int>, FocusRequester>()
+    private val pages = HashMap<Any?, FocusRequester>()
 
     internal fun register(page: Any?, id: Int, requester: FocusRequester) {
         elements[page to id] = requester
@@ -91,16 +92,33 @@ class TvShellState internal constructor() {
         lastByPage[page] = id
     }
 
+    internal fun registerPage(page: Any?, requester: FocusRequester) {
+        pages[page] = requester
+    }
+
+    internal fun unregisterPage(page: Any?, requester: FocusRequester) {
+        if (pages[page] === requester) pages.remove(page)
+    }
+
+    /** Handle for moving the selection to [page]'s first element (null if it isn't composed). */
+    internal fun pageRequester(page: Any?): FocusRequester? = pages[page]
+
     internal fun pageFocusChanged(page: Any?, hasFocus: Boolean) {
         if (hasFocus) focusedPage = page else if (focusedPage == page) focusedPage = null
     }
 
     internal fun remembers(page: Any?) = page in lastByPage
 
+    internal fun forget(page: Any?) {
+        lastByPage.remove(page)
+    }
+
+    /** The element selected last on [page], if it is on screen. */
+    internal fun remembered(page: Any?): FocusRequester? = lastByPage[page]?.let { elements[page to it] }
+
     /** Asks the element selected last on [page] to take focus; false if it isn't on screen. */
     internal fun restore(page: Any?): Boolean {
-        val requester = lastByPage[page]?.let { elements[page to it] }
-        val result = requester?.let { runCatching { it.requestFocus() } }
+        val result = remembered(page)?.let { runCatching { it.requestFocus() } }
         trace?.add("restore ${page.short()}:${lastByPage[page]} -> ${result ?: "not on screen"}")
         return result?.isSuccess == true
     }
@@ -118,21 +136,37 @@ internal val LocalTvPage = staticCompositionLocalOf<Any?> { null }
 
 /**
  * One page inside [TvShell] (wrap each NavHost destination). While the next page is replacing it,
- * the old one can't take the selection.
+ * the old one can't take the selection; whenever the selection enters the page from outside
+ * (menu, previous page, Android's own "focus something" after the old page goes), it goes to the
+ * element selected there last time.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun TvPage(key: Any?, content: @Composable () -> Unit) {
     val shell = LocalTvShell.current
+    val requester = remember { FocusRequester() }
     if (shell != null) {
-        DisposableEffect(shell, key) { onDispose { shell.pageFocusChanged(key, false) } }
+        DisposableEffect(shell, key) {
+            shell.registerPage(key, requester)
+            onDispose {
+                shell.unregisterPage(key, requester)
+                shell.pageFocusChanged(key, false)
+            }
+        }
     }
     Box(
         Modifier
             .fillMaxSize()
             .onFocusChanged { shell?.pageFocusChanged(key, it.hasFocus) }
+            .focusRequester(requester)
             .focusProperties {
-                enter = { if (shell == null || shell.shownPage == key) FocusRequester.Default else FocusRequester.Cancel }
+                enter = {
+                    when {
+                        shell == null -> FocusRequester.Default
+                        shell.shownPage != key -> FocusRequester.Cancel
+                        else -> shell.remembered(key) ?: FocusRequester.Default
+                    }
+                }
             }
             .focusGroup(),
     ) {
@@ -180,9 +214,13 @@ fun TvShell(
         runCatching { menuFocus.requestFocus() }
     }
 
+    fun focusPageStart() {
+        runCatching { (shell.pageRequester(pageKey) ?: pageFocus).requestFocus() }
+    }
+
     fun closeMenu() {
         expanded = false
-        if (!shell.restore(pageKey)) runCatching { pageFocus.requestFocus() }
+        if (!shell.restore(pageKey)) focusPageStart()
         refocus++
     }
 
@@ -198,8 +236,10 @@ fun TvShell(
         while (!pageHasFocus() && !expanded && waited < GIVE_UP_MS) {
             val restored = waited < RESTORE_WAIT_MS && shell.restore(pageKey)
             if (!restored && (waited >= RESTORE_WAIT_MS || !shell.remembers(pageKey))) {
+                // The remembered element isn't coming back (e.g. the list changed): start at the top.
                 shell.trace?.add("first element, after ${waited}ms")
-                runCatching { pageFocus.requestFocus() }
+                shell.forget(pageKey)
+                focusPageStart()
             }
             val step = if (waited < 1_000) 50L else 250L
             delay(step)
