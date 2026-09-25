@@ -1,11 +1,31 @@
 package io.github.sreepv43.streamhub.ui
 
+import android.os.Build
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
+import dev.chrisbanes.haze.HazeState
+import dev.chrisbanes.haze.haze
+import io.github.sreepv43.streamhub.container
+import io.github.sreepv43.streamhub.ui.components.AmbientBackground
+import io.github.sreepv43.streamhub.ui.components.AmbientController
+import io.github.sreepv43.streamhub.ui.components.LocalAmbient
+import io.github.sreepv43.streamhub.ui.components.LocalGlassBlur
+import io.github.sreepv43.streamhub.ui.components.LocalHazeState
+import io.github.sreepv43.streamhub.ui.components.frostedGlass
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.height
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Extension
@@ -15,9 +35,7 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -70,22 +88,51 @@ fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
         }
     }
 
-    Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        CompositionLocalProvider(LocalBringIntoViewSpec provides TvPivotBringIntoViewSpec) {
-            Row {
-                SideRail(nav)
-                AppNavHost(nav, Modifier.weight(1f))
+    val context = LocalContext.current
+    val blurSetting by context.container.settings.glassBlur.collectAsState()
+    val blur = blurSetting && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val hazeState = remember { HazeState() }
+    val ambient = remember { AmbientController() }
+
+    CompositionLocalProvider(
+        LocalBringIntoViewSpec provides TvPivotBringIntoViewSpec,
+        LocalHazeState provides hazeState,
+        LocalGlassBlur provides blur,
+        LocalAmbient provides ambient,
+        LocalContentColor provides MaterialTheme.colorScheme.onBackground,
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            // Everything drawn here is what the floating glass menu frosts.
+            Box(Modifier.fillMaxSize().then(if (blur) Modifier.haze(hazeState) else Modifier)) {
+                AmbientBackground(ambient.image)
+                AppNavHost(nav, Modifier.fillMaxSize().padding(start = RailWidth + 16.dp))
             }
+            SideRail(nav, Modifier.align(Alignment.CenterStart).padding(start = 16.dp, top = 24.dp, bottom = 24.dp))
         }
     }
 }
 
+private val RailWidth = 96.dp
+
 @Composable
-private fun SideRail(nav: NavHostController) {
+private fun SideRail(nav: NavHostController, modifier: Modifier) {
     val entry by nav.currentBackStackEntryAsState()
     val currentBase = entry?.destination?.route?.substringBefore('?')?.substringBefore('/')
-    NavigationRail(containerColor = MaterialTheme.colorScheme.surface) {
-        Spacer(Modifier.height(16.dp))
+    val colors = NavigationRailItemDefaults.colors(
+        selectedIconColor = Color.White,
+        selectedTextColor = Color.White,
+        indicatorColor = Color.White.copy(alpha = 0.16f),
+        unselectedIconColor = Color.White.copy(alpha = 0.62f),
+        unselectedTextColor = Color.White.copy(alpha = 0.62f),
+    )
+    Column(
+        modifier
+            .width(RailWidth)
+            .frostedGlass(RoundedCornerShape(32.dp))
+            .padding(vertical = 20.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
         sections.forEach { section ->
             NavigationRailItem(
                 selected = currentBase == section.base,
@@ -97,8 +144,9 @@ private fun SideRail(nav: NavHostController) {
                     }
                 },
                 icon = { Icon(section.icon, contentDescription = section.label) },
-                label = { Text(section.label) },
-                modifier = Modifier.tvFocus(),
+                label = { Text(section.label, style = MaterialTheme.typography.labelSmall) },
+                colors = colors,
+                modifier = Modifier.tvFocus(RoundedCornerShape(18.dp)),
             )
         }
     }

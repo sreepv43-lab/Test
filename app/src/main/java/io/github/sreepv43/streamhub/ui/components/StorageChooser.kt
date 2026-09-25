@@ -26,7 +26,6 @@ import androidx.compose.material.icons.filled.Usb
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -126,7 +125,9 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
             }
         }
         if (canPickFolder) {
-            OutlinedButton(
+            GlassButton(
+                text = "Choose a folder on any drive…",
+                icon = Icons.Default.CreateNewFolder,
                 onClick = {
                     try {
                         pickFolder.launch(null)
@@ -134,11 +135,7 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
                         StreamActions.toast(context, "This device has no folder picker")
                     }
                 },
-                modifier = Modifier.tvFocus(),
-            ) {
-                Icon(Icons.Default.CreateNewFolder, contentDescription = null)
-                Text("  Choose a folder on any drive…")
-            }
+            )
         } else {
             Text(
                 "Connected USB drives and SD cards are listed above. Plug a drive in and it appears here " +
@@ -163,6 +160,8 @@ private fun DriveAccessDialog(option: StorageOption, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val settingsIntent = remember { allFilesAccessIntent(context) }
     AlertDialog(
+        containerColor = GlassDialogColor,
+        shape = GlassDialogShape,
         onDismissRequest = onDismiss,
         title = { Text("Allow access to ${option.location.label.substringBefore(" › ")}") },
         text = {

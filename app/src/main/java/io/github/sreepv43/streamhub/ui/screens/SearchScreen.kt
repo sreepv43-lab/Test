@@ -37,6 +37,8 @@ import io.github.sreepv43.streamhub.ui.appViewModel
 import io.github.sreepv43.streamhub.ui.components.CenteredMessage
 import io.github.sreepv43.streamhub.ui.components.MetaRow
 import io.github.sreepv43.streamhub.ui.components.RowState
+import io.github.sreepv43.streamhub.ui.components.GlassButton
+import io.github.sreepv43.streamhub.ui.components.glassTextFieldColors
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,6 +87,7 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
+                colors = glassTextFieldColors(),
                 value = text,
                 onValueChange = { text = it },
                 label = { Text("Search movies & series") },
@@ -93,10 +96,13 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
                 keyboardActions = KeyboardActions(onSearch = { submit() }),
                 modifier = Modifier.weight(1f).tvFocus(),
             )
-            Button(onClick = submit, modifier = Modifier.padding(start = 12.dp).tvFocus()) {
-                Icon(Icons.Default.Search, contentDescription = null)
-                Text(" Search")
-            }
+            GlassButton(
+                text = "Search",
+                icon = Icons.Default.Search,
+                onClick = submit,
+                prominent = true,
+                modifier = Modifier.padding(start = 12.dp),
+            )
         }
         when {
             state.query.isEmpty() -> CenteredMessage("Search across all installed addons")

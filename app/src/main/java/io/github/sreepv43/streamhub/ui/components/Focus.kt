@@ -22,7 +22,7 @@ import io.github.sreepv43.streamhub.ui.FocusColor
 
 /**
  * Makes focus obvious when navigating with a TV remote: the element grows slightly and gets a
- * bright outline. Must be placed before the clickable/focusable modifier in the chain.
+ * glowing glass rim. Must be placed before the clickable/focusable modifier in the chain.
  *
  * Focus state is only read in the draw phase, so moving focus redraws the two affected items
  * without recomposing them.
@@ -46,11 +46,10 @@ fun Modifier.tvFocus(
         .drawWithContent {
             drawContent()
             if (focused) {
-                drawOutline(
-                    outline = shape.createOutline(size, layoutDirection, this),
-                    color = FocusColor,
-                    style = Stroke(width = 3.dp.toPx()),
-                )
+                val outline = shape.createOutline(size, layoutDirection, this)
+                // Soft halo, then a crisp specular rim: reads as light catching a glass edge.
+                drawOutline(outline, color = FocusColor.copy(alpha = 0.12f), style = Stroke(width = 10.dp.toPx()))
+                drawOutline(outline, color = FocusColor.copy(alpha = 0.95f), style = Stroke(width = 2.dp.toPx()))
             }
         }
 }

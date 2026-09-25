@@ -1,6 +1,13 @@
 package io.github.sreepv43.streamhub.ui.screens
 
 import android.text.format.Formatter
+import android.os.Build
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Switch
+import io.github.sreepv43.streamhub.ui.components.GlassButton
+import io.github.sreepv43.streamhub.ui.components.glass
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,9 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -49,68 +54,106 @@ fun SettingsScreen() {
     }
     val scope = rememberCoroutineScope()
 
+    val glassBlur by settings.glassBlur.collectAsStateWithLifecycle()
+
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Text("Settings", style = MaterialTheme.typography.headlineSmall)
+        Text("Settings", style = MaterialTheme.typography.headlineLarge)
 
-        Text("Download location", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "Pick an internal folder, SD card or any connected USB drive. New drives appear here when plugged in.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Column(Modifier.widthIn(max = 640.dp)) {
-            StorageChooser(
-                selected = location ?: defaultLocation,
-                onSelect = settings::setDownloadLocation,
+        SettingsSection("Download location") {
+            Text(
+                "Pick internal storage or any connected USB drive or SD card. New drives appear here when plugged in.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Column(Modifier.widthIn(max = 720.dp)) {
+                StorageChooser(
+                    selected = location ?: defaultLocation,
+                    onSelect = settings::setDownloadLocation,
+                )
+            }
+        }
+
+        SettingsSection("Appearance") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Glass blur", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                            "Frosted blur behind the menu. Turn off if scrolling feels slow on this device."
+                        } else {
+                            "Needs Android 12 or newer; a tinted glass look is used instead."
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = glassBlur,
+                    onCheckedChange = settings::setGlassBlur,
+                    enabled = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S,
+                    modifier = Modifier.tvFocus(RoundedCornerShape(50)),
+                )
+            }
+        }
+
+        SettingsSection("Torrents") {
+            Text(
+                "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
+                    "is fetched, in order, so playback starts after a few seconds when there are enough peers. " +
+                    "Streaming data is kept in a temporary cache on the drive with the most free space and deleted " +
+                    "a few minutes after you stop watching.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))
+                GlassButton(
+                    text = "Clear torrent cache",
+                    onClick = {
+                        scope.launch {
+                            cacheSize = withContext(Dispatchers.IO) {
+                                container.torrents.clearCache()
+                                container.torrents.cacheSizeBytes()
+                            }
+                            StreamActions.toast(context, "Torrent cache cleared (torrents in use were kept)")
+                        }
+                    },
+                    modifier = Modifier.padding(start = 16.dp),
+                )
+            }
+        }
+
+        SettingsSection("Addons") {
+            GlassButton(
+                text = "Update all addon manifests",
+                onClick = {
+                    scope.launch {
+                        container.addons.refreshAll()
+                        StreamActions.toast(context, "Addons updated")
+                    }
+                },
             )
         }
 
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
-        Text("Torrents", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
-                "is fetched, in order, so playback starts after a few seconds when there are enough peers. " +
-                "Streaming data is kept in a temporary cache on the drive with the most free space and deleted " +
-                "a few minutes after you stop watching.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))
-            OutlinedButton(
-                onClick = {
-                    scope.launch {
-                        cacheSize = withContext(Dispatchers.IO) {
-                            container.torrents.clearCache()
-                            container.torrents.cacheSizeBytes()
-                        }
-                        StreamActions.toast(context, "Torrent cache cleared (torrents in use were kept)")
-                    }
-                },
-                modifier = Modifier.padding(start = 16.dp).tvFocus(),
-            ) { Text("Clear torrent cache") }
-        }
-
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
-        Text("Addons", style = MaterialTheme.typography.titleLarge)
-        OutlinedButton(
-            onClick = {
-                scope.launch {
-                    container.addons.refreshAll()
-                    StreamActions.toast(context, "Addons updated")
-                }
-            },
-            modifier = Modifier.tvFocus(),
-        ) { Text("Update all addon manifests") }
-
-        HorizontalDivider(Modifier.padding(vertical = 12.dp))
         Text(
             "StreamHub ${BuildConfig.VERSION_NAME}. Compatible with Stremio addons. " +
                 "Only stream and download content you have the rights to.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    val shape = RoundedCornerShape(24.dp)
+    Column(
+        Modifier.fillMaxWidth().glass(shape, fillAlpha = 0.05f).padding(24.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Text(title, style = MaterialTheme.typography.titleLarge)
+        content()
     }
 }

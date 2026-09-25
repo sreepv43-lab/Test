@@ -35,6 +35,8 @@ import io.github.sreepv43.streamhub.ui.components.StreamDialogs
 import io.github.sreepv43.streamhub.ui.components.WatchContext
 import io.github.sreepv43.streamhub.ui.components.rememberStreamDialogState
 import io.github.sreepv43.streamhub.ui.components.rememberStreamHandlers
+import io.github.sreepv43.streamhub.ui.components.GlassButton
+import io.github.sreepv43.streamhub.ui.components.glassTextFieldColors
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 
 /** Turns whatever was pasted or shared into a stream the app can play or download. */
@@ -82,6 +84,7 @@ fun LinkScreen(initialUrl: String?) {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         OutlinedTextField(
+            colors = glassTextFieldColors(),
             value = text,
             onValueChange = { text = it },
             label = { Text("Link") },
@@ -92,18 +95,9 @@ fun LinkScreen(initialUrl: String?) {
             modifier = Modifier.fillMaxWidth().widthIn(max = 900.dp).tvFocus(),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = { stream?.let(handlers.onPlay) }, enabled = stream != null, modifier = Modifier.tvFocus()) {
-                Icon(Icons.Default.PlayArrow, contentDescription = null)
-                Text(" Play")
-            }
-            OutlinedButton(onClick = { stream?.let(handlers.onDownload) }, enabled = stream != null, modifier = Modifier.tvFocus()) {
-                Icon(Icons.Default.Download, contentDescription = null)
-                Text(" Download")
-            }
-            OutlinedButton(onClick = { stream?.let(handlers.onExternal) }, enabled = stream != null, modifier = Modifier.tvFocus()) {
-                Icon(Icons.Default.OpenInNew, contentDescription = null)
-                Text(" External player")
-            }
+            GlassButton("Play", { stream?.let(handlers.onPlay) }, icon = Icons.Default.PlayArrow, prominent = true, enabled = stream != null)
+            GlassButton("Download", { stream?.let(handlers.onDownload) }, icon = Icons.Default.Download, enabled = stream != null)
+            GlassButton("External player", { stream?.let(handlers.onExternal) }, icon = Icons.Default.OpenInNew, enabled = stream != null)
         }
     }
 }

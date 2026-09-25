@@ -24,7 +24,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -50,6 +49,12 @@ import io.github.sreepv43.streamhub.addon.AddonUrls
 import io.github.sreepv43.streamhub.addon.InstalledAddon
 import io.github.sreepv43.streamhub.container
 import io.github.sreepv43.streamhub.ui.components.StreamActions
+import io.github.sreepv43.streamhub.ui.components.GlassDialogColor
+import io.github.sreepv43.streamhub.ui.components.GlassDialogShape
+import io.github.sreepv43.streamhub.ui.components.GlassIconButton
+import io.github.sreepv43.streamhub.ui.components.glass
+import io.github.sreepv43.streamhub.ui.components.GlassButton
+import io.github.sreepv43.streamhub.ui.components.glassTextFieldColors
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 import kotlinx.coroutines.launch
 
@@ -90,6 +95,7 @@ fun AddonsScreen(initialUrl: String?) {
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
                 OutlinedTextField(
+                    colors = glassTextFieldColors(),
                     value = url,
                     onValueChange = { url = it },
                     label = { Text("Addon URL") },
@@ -100,9 +106,13 @@ fun AddonsScreen(initialUrl: String?) {
                     keyboardActions = KeyboardActions(onDone = { install() }),
                     modifier = Modifier.weight(1f).tvFocus(),
                 )
-                Button(onClick = { install() }, enabled = !installing, modifier = Modifier.padding(start = 12.dp).tvFocus()) {
-                    if (installing) CircularProgressIndicator(Modifier.size(18.dp)) else Text("Install")
-                }
+                GlassButton(
+                    text = if (installing) "Installing…" else "Install",
+                    onClick = { install() },
+                    enabled = !installing,
+                    prominent = true,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
             }
         }
         items(addons, key = { it.transportUrl }) { addon ->
@@ -118,6 +128,8 @@ fun AddonsScreen(initialUrl: String?) {
 
     toRemove?.let { addon ->
         AlertDialog(
+            containerColor = GlassDialogColor,
+            shape = GlassDialogShape,
             onDismissRequest = { toRemove = null },
             title = { Text("Uninstall ${addon.manifest.name}?") },
             confirmButton = {
@@ -145,8 +157,8 @@ private fun AddonRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clip(RoundedCornerShape(20.dp))
+            .glass(RoundedCornerShape(20.dp))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -167,11 +179,11 @@ private fun AddonRow(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        IconButton(onClick = onUp, modifier = Modifier.tvFocus()) { Icon(Icons.Default.ArrowUpward, contentDescription = "Move up") }
-        IconButton(onClick = onDown, modifier = Modifier.tvFocus()) { Icon(Icons.Default.ArrowDownward, contentDescription = "Move down") }
+        GlassIconButton(Icons.Default.ArrowUpward, "Move up", onUp, Modifier.padding(start = 8.dp))
+        GlassIconButton(Icons.Default.ArrowDownward, "Move down", onDown, Modifier.padding(start = 8.dp))
         if (manifest.behaviorHints.configurable) {
-            IconButton(onClick = onConfigure, modifier = Modifier.tvFocus()) { Icon(Icons.Default.Settings, contentDescription = "Configure") }
+            GlassIconButton(Icons.Default.Settings, "Configure", onConfigure, Modifier.padding(start = 8.dp))
         }
-        IconButton(onClick = onRemove, modifier = Modifier.tvFocus()) { Icon(Icons.Default.Delete, contentDescription = "Uninstall") }
+        GlassIconButton(Icons.Default.Delete, "Uninstall", onRemove, Modifier.padding(start = 8.dp))
     }
 }

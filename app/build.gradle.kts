@@ -69,6 +69,8 @@ dependencies {
     // Installs the libraries' baseline profiles on sideloaded installs, so Compose code is
     // precompiled instead of interpreted (much smoother scrolling on TV boxes).
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")
+    // Real backdrop blur for the floating "glass" panels (Android 12+).
+    implementation("dev.chrisbanes.haze:haze:1.1.1")
 
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")

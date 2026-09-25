@@ -22,7 +22,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -46,6 +45,10 @@ import io.github.sreepv43.streamhub.download.DownloadItem
 import io.github.sreepv43.streamhub.ui.components.CenteredMessage
 import io.github.sreepv43.streamhub.ui.components.StreamActions
 import io.github.sreepv43.streamhub.ui.components.WatchContext
+import io.github.sreepv43.streamhub.ui.components.GlassDialogColor
+import io.github.sreepv43.streamhub.ui.components.GlassDialogShape
+import io.github.sreepv43.streamhub.ui.components.GlassIconButton
+import io.github.sreepv43.streamhub.ui.components.glass
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 
 @Composable
@@ -94,6 +97,8 @@ fun DownloadsScreen() {
 
     toDelete?.let { item ->
         AlertDialog(
+            containerColor = GlassDialogColor,
+            shape = GlassDialogShape,
             onDismissRequest = { toDelete = null },
             title = { Text("Remove download?") },
             text = { Text(item.fileName ?: item.title) },
@@ -125,8 +130,8 @@ private fun DownloadRow(
     Row(
         Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .clip(RoundedCornerShape(20.dp))
+            .glass(RoundedCornerShape(20.dp))
             .padding(12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -173,18 +178,10 @@ private fun DownloadRow(
             )
         }
         when (item.status) {
-            DownloadItem.Status.COMPLETED -> IconButton(onClick = onPlay, modifier = Modifier.tvFocus()) {
-                Icon(Icons.Default.PlayArrow, contentDescription = "Play")
-            }
-            DownloadItem.Status.RUNNING, DownloadItem.Status.QUEUED -> IconButton(onClick = onPause, modifier = Modifier.tvFocus()) {
-                Icon(Icons.Default.Pause, contentDescription = "Pause")
-            }
-            DownloadItem.Status.PAUSED, DownloadItem.Status.FAILED -> IconButton(onClick = onResume, modifier = Modifier.tvFocus()) {
-                Icon(Icons.Default.Refresh, contentDescription = "Resume")
-            }
+            DownloadItem.Status.COMPLETED -> GlassIconButton(Icons.Default.PlayArrow, "Play", onPlay, Modifier.padding(start = 8.dp))
+            DownloadItem.Status.RUNNING, DownloadItem.Status.QUEUED -> GlassIconButton(Icons.Default.Pause, "Pause", onPause, Modifier.padding(start = 8.dp))
+            DownloadItem.Status.PAUSED, DownloadItem.Status.FAILED -> GlassIconButton(Icons.Default.Refresh, "Resume", onResume, Modifier.padding(start = 8.dp))
         }
-        IconButton(onClick = onDelete, modifier = Modifier.tvFocus()) {
-            Icon(Icons.Default.Delete, contentDescription = "Delete")
-        }
+        GlassIconButton(Icons.Default.Delete, "Delete", onDelete, Modifier.padding(start = 8.dp))
     }
 }

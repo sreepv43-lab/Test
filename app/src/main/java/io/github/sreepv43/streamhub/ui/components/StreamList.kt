@@ -21,7 +21,6 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -143,7 +142,7 @@ fun LazyListScope.streamItems(
 
 @Composable
 private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit, onExternal: () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(18.dp)
     val torrent = StreamResolver.isTorrent(stream)
     Row(
         Modifier
@@ -157,9 +156,9 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
                 .weight(1f)
                 .tvFocus(shape, scale = 1.02f)
                 .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .glass(shape)
                 .clickable(onClick = onPlay)
-                .padding(12.dp),
+                .padding(14.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Icon(Icons.Default.PlayArrow, contentDescription = "Play")
@@ -177,12 +176,8 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
                 modifier = Modifier.weight(1f),
             )
         }
-        IconButton(onClick = onDownload, modifier = Modifier.tvFocus()) {
-            Icon(Icons.Default.Download, contentDescription = "Download")
-        }
-        IconButton(onClick = onExternal, modifier = Modifier.tvFocus()) {
-            Icon(Icons.Default.OpenInNew, contentDescription = "Open in external player")
-        }
+        GlassIconButton(Icons.Default.Download, "Download", onDownload, Modifier.padding(start = 12.dp))
+        GlassIconButton(Icons.Default.OpenInNew, "Open in external player", onExternal, Modifier.padding(start = 10.dp))
     }
 }
 
@@ -203,6 +198,8 @@ fun StreamDialogs(state: StreamDialogState, watch: WatchContext?) {
         val saved by settings.downloadLocation.collectAsState()
         var selected by remember { mutableStateOf(saved ?: context.container.storage.defaultLocation()) }
         AlertDialog(
+            containerColor = GlassDialogColor,
+            shape = GlassDialogShape,
             onDismissRequest = { state.downloadStream = null },
             title = { Text("Download to") },
             text = {

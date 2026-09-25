@@ -20,17 +20,19 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Movie
-import androidx.compose.material3.FilterChip
-import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
+import io.github.sreepv43.streamhub.ui.Ink
+import io.github.sreepv43.streamhub.ui.components.AmbientImage
+import io.github.sreepv43.streamhub.ui.components.GlassButton
+import io.github.sreepv43.streamhub.ui.components.GlassChip
+import io.github.sreepv43.streamhub.ui.components.glass
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -146,11 +148,10 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             items(seasons) { season ->
-                                FilterChip(
+                                GlassChip(
+                                    text = if (season == 0) "Specials" else "Season $season",
                                     selected = state.season == season,
                                     onClick = { vm.selectSeason(season) },
-                                    label = { Text(if (season == 0) "Specials" else "Season $season") },
-                                    modifier = Modifier.tvFocus(),
                                 )
                             }
                         }
@@ -172,61 +173,86 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
     }
 }
 
+/**
+ * Cinematic header: the backdrop fills the top of the screen and melts into the page, with the
+ * title set in large light type over it. The same artwork tints the ambient background.
+ */
 @Composable
 fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: String? = null) {
-    Box(Modifier.fillMaxWidth().heightIn(min = 280.dp)) {
-        meta.background?.let {
+    AmbientImage(meta.background ?: meta.poster)
+    Box(Modifier.fillMaxWidth().heightIn(min = 360.dp)) {
+        (meta.background ?: meta.poster)?.let {
             AsyncImage(
                 model = it,
                 contentDescription = null,
                 contentScale = ContentScale.Crop,
-                modifier = Modifier.matchParentSize().alpha(0.35f),
-            )
-            Box(
-                Modifier.matchParentSize().background(
-                    Brush.verticalGradient(listOf(Color.Transparent, MaterialTheme.colorScheme.background))
-                )
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawWithContent {
+                        drawContent()
+                        // Melt the artwork into the ambient background on the left and bottom.
+                        drawRect(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.92f), 0.6f to Ink.copy(alpha = 0.25f), 1f to Color.Transparent))
+                        drawRect(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Ink))
+                    },
             )
         }
-        Row(Modifier.padding(24.dp)) {
-            meta.poster?.let {
+        Column(
+            Modifier
+                .align(Alignment.BottomStart)
+                .fillMaxWidth(0.62f)
+                .padding(start = 24.dp, end = 24.dp, top = 48.dp, bottom = 20.dp),
+        ) {
+            if (meta.logo != null) {
                 AsyncImage(
-                    model = it,
+                    model = meta.logo,
                     contentDescription = meta.name,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier.width(160.dp).aspectRatio(2f / 3f).clip(RoundedCornerShape(10.dp)),
+                    contentScale = ContentScale.Fit,
+                    alignment = Alignment.CenterStart,
+                    modifier = Modifier.height(96.dp).fillMaxWidth(),
+                )
+            } else {
+                Text(meta.name, style = MaterialTheme.typography.displaySmall)
+            }
+            subtitle?.let {
+                Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.padding(top = 10.dp))
+            }
+            val info = listOfNotNull(
+                meta.releaseInfo,
+                meta.runtime,
+                meta.imdbRating?.let { "★ $it" },
+                meta.genres.take(3).joinToString(" · ").ifEmpty { null },
+            ).joinToString("   ")
+            if (info.isNotEmpty()) {
+                Text(info, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.72f), modifier = Modifier.padding(top = 10.dp))
+            }
+            meta.description?.let {
+                Text(
+                    it,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = Color.White.copy(alpha = 0.85f),
+                    maxLines = 4,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 12.dp),
                 )
             }
-            Column(Modifier.padding(start = 24.dp).weight(1f)) {
-                Text(meta.name, style = MaterialTheme.typography.headlineMedium)
-                subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary) }
-                val info = listOfNotNull(
-                    meta.releaseInfo,
-                    meta.runtime,
-                    meta.imdbRating?.let { "★ $it" },
-                ).joinToString("   ")
-                if (info.isNotEmpty()) Text(info, modifier = Modifier.padding(top = 8.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (meta.genres.isNotEmpty()) {
-                    Text(meta.genres.joinToString(" · "), modifier = Modifier.padding(top = 4.dp), color = MaterialTheme.colorScheme.onSurfaceVariant)
-                }
-                meta.description?.let {
-                    Text(it, modifier = Modifier.padding(top = 12.dp), maxLines = 6, overflow = TextOverflow.Ellipsis)
-                }
-                if (meta.cast.isNotEmpty()) {
-                    Text(
-                        "Cast: " + meta.cast.take(6).joinToString(", "),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 8.dp),
-                    )
-                }
-                val trailer = meta.trailers.firstOrNull { it.type == null || it.type == "Trailer" }?.source
-                if (trailer != null && onTrailer != null) {
-                    OutlinedButton(onClick = { onTrailer(trailer) }, modifier = Modifier.padding(top = 12.dp).tvFocus()) {
-                        Icon(Icons.Default.Movie, contentDescription = null)
-                        Text("  Trailer")
-                    }
-                }
+            if (meta.cast.isNotEmpty()) {
+                Text(
+                    "Starring " + meta.cast.take(4).joinToString(", "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = Color.White.copy(alpha = 0.6f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+            }
+            val trailer = meta.trailers.firstOrNull { it.type == null || it.type == "Trailer" }?.source
+            if (trailer != null && onTrailer != null) {
+                GlassButton(
+                    text = "Trailer",
+                    icon = Icons.Default.Movie,
+                    onClick = { onTrailer(trailer) },
+                    modifier = Modifier.padding(top = 16.dp),
+                )
             }
         }
     }
@@ -234,19 +260,19 @@ fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: Stri
 
 @Composable
 private fun EpisodeRow(video: Video, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(18.dp)
     Row(
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 4.dp)
             .tvFocus(shape, scale = 1.02f)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surfaceVariant)
+            .glass(shape)
             .clickable(onClick = onClick)
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(160.dp).height(90.dp).clip(RoundedCornerShape(6.dp)).background(MaterialTheme.colorScheme.surface)) {
+        Box(Modifier.width(160.dp).height(90.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.06f))) {
             video.thumbnail?.let {
                 AsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }

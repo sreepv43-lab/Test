@@ -24,6 +24,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
@@ -43,16 +46,18 @@ fun PosterCard(
     width: Dp = if (landscape) 236.dp else PosterWidth,
     progress: Float? = null,
     caption: String? = null,
+    onFocused: (() -> Unit)? = null,
 ) {
-    val shape = RoundedCornerShape(10.dp)
+    val shape = RoundedCornerShape(16.dp)
     Column(modifier.width(width)) {
         Box(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(if (landscape) 16f / 9f else 2f / 3f)
-                .tvFocus(shape)
+                .then(if (onFocused != null) Modifier.onFocusChanged { if (it.hasFocus) onFocused() } else Modifier)
+                .tvFocus(shape, scale = 1.08f)
                 .clip(shape)
-                .background(MaterialTheme.colorScheme.surfaceVariant)
+                .glass(shape)
                 .clickable(onClick = onClick),
         ) {
             if (image != null) {
@@ -69,10 +74,23 @@ fun PosterCard(
                     modifier = Modifier.align(Alignment.Center).padding(8.dp),
                 )
             }
+            // Glass sheen over the artwork: a faint highlight at the top edge.
+            Box(
+                Modifier.matchParentSize().background(
+                    Brush.verticalGradient(0f to Color.White.copy(alpha = 0.10f), 0.35f to Color.Transparent),
+                ),
+            )
             if (progress != null) {
                 LinearProgressIndicator(
                     progress = { progress },
-                    modifier = Modifier.fillMaxWidth().height(4.dp).align(Alignment.BottomCenter),
+                    color = MaterialTheme.colorScheme.primary,
+                    trackColor = Color.White.copy(alpha = 0.18f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 10.dp, vertical = 10.dp)
+                        .height(4.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .align(Alignment.BottomCenter),
                 )
             }
         }
@@ -81,7 +99,7 @@ fun PosterCard(
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.padding(top = 6.dp),
+            modifier = Modifier.padding(top = 10.dp),
         )
         if (caption != null) {
             Text(
@@ -96,7 +114,7 @@ fun PosterCard(
 }
 
 @Composable
-fun MetaCard(meta: Meta, onClick: () -> Unit, modifier: Modifier = Modifier) {
+fun MetaCard(meta: Meta, onClick: () -> Unit, modifier: Modifier = Modifier, onFocused: (() -> Unit)? = null) {
     PosterCard(
         title = meta.name,
         image = meta.poster,
@@ -104,6 +122,7 @@ fun MetaCard(meta: Meta, onClick: () -> Unit, modifier: Modifier = Modifier) {
         landscape = meta.posterShape == "landscape",
         caption = meta.releaseInfo,
         modifier = modifier,
+        onFocused = onFocused,
     )
 }
 
@@ -119,14 +138,18 @@ fun MetaRow(
     state: RowState,
     onMetaClick: (Meta) -> Unit,
     onSeeAll: (() -> Unit)? = null,
+    onMetaFocused: ((Meta) -> Unit)? = null,
 ) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Box(Modifier.fillMaxWidth().padding(horizontal = 24.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.align(Alignment.CenterStart))
             if (onSeeAll != null) {
-                TextButton(onClick = onSeeAll, modifier = Modifier.align(Alignment.CenterEnd).tvFocus()) {
-                    Text("See all")
-                }
+                GlassButton(
+                    text = "See all",
+                    onClick = onSeeAll,
+                    modifier = Modifier.align(Alignment.CenterEnd),
+                    compact = true,
+                )
             }
         }
         when (state) {
@@ -146,11 +169,15 @@ fun MetaRow(
                 )
             } else {
                 LazyRow(
-                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
                     items(state.metas.distinctBy { it.type + it.id }, key = { it.type + it.id }) { meta ->
-                        MetaCard(meta, onClick = { onMetaClick(meta) })
+                        MetaCard(
+                            meta,
+                            onClick = { onMetaClick(meta) },
+                            onFocused = onMetaFocused?.let { callback -> { callback(meta) } },
+                        )
                     }
                 }
             }
