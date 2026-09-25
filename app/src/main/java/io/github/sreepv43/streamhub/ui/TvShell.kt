@@ -87,6 +87,7 @@ class TvShellState internal constructor() {
     }
 
     internal fun focused(page: Any?, id: Int) {
+        trace?.add("focused ${page.short()}:$id")
         lastByPage[page] = id
     }
 
@@ -98,9 +99,15 @@ class TvShellState internal constructor() {
 
     /** Asks the element selected last on [page] to take focus; false if it isn't on screen. */
     internal fun restore(page: Any?): Boolean {
-        val requester = lastByPage[page]?.let { elements[page to it] } ?: return false
-        return runCatching { requester.requestFocus() }.isSuccess
+        val requester = lastByPage[page]?.let { elements[page to it] }
+        val result = requester?.let { runCatching { it.requestFocus() } }
+        trace?.add("restore ${page.short()}:${lastByPage[page]} -> ${result ?: "not on screen"}")
+        return result?.isSuccess == true
     }
+
+    /** Test hook: records focus events when set. */
+    internal var trace: MutableList<String>? = null
+    private fun Any?.short() = toString().take(4)
 
     override fun toString() =
         "shown=$shownPage focused=$focusedPage last=${lastByPage[shownPage]} on screen=${elements.keys.filter { it.first == shownPage }.map { it.second }}"
@@ -191,6 +198,7 @@ fun TvShell(
         while (!pageHasFocus() && !expanded && waited < GIVE_UP_MS) {
             val restored = waited < RESTORE_WAIT_MS && shell.restore(pageKey)
             if (!restored && (waited >= RESTORE_WAIT_MS || !shell.remembers(pageKey))) {
+                shell.trace?.add("first element, after ${waited}ms")
                 runCatching { pageFocus.requestFocus() }
             }
             val step = if (waited < 1_000) 50L else 250L

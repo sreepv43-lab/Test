@@ -199,11 +199,12 @@ class TvShellTest {
         val opened = focused()
         assertTrue(opened, opened.startsWith("s-c"))
         val before = shell.toString()
+        shell?.trace = mutableListOf()
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals("detail/{id}", route())
         press(KeyEvent.KEYCODE_BACK)
         assertEquals("search", route())
-        assertEquals("the result, not the search box (which would pop up the keyboard); before: $before; after: $shell", opened, focused())
+        assertEquals("the result, not the search box (which would pop up the keyboard); before: $before; after: $shell; events: ${shell?.trace}", opened, focused())
     }
 
     @Test
