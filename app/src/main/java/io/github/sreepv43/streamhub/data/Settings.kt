@@ -17,6 +17,15 @@ class Settings(context: Context) {
     )
     val downloadLocation: StateFlow<DownloadLocation?> = _downloadLocation.asStateFlow()
 
+    private val _theme = MutableStateFlow(prefs.getString(KEY_THEME, null) ?: "dark")
+    /** Id of the colour theme (see ui.Palettes). */
+    val theme: StateFlow<String> = _theme.asStateFlow()
+
+    fun setTheme(id: String) {
+        prefs.edit().putString(KEY_THEME, id).apply()
+        _theme.value = id
+    }
+
     fun setDownloadLocation(location: DownloadLocation) {
         prefs.edit().putString(KEY_LOCATION, StremioJson.encodeToString(DownloadLocation.serializer(), location)).apply()
         _downloadLocation.value = location
@@ -24,5 +33,6 @@ class Settings(context: Context) {
 
     private companion object {
         const val KEY_LOCATION = "download_location"
+        const val KEY_THEME = "theme"
     }
 }

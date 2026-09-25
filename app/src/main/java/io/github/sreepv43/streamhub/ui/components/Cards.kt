@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.ui.components
 
+import io.github.sreepv43.streamhub.ui.AppColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -21,6 +22,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -78,7 +80,7 @@ fun PosterCard(
                 LinearProgressIndicator(
                     progress = { progress },
                     color = MaterialTheme.colorScheme.primary,
-                    trackColor = Color.White.copy(alpha = 0.18f),
+                    trackColor = AppColors.panelRaised,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = 10.dp, vertical = 10.dp)
@@ -162,11 +164,12 @@ fun MetaRow(
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 12.dp),
                 )
             } else {
+                val metas = remember(state.metas) { state.metas.distinctBy { it.type + it.id } }
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    items(state.metas.distinctBy { it.type + it.id }, key = { it.type + it.id }) { meta ->
+                    items(metas, key = { it.type + it.id }, contentType = { "poster" }) { meta ->
                         MetaCard(
                             meta,
                             onClick = { onMetaClick(meta) },

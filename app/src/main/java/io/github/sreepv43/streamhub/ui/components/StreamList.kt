@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.ui.components
 
+import io.github.sreepv43.streamhub.ui.AppColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -198,7 +199,7 @@ fun StreamDialogs(state: StreamDialogState, watch: WatchContext?) {
         val saved by settings.downloadLocation.collectAsState()
         var selected by remember { mutableStateOf(saved ?: context.container.storage.defaultLocation()) }
         AlertDialog(
-            containerColor = DialogColor,
+            containerColor = AppColors.panel,
             shape = DialogShape,
             onDismissRequest = { state.downloadStream = null },
             title = { Text("Download to") },

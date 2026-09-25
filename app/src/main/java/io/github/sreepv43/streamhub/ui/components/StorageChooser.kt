@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.ui.components
 
+import io.github.sreepv43.streamhub.ui.AppColors
 import android.content.ActivityNotFoundException
 import android.content.Context
 import android.content.Intent
@@ -160,7 +161,7 @@ private fun DriveAccessDialog(option: StorageOption, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val settingsIntent = remember { allFilesAccessIntent(context) }
     AlertDialog(
-        containerColor = DialogColor,
+        containerColor = AppColors.panel,
         shape = DialogShape,
         onDismissRequest = onDismiss,
         title = { Text("Allow access to ${option.location.label.substringBefore(" › ")}") },

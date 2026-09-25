@@ -11,6 +11,13 @@ import android.view.View
 import android.view.KeyEvent
 import android.view.ViewGroup
 import android.widget.FrameLayout
+import android.graphics.Typeface
+import android.text.SpannableStringBuilder
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
+import android.widget.ImageView
+import android.widget.LinearLayout
+import coil.load
 import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.ComponentActivity
@@ -48,6 +55,9 @@ class PlayerActivity : ComponentActivity() {
 
     private lateinit var playerView: PlayerView
     private lateinit var statusView: TextView
+    private lateinit var loadingView: View
+    private lateinit var loadingStats: TextView
+    private var firstFrameShown = false
     private var player: ExoPlayer? = null
     private lateinit var request: PlayRequest
 
@@ -76,6 +86,7 @@ class PlayerActivity : ComponentActivity() {
             setPadding(24, 12, 24, 12)
             visibility = View.GONE
         }
+        loadingView = buildLoadingView()
         val root = FrameLayout(this).apply {
             addView(playerView)
             addView(
@@ -86,6 +97,7 @@ class PlayerActivity : ComponentActivity() {
                     Gravity.TOP or Gravity.START,
                 ).apply { setMargins(48, 48, 48, 48) },
             )
+            addView(loadingView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
         setContentView(root)
         initPlayer(savedInstanceState?.getLong(STATE_POSITION))
@@ -111,6 +123,11 @@ class PlayerActivity : ComponentActivity() {
                     "Playback error: ${error.errorCodeName}. Try another stream or an external player.",
                     Toast.LENGTH_LONG,
                 ).show()
+            }
+
+            override fun onRenderedFirstFrame() {
+                firstFrameShown = true
+                loadingView.visibility = View.GONE
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -155,23 +172,106 @@ class PlayerActivity : ComponentActivity() {
                 if (exo.isPlaying) saveProgress()
             }
         }
-        if (torrent != null) showTorrentStatus(exo, torrent.first, torrent.second)
+        showLoadingStatus(exo, torrent)
     }
 
-    /** Shows peers / speed / progress while a torrent is starting or buffering. */
-    private fun showTorrentStatus(exo: ExoPlayer, source: String, fileIdx: Int) {
+    /**
+     * Stremio-style loading screen: backdrop, title logo and a row of live stats. It covers the
+     * player until the first frame; later rebuffering shows the same stats in a small label.
+     */
+    private fun buildLoadingView(): View {
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val backdrop = ImageView(this).apply {
+            scaleType = ImageView.ScaleType.CENTER_CROP
+            (request.background ?: request.poster)?.let { load(it) }
+        }
+        val scrim = View(this).apply { setBackgroundColor(0x8C000000.toInt()) }
+        val column = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            gravity = Gravity.CENTER
+        }
+        if (request.logo != null) {
+            column.addView(
+                ImageView(this).apply {
+                    scaleType = ImageView.ScaleType.FIT_CENTER
+                    load(request.logo)
+                },
+                LinearLayout.LayoutParams(dp(420), dp(130)),
+            )
+        } else {
+            column.addView(TextView(this).apply {
+                text = request.title
+                setTextColor(Color.WHITE)
+                textSize = 40f
+                typeface = Typeface.DEFAULT_BOLD
+                gravity = Gravity.CENTER
+            })
+        }
+        request.subtitle?.let { episode ->
+            column.addView(TextView(this).apply {
+                text = episode
+                setTextColor(0xCCFFFFFF.toInt())
+                textSize = 18f
+                gravity = Gravity.CENTER
+                setPadding(0, dp(8), 0, 0)
+            })
+        }
+        loadingStats = TextView(this).apply {
+            setTextColor(Color.WHITE)
+            textSize = 17f
+            gravity = Gravity.CENTER
+            setPadding(0, dp(28), 0, 0)
+            text = "Loading…"
+        }
+        column.addView(loadingStats)
+        return FrameLayout(this).apply {
+            setBackgroundColor(Color.BLACK)
+            addView(backdrop, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
+            addView(column, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        }
+    }
+
+    /** "Peers 40   Speed 721 kB/s   Downloaded 17.6 MB   Completed 0.11%" with dim labels. */
+    private fun statsLine(vararg pairs: Pair<String, String>): CharSequence {
+        val out = SpannableStringBuilder()
+        pairs.forEachIndexed { i, (label, value) ->
+            if (i > 0) out.append("      ")
+            val start = out.length
+            out.append(label)
+            out.setSpan(ForegroundColorSpan(0xB3FFFFFF.toInt()), start, out.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            out.append("  ").append(value)
+        }
+        return out
+    }
+
+    /** Updates the loading screen (and the small rebuffering label) once a second. */
+    private fun showLoadingStatus(exo: ExoPlayer, torrent: Pair<String, Int>?) {
         val engine = (application as StreamHubApp).container.torrents
         lifecycleScope.launch {
             while (isActive && player === exo) {
-                val waiting = exo.playbackState != Player.STATE_READY || !exo.isPlaying
-                val stats = withContext(Dispatchers.IO) { engine.stats(source, fileIdx) }
-                statusView.visibility = if (waiting) View.VISIBLE else View.GONE
-                statusView.text = when {
-                    stats == null -> "Starting torrent…"
-                    !stats.hasMetadata -> "Fetching torrent info… ${stats.peers} peers"
-                    else -> "${stats.peers} peers (${stats.seeds} seeds) · " +
-                        Formatter.formatShortFileSize(this@PlayerActivity, stats.downloadRate.toLong()) + "/s · " +
-                        "${(stats.fileProgress * 100).toInt()}% downloaded"
+                val waiting = exo.playbackState != Player.STATE_READY
+                val line: CharSequence = if (torrent != null) {
+                    val stats = withContext(Dispatchers.IO) { engine.stats(torrent.first, torrent.second) }
+                    when {
+                        stats == null -> "Starting torrent…"
+                        !stats.hasMetadata -> statsLine("Peers" to "${stats.peers}", "Status" to "Fetching torrent info…")
+                        else -> statsLine(
+                            "Peers" to "${stats.peers}",
+                            "Speed" to Formatter.formatShortFileSize(this@PlayerActivity, stats.downloadRate.toLong()) + "/s",
+                            "Downloaded" to Formatter.formatShortFileSize(this@PlayerActivity, stats.fileDownloadedBytes),
+                            "Completed" to "%.2f%%".format(stats.fileProgress * 100),
+                        )
+                    }
+                } else {
+                    statsLine("Buffered" to "${exo.bufferedPercentage}%")
+                }
+                if (!firstFrameShown) {
+                    loadingStats.text = line
+                } else {
+                    statusView.text = line
+                    statusView.visibility = if (waiting) View.VISIBLE else View.GONE
                 }
                 delay(1_000)
             }
@@ -282,6 +382,8 @@ data class PlayRequest(
     val type: String? = null,
     val videoId: String? = null,
     val poster: String? = null,
+    val background: String? = null,
+    val logo: String? = null,
 ) {
     fun toIntent(context: Context): Intent = Intent(context, PlayerActivity::class.java)
         .putExtra("url", url)
@@ -295,6 +397,8 @@ data class PlayRequest(
         .putExtra("type", type)
         .putExtra("videoId", videoId)
         .putExtra("poster", poster)
+        .putExtra("background", background)
+        .putExtra("logo", logo)
 
     companion object {
         fun fromIntent(intent: Intent): PlayRequest? {
@@ -313,6 +417,8 @@ data class PlayRequest(
                 type = intent.getStringExtra("type"),
                 videoId = intent.getStringExtra("videoId"),
                 poster = intent.getStringExtra("poster"),
+                background = intent.getStringExtra("background"),
+                logo = intent.getStringExtra("logo"),
             )
         }
     }

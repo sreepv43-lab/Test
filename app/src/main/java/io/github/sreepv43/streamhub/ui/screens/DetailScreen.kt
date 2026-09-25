@@ -28,7 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
-import io.github.sreepv43.streamhub.ui.Ink
+import io.github.sreepv43.streamhub.ui.AppColors
 import io.github.sreepv43.streamhub.ui.components.FlatButton
 import io.github.sreepv43.streamhub.ui.components.FlatChip
 import io.github.sreepv43.streamhub.ui.components.panel
@@ -126,7 +126,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
     val dialogs = rememberStreamDialogState()
     val history by rememberHistory()
     val watch = {
-        state.meta?.let { WatchContext(it.id, it.type, it.movieVideoId, it.name, poster = it.poster) }
+        state.meta?.let { WatchContext(it.id, it.type, it.movieVideoId, it.name, poster = it.poster, background = it.background, logo = it.logo) }
     }
     val handlers = rememberStreamHandlers(dialogs, watch)
     StreamDialogs(dialogs, watch())
@@ -181,6 +181,8 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
  */
 @Composable
 fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: String? = null) {
+    val pageColor = AppColors.background
+    val text = AppColors.text
     Box(Modifier.fillMaxWidth().heightIn(min = 360.dp)) {
         (meta.background ?: meta.poster)?.let {
             AsyncImage(
@@ -191,9 +193,10 @@ fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: Stri
                     .matchParentSize()
                     .drawWithContent {
                         drawContent()
+                        val bg = pageColor
                         // Melt the artwork into the ambient background on the left and bottom.
-                        drawRect(Brush.horizontalGradient(0f to Ink.copy(alpha = 0.92f), 0.6f to Ink.copy(alpha = 0.25f), 1f to Color.Transparent))
-                        drawRect(Brush.verticalGradient(0.45f to Color.Transparent, 1f to Ink))
+                        drawRect(Brush.horizontalGradient(0f to bg.copy(alpha = 0.92f), 0.6f to bg.copy(alpha = 0.25f), 1f to Color.Transparent))
+                        drawRect(Brush.verticalGradient(0.45f to Color.Transparent, 1f to bg))
                     },
             )
         }
@@ -215,7 +218,7 @@ fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: Stri
                 Text(meta.name, style = MaterialTheme.typography.displaySmall)
             }
             subtitle?.let {
-                Text(it, style = MaterialTheme.typography.titleMedium, color = Color.White.copy(alpha = 0.85f), modifier = Modifier.padding(top = 10.dp))
+                Text(it, style = MaterialTheme.typography.titleMedium, color = text.copy(alpha = 0.85f), modifier = Modifier.padding(top = 10.dp))
             }
             val info = listOfNotNull(
                 meta.releaseInfo,
@@ -224,13 +227,13 @@ fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: Stri
                 meta.genres.take(3).joinToString(" · ").ifEmpty { null },
             ).joinToString("   ")
             if (info.isNotEmpty()) {
-                Text(info, style = MaterialTheme.typography.titleSmall, color = Color.White.copy(alpha = 0.72f), modifier = Modifier.padding(top = 10.dp))
+                Text(info, style = MaterialTheme.typography.titleSmall, color = text.copy(alpha = 0.72f), modifier = Modifier.padding(top = 10.dp))
             }
             meta.description?.let {
                 Text(
                     it,
                     style = MaterialTheme.typography.bodyLarge,
-                    color = Color.White.copy(alpha = 0.85f),
+                    color = text.copy(alpha = 0.85f),
                     maxLines = 4,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 12.dp),
@@ -240,7 +243,7 @@ fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: Stri
                 Text(
                     "Starring " + meta.cast.take(4).joinToString(", "),
                     style = MaterialTheme.typography.bodySmall,
-                    color = Color.White.copy(alpha = 0.6f),
+                    color = text.copy(alpha = 0.6f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.padding(top = 8.dp),
@@ -273,7 +276,7 @@ private fun EpisodeRow(video: Video, onClick: () -> Unit) {
             .padding(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Box(Modifier.width(160.dp).height(90.dp).clip(RoundedCornerShape(12.dp)).background(Color.White.copy(alpha = 0.06f))) {
+        Box(Modifier.width(160.dp).height(90.dp).clip(RoundedCornerShape(12.dp)).background(AppColors.panel)) {
             video.thumbnail?.let {
                 AsyncImage(model = it, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
             }

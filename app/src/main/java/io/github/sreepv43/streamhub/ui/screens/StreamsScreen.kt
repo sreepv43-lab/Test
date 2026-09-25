@@ -36,7 +36,7 @@ fun StreamsScreen() {
         ).joinToString(" · ")
     }
     val watch = {
-        meta?.let { WatchContext(it.id, it.type, checkNotNull(vm.videoId), it.name, episodeTitle, it.poster) }
+        meta?.let { WatchContext(it.id, it.type, checkNotNull(vm.videoId), it.name, episodeTitle, it.poster, it.background, it.logo) }
     }
     val handlers = rememberStreamHandlers(dialogs, watch)
     StreamDialogs(dialogs, watch())

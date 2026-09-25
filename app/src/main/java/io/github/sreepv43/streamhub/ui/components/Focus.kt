@@ -14,7 +14,7 @@ import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
-import io.github.sreepv43.streamhub.ui.FocusColor
+import io.github.sreepv43.streamhub.ui.LocalPalette
 
 /**
  * Focus highlight for TV remotes: the element grows a little and gets a thin glowing outline.
@@ -25,6 +25,7 @@ fun Modifier.tvFocus(
     scale: Float = 1.05f,
 ): Modifier = composed {
     var focused by remember { mutableStateOf(false) }
+    val ring = LocalPalette.current.focus
     this
         .onFocusChanged { focused = it.hasFocus }
         .graphicsLayer {
@@ -36,8 +37,8 @@ fun Modifier.tvFocus(
             drawContent()
             if (focused) {
                 val outline = shape.createOutline(size, layoutDirection, this)
-                drawOutline(outline, color = FocusColor.copy(alpha = 0.25f), style = Stroke(width = 5.dp.toPx()))
-                drawOutline(outline, color = FocusColor, style = Stroke(width = 2.dp.toPx()))
+                drawOutline(outline, color = ring.copy(alpha = 0.25f), style = Stroke(width = 5.dp.toPx()))
+                drawOutline(outline, color = ring, style = Stroke(width = 2.dp.toPx()))
             }
         }
 }

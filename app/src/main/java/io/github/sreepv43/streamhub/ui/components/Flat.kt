@@ -23,10 +23,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.dp
-import io.github.sreepv43.streamhub.ui.Accent
-import io.github.sreepv43.streamhub.ui.Ink
-import io.github.sreepv43.streamhub.ui.Panel
-import io.github.sreepv43.streamhub.ui.PanelRaised
+import io.github.sreepv43.streamhub.ui.AppColors
 
 /**
  * Flat design building blocks: solid colours only (no gradients, blur or transparency), which is
@@ -35,8 +32,9 @@ import io.github.sreepv43.streamhub.ui.PanelRaised
 
 val PanelShape = RoundedCornerShape(14.dp)
 
-/** Solid rounded background for cards, rows and sections. */
-fun Modifier.panel(shape: Shape = PanelShape, color: Color = Panel): Modifier = background(color, shape)
+/** Solid rounded background for cards, rows and sections, in the current theme's panel colour. */
+@Composable
+fun Modifier.panel(shape: Shape = PanelShape, color: Color = AppColors.panel): Modifier = background(color, shape)
 
 /** Pill button. [prominent] is the solid accent style for the main action on a screen. */
 @Composable
@@ -50,12 +48,12 @@ fun FlatButton(
     enabled: Boolean = true,
 ) {
     val shape = RoundedCornerShape(50)
-    val content = if (prominent) Ink else Color.White
+    val content = if (prominent) AppColors.onAccent else AppColors.text
     Row(
         modifier
             .tvFocus(shape)
             .clip(shape)
-            .background(if (prominent) Accent else PanelRaised, shape)
+            .background(if (prominent) AppColors.accent else AppColors.panelRaised, shape)
             .clickable(enabled = enabled, onClick = onClick)
             .alpha(if (enabled) 1f else 0.45f)
             .padding(horizontal = if (compact) 16.dp else 22.dp, vertical = if (compact) 8.dp else 12.dp),
@@ -77,11 +75,11 @@ fun FlatIconButton(icon: ImageVector, contentDescription: String, onClick: () ->
             .size(44.dp)
             .tvFocus(CircleShape)
             .clip(CircleShape)
-            .background(PanelRaised, CircleShape)
+            .background(AppColors.panelRaised, CircleShape)
             .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = contentDescription, tint = Color.White, modifier = Modifier.size(20.dp))
+        Icon(icon, contentDescription = contentDescription, tint = AppColors.text, modifier = Modifier.size(20.dp))
     }
 }
 
@@ -93,24 +91,23 @@ fun FlatChip(text: String, selected: Boolean, onClick: () -> Unit, modifier: Mod
         modifier
             .tvFocus(shape)
             .clip(shape)
-            .background(if (selected) Color.White else PanelRaised, shape)
+            .background(if (selected) AppColors.accent else AppColors.panelRaised, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 18.dp, vertical = 9.dp),
     ) {
-        Text(text, style = MaterialTheme.typography.labelLarge, color = if (selected) Ink else Color.White)
+        Text(text, style = MaterialTheme.typography.labelLarge, color = if (selected) AppColors.onAccent else AppColors.text)
     }
 }
 
 @Composable
 fun flatTextFieldColors() = OutlinedTextFieldDefaults.colors(
-    focusedContainerColor = Panel,
-    unfocusedContainerColor = Panel,
-    focusedBorderColor = Accent,
-    unfocusedBorderColor = PanelRaised,
-    focusedLabelColor = Accent,
-    unfocusedLabelColor = Color.White.copy(alpha = 0.6f),
-    cursorColor = Color.White,
+    focusedContainerColor = AppColors.panel,
+    unfocusedContainerColor = AppColors.panel,
+    focusedBorderColor = AppColors.accent,
+    unfocusedBorderColor = AppColors.panelRaised,
+    focusedLabelColor = AppColors.accent,
+    unfocusedLabelColor = AppColors.textDim,
+    cursorColor = AppColors.text,
 )
 
-val DialogColor = Color(0xFF1A1E27)
 val DialogShape = RoundedCornerShape(20.dp)

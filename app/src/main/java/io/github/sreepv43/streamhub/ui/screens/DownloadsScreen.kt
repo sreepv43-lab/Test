@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.ui.AppColors
 import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -45,7 +46,6 @@ import io.github.sreepv43.streamhub.download.DownloadItem
 import io.github.sreepv43.streamhub.ui.components.CenteredMessage
 import io.github.sreepv43.streamhub.ui.components.StreamActions
 import io.github.sreepv43.streamhub.ui.components.WatchContext
-import io.github.sreepv43.streamhub.ui.components.DialogColor
 import io.github.sreepv43.streamhub.ui.components.DialogShape
 import io.github.sreepv43.streamhub.ui.components.FlatIconButton
 import io.github.sreepv43.streamhub.ui.components.panel
@@ -97,7 +97,7 @@ fun DownloadsScreen() {
 
     toDelete?.let { item ->
         AlertDialog(
-            containerColor = DialogColor,
+            containerColor = AppColors.panel,
             shape = DialogShape,
             onDismissRequest = { toDelete = null },
             title = { Text("Remove download?") },

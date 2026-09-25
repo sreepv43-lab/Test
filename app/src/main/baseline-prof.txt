@@ -1,0 +1,4 @@
+# Compile all of StreamHub's own code ahead of time on install (libraries ship their own
+# profiles). Installed on sideloaded APKs by androidx.profileinstaller.
+HSPLio/github/sreepv43/streamhub/**->**(**)**
+Lio/github/sreepv43/streamhub/**;

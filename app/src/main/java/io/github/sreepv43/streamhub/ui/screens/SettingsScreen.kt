@@ -6,6 +6,16 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import io.github.sreepv43.streamhub.ui.components.FlatButton
 import io.github.sreepv43.streamhub.ui.components.panel
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.draw.clip
+import io.github.sreepv43.streamhub.ui.AppColors
+import io.github.sreepv43.streamhub.ui.Palette
+import io.github.sreepv43.streamhub.ui.Palettes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -46,6 +56,7 @@ fun SettingsScreen() {
     val settings = container.settings
     val location by settings.downloadLocation.collectAsStateWithLifecycle()
     var cacheSize by remember { mutableStateOf<Long?>(null) }
+    val themeId by settings.theme.collectAsStateWithLifecycle()
     // Looking up storage volumes touches the disk; never do it on the UI thread.
     val defaultLocation by produceState<DownloadLocation?>(null) {
         value = withContext(Dispatchers.IO) { container.storage.defaultLocation() }
@@ -57,6 +68,14 @@ fun SettingsScreen() {
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
         Text("Settings", style = MaterialTheme.typography.headlineLarge)
+
+        SettingsSection("Theme") {
+            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                Palettes.all.forEach { palette ->
+                    ThemeSwatch(palette, selected = palette.id == themeId, onClick = { settings.setTheme(palette.id) })
+                }
+            }
+        }
 
         SettingsSection("Download location") {
             Text(
@@ -128,5 +147,45 @@ private fun SettingsSection(title: String, content: @Composable ColumnScope.() -
     ) {
         Text(title, style = MaterialTheme.typography.titleLarge)
         content()
+    }
+}
+
+/** A small preview of a theme: its background, panel and accent colours, with the name below. */
+@Composable
+private fun ThemeSwatch(palette: Palette, selected: Boolean, onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .size(width = 150.dp, height = 90.dp)
+                .tvFocus(shape)
+                .clip(shape)
+                .background(palette.background)
+                .border(if (selected) 3.dp else 1.dp, if (selected) AppColors.accent else AppColors.panelRaised, shape)
+                .clickable(onClick = onClick)
+                .padding(12.dp),
+        ) {
+            Box(Modifier.fillMaxWidth().height(28.dp).clip(RoundedCornerShape(8.dp)).background(palette.panel))
+            Box(
+                Modifier
+                    .align(Alignment.BottomStart)
+                    .size(width = 64.dp, height = 22.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(palette.accent),
+            )
+            Box(
+                Modifier
+                    .align(Alignment.BottomEnd)
+                    .size(22.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(palette.text),
+            )
+        }
+        Text(
+            palette.name,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (selected) AppColors.accent else AppColors.text,
+            modifier = Modifier.padding(top = 8.dp),
+        )
     }
 }

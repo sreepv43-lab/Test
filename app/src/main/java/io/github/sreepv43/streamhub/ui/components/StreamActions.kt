@@ -28,6 +28,8 @@ data class WatchContext(
     val title: String,
     val episodeTitle: String? = null,
     val poster: String? = null,
+    val background: String? = null,
+    val logo: String? = null,
 )
 
 object StreamActions {
@@ -57,6 +59,8 @@ object StreamActions {
                 type = watch.type,
                 videoId = watch.videoId,
                 poster = watch.poster,
+                background = watch.background,
+                logo = watch.logo,
             ),
         )
     }

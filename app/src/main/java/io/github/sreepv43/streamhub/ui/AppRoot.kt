@@ -170,7 +170,7 @@ private fun SideMenu(
         modifier
             .fillMaxHeight()
             .width(if (open) RailExpanded else RailCollapsed)
-            .background(if (open) Panel else Ink)
+            .background(if (open) AppColors.panel else AppColors.background)
             .onFocusChanged { if (open && !it.hasFocus) onClose() }
             // Right simply moves into the page (which closes the menu); Back closes it too.
             .onKeyEvent { event ->
@@ -218,9 +218,9 @@ private fun MenuItem(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
     val tint = when {
-        focused -> Ink
-        selected -> Accent
-        else -> Color.White.copy(alpha = 0.7f)
+        focused -> AppColors.background
+        selected -> AppColors.accent
+        else -> AppColors.textDim
     }
     Row(
         modifier
@@ -230,7 +230,7 @@ private fun MenuItem(
             .focusProperties { canFocus = focusable }
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
-            .background(if (focused) Color.White else Color.Transparent, shape)
+            .background(if (focused) AppColors.text else Color.Transparent, shape)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),
         verticalAlignment = Alignment.CenterVertically,

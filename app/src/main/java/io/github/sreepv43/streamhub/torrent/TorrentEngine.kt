@@ -31,6 +31,8 @@ data class TorrentStats(
     val uploadRate: Int,
     /** Progress of the file being played / downloaded, 0..1. */
     val fileProgress: Float,
+    /** Bytes of that file downloaded so far. */
+    val fileDownloadedBytes: Long = 0,
 )
 
 /**
@@ -194,10 +196,10 @@ class TorrentEngine(
             fileIdx in 0 until info.numFiles() -> fileIdx
             else -> entry.openFiles.firstOrNull() ?: -1
         }
+        val fileDone = if (index >= 0) entry.handle.fileProgress(TorrentHandle.PIECE_GRANULARITY).getOrNull(index) ?: 0L else 0L
         val fileProgress = if (index >= 0) {
-            val done = entry.handle.fileProgress(TorrentHandle.PIECE_GRANULARITY).getOrNull(index) ?: 0L
             val size = info!!.files().fileSize(index)
-            if (size > 0) (done.toFloat() / size).coerceIn(0f, 1f) else 0f
+            if (size > 0) (fileDone.toFloat() / size).coerceIn(0f, 1f) else 0f
         } else 0f
         TorrentStats(
             name = info?.name(),
@@ -207,6 +209,7 @@ class TorrentEngine(
             downloadRate = status.downloadPayloadRate(),
             uploadRate = status.uploadPayloadRate(),
             fileProgress = fileProgress,
+            fileDownloadedBytes = fileDone,
         )
     }
 

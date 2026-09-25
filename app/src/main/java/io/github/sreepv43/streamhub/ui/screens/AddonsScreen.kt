@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.ui.AppColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -49,7 +50,6 @@ import io.github.sreepv43.streamhub.addon.AddonUrls
 import io.github.sreepv43.streamhub.addon.InstalledAddon
 import io.github.sreepv43.streamhub.container
 import io.github.sreepv43.streamhub.ui.components.StreamActions
-import io.github.sreepv43.streamhub.ui.components.DialogColor
 import io.github.sreepv43.streamhub.ui.components.DialogShape
 import io.github.sreepv43.streamhub.ui.components.FlatIconButton
 import io.github.sreepv43.streamhub.ui.components.panel
@@ -128,7 +128,7 @@ fun AddonsScreen(initialUrl: String?) {
 
     toRemove?.let { addon ->
         AlertDialog(
-            containerColor = DialogColor,
+            containerColor = AppColors.panel,
             shape = DialogShape,
             onDismissRequest = { toRemove = null },
             title = { Text("Uninstall ${addon.manifest.name}?") },
