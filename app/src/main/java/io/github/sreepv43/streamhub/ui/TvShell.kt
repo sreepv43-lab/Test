@@ -102,7 +102,8 @@ class TvShellState internal constructor() {
         return runCatching { requester.requestFocus() }.isSuccess
     }
 
-    override fun toString() = "shown=$shownPage focused=$focusedPage last=$lastByPage elements=${elements.size}"
+    override fun toString() =
+        "shown=$shownPage focused=$focusedPage last=${lastByPage[shownPage]} on screen=${elements.keys.filter { it.first == shownPage }.map { it.second }}"
 }
 
 val LocalTvShell = staticCompositionLocalOf<TvShellState?> { null }

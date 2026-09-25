@@ -198,11 +198,12 @@ class TvShellTest {
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         val opened = focused()
         assertTrue(opened, opened.startsWith("s-c"))
+        val before = shell.toString()
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals("detail/{id}", route())
         press(KeyEvent.KEYCODE_BACK)
         assertEquals("search", route())
-        assertEquals("the result, not the search box (which would pop up the keyboard); $shell", opened, focused())
+        assertEquals("the result, not the search box (which would pop up the keyboard); before: $before; after: $shell", opened, focused())
     }
 
     @Test

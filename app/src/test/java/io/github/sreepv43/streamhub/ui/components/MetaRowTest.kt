@@ -7,7 +7,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import io.github.sreepv43.streamhub.addon.Meta
@@ -44,7 +44,7 @@ class MetaRowTest {
                 }
             }
         }
-        val height = { tag: String -> rule.onNodeWithTag(tag).getBoundsInRoot().let { it.bottom - it.top } }
+        val height = { tag: String -> rule.onNodeWithTag(tag).getUnclippedBoundsInRoot().let { it.bottom - it.top } }
         val loaded = height("loaded")
         for (tag in listOf("loading", "failed", "empty")) assertEquals("$tag vs loaded", loaded, height(tag))
     }
