@@ -15,3 +15,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "StreamHub"
 include(":app")
+
+// SoundHub: a separate music app (Soulseek + Dolby Atmos passthrough) living in soundhub/.
+include(":soundhub", ":soundhub-core")
+project(":soundhub").projectDir = file("soundhub/app")
+project(":soundhub-core").projectDir = file("soundhub/core")
