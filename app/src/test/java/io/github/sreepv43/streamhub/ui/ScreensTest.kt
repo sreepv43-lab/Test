@@ -1,5 +1,13 @@
 package io.github.sreepv43.streamhub.ui
 
+import io.github.sreepv43.streamhub.ui.components.rememberPosterMenu
+import io.github.sreepv43.streamhub.ui.components.RowState
+import io.github.sreepv43.streamhub.ui.components.PosterTarget
+import io.github.sreepv43.streamhub.ui.components.PosterMenu
+import io.github.sreepv43.streamhub.ui.components.MetaRow
+import io.github.sreepv43.streamhub.addon.Meta
+import org.junit.Assert.assertFalse
+import androidx.compose.ui.test.performClick
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -143,6 +151,32 @@ class ScreensTest {
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals("en", settings.audioLanguage.value)
         assertEquals("choosing must not move the selection", "English", focused())
+    }
+
+    @Test
+    fun menuKeyOnAPosterOffersMyList() {
+        val meta = Meta(id = "tt0111161", type = "movie", name = "The Shawshank Redemption")
+        show {
+            val menu = rememberPosterMenu()
+            PosterMenu(menu)
+            MetaRow(
+                title = "Popular",
+                state = RowState.Loaded(listOf(meta)),
+                onMetaClick = {},
+                onMetaLongClick = { menu.target = PosterTarget.of(it) },
+            )
+        }
+        focus(rule.onAllNodesWithText("The Shawshank Redemption")[0])
+        press(KeyEvent.KEYCODE_MENU)
+        rule.onNodeWithText("Add to My List").performClick()
+        settle()
+        assertTrue(container.library.contains("tt0111161"))
+
+        focus(rule.onAllNodesWithText("The Shawshank Redemption")[0])
+        press(KeyEvent.KEYCODE_MENU)
+        rule.onNodeWithText("Remove from My List").performClick()
+        settle()
+        assertFalse(container.library.contains("tt0111161"))
     }
 
     private fun addon(name: String) = InstalledAddon("https://$name.example/manifest.json".replace(' ', '-'), Manifest(id = name, name = name))

@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    StreamHub's player controls (replaces Media3's layout of the same name), arranged like Stremio:
+    title at the top, a full-width progress bar with the times at its ends, and below it the
+    playback buttons on the left and audio / subtitles / settings on the right.
+-->
+<merge xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <View
+        android:id="@id/exo_controls_background"
+        android:layout_width="0dp"
+        android:layout_height="0dp"
+        android:background="@drawable/player_scrim" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="top"
+        android:orientation="vertical"
+        android:paddingStart="48dp"
+        android:paddingTop="32dp"
+        android:paddingEnd="48dp">
+
+        <TextView
+            android:id="@+id/player_title"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#FFFFFFFF"
+            android:textSize="26sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:id="@+id/player_subtitle"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textColor="#CCFFFFFF"
+            android:textSize="17sp" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom"
+        android:layoutDirection="ltr"
+        android:orientation="vertical"
+        android:paddingStart="40dp"
+        android:paddingEnd="40dp"
+        android:paddingBottom="24dp">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="center_vertical"
+            android:orientation="horizontal">
+
+            <TextView
+                android:id="@id/exo_position"
+                style="@style/ExoStyledControls.TimeText.Position"
+                android:minWidth="64dp"
+                android:textSize="16sp" />
+
+            <androidx.media3.ui.DefaultTimeBar
+                android:id="@id/exo_progress"
+                android:layout_width="0dp"
+                android:layout_height="32dp"
+                android:layout_marginStart="12dp"
+                android:layout_marginEnd="12dp"
+                android:layout_weight="1"
+                app:bar_height="4dp"
+                app:buffered_color="#66FFFFFF"
+                app:played_color="#FFC9B8FF"
+                app:scrubber_color="#FFFFFFFF"
+                app:scrubber_dragged_size="22dp"
+                app:scrubber_enabled_size="16dp"
+                app:unplayed_color="#33FFFFFF" />
+
+            <TextView
+                android:id="@id/exo_duration"
+                style="@style/ExoStyledControls.TimeText.Duration"
+                android:minWidth="64dp"
+                android:textSize="16sp" />
+        </LinearLayout>
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp">
+
+            <LinearLayout
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="start|center_vertical"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@id/exo_play_pause"
+                    style="@style/ExoStyledControls.Button.Bottom"
+                    android:layout_width="64dp"
+                    android:layout_height="64dp" />
+
+                <ImageButton
+                    android:id="@id/exo_rew"
+                    style="@style/ExoStyledControls.Button.Bottom" />
+
+                <ImageButton
+                    android:id="@id/exo_ffwd"
+                    style="@style/ExoStyledControls.Button.Bottom" />
+            </LinearLayout>
+
+            <LinearLayout
+                android:id="@id/exo_basic_controls"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_gravity="end|center_vertical"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <ImageButton
+                    android:id="@id/exo_audio_track"
+                    style="@style/ExoStyledControls.Button.Bottom.AudioTrack" />
+
+                <ImageButton
+                    android:id="@id/exo_subtitle"
+                    style="@style/ExoStyledControls.Button.Bottom.CC" />
+
+                <ImageButton
+                    android:id="@id/exo_settings"
+                    style="@style/ExoStyledControls.Button.Bottom.Settings" />
+            </LinearLayout>
+        </FrameLayout>
+    </LinearLayout>
+</merge>

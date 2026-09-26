@@ -1,5 +1,8 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.ui.components.rememberPosterMenu
+import io.github.sreepv43.streamhub.ui.components.PosterTarget
+import io.github.sreepv43.streamhub.ui.components.PosterMenu
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -117,6 +120,8 @@ fun CatalogScreen(onOpenMeta: (Meta) -> Unit) {
     val vm = appViewModel { c, handle -> CatalogViewModel(c.addons, handle) }
     val state by vm.state.collectAsStateWithLifecycle()
     val gridState = rememberLazyGridState()
+    val posterMenu = rememberPosterMenu()
+    PosterMenu(posterMenu)
     val nearEnd by remember {
         derivedStateOf {
             val last = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
@@ -156,7 +161,7 @@ fun CatalogScreen(onOpenMeta: (Meta) -> Unit) {
             modifier = Modifier.fillMaxSize().tvRow(),
         ) {
             items(state.items, key = { it.type + it.id }, contentType = { "poster" }) { meta ->
-                MetaCard(meta, onClick = { onOpenMeta(meta) })
+                MetaCard(meta, onClick = { onOpenMeta(meta) }, onLongClick = { posterMenu.target = PosterTarget.of(meta) })
             }
             if (state.loading) {
                 item(span = { GridItemSpan(maxLineSpan) }) {

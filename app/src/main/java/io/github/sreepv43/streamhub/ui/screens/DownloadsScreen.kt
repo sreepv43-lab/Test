@@ -62,6 +62,7 @@ fun DownloadsScreen() {
     val downloader = context.container.downloader
     val items by downloader.items.collectAsStateWithLifecycle()
     val waitingForWifi by downloader.waitingForWifi.collectAsStateWithLifecycle()
+    val speeds by downloader.speeds.collectAsStateWithLifecycle()
     var toDelete by remember { mutableStateOf<DownloadItem?>(null) }
     var toMove by remember { mutableStateOf<DownloadItem?>(null) }
 
@@ -98,6 +99,7 @@ fun DownloadsScreen() {
                 items(items, key = { it.id }) { item ->
                     DownloadRow(
                         item,
+                        speed = speeds[item.id],
                         onPlay = {
                             item.fileUri?.let { uri ->
                                 StreamActions.playFile(
@@ -177,9 +179,21 @@ fun DownloadsScreen() {
     }
 }
 
+/** " · 12 min left" once the size and speed are known. */
+private fun timeLeft(item: DownloadItem, speed: Long): String {
+    if (item.totalBytes <= 0 || speed <= 0) return ""
+    val seconds = (item.totalBytes - item.downloadedBytes).coerceAtLeast(0) / speed
+    return when {
+        seconds < 60 -> " · less than a minute left"
+        seconds < 3600 -> " · ${seconds / 60} min left"
+        else -> " · %d h %02d min left".format(seconds / 3600, seconds % 3600 / 60)
+    }
+}
+
 @Composable
 private fun DownloadRow(
     item: DownloadItem,
+    speed: Long?,
     onPlay: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
@@ -225,7 +239,8 @@ private fun DownloadRow(
                 if (item.totalBytes > 0) " / " + Formatter.formatShortFileSize(context, item.totalBytes) else ""
             val status = when (item.status) {
                 DownloadItem.Status.QUEUED -> "Waiting"
-                DownloadItem.Status.RUNNING -> "Downloading ${(item.progress * 100).toInt()}%"
+                DownloadItem.Status.RUNNING -> "Downloading ${(item.progress * 100).toInt()}%" +
+                    (speed?.let { " · " + Formatter.formatShortFileSize(context, it) + "/s" + timeLeft(item, it) } ?: "")
                 DownloadItem.Status.PAUSED -> "Paused"
                 DownloadItem.Status.COMPLETED -> "Completed"
                 DownloadItem.Status.FAILED -> "Failed: ${item.error.orEmpty()}"

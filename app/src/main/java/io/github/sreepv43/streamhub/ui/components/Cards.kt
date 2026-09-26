@@ -1,5 +1,11 @@
 package io.github.sreepv43.streamhub.ui.components
 
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.foundation.combinedClickable
 import io.github.sreepv43.streamhub.ui.AppColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -71,6 +77,7 @@ fun PosterCard(
     caption: String? = null,
     onFocused: (() -> Unit)? = null,
     focusKey: Any? = null,
+    onLongClick: (() -> Unit)? = null,
 ) {
     val shape = RoundedCornerShape(16.dp)
     Column(modifier.width(width)) {
@@ -82,7 +89,7 @@ fun PosterCard(
                 .tvFocus(shape, scale = 1.07f, key = focusKey)
                 .clip(shape)
                 .panel(shape)
-                .clickable(onClick = onClick),
+                .posterClick(onClick, onLongClick),
         ) {
             if (image != null) {
                 AsyncImage(
@@ -129,6 +136,21 @@ fun PosterCard(
         )
     }
 }
+
+/**
+ * OK opens the poster; holding OK (or the remote's Menu key, where it has one) opens its options.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+private fun Modifier.posterClick(onClick: () -> Unit, onLongClick: (() -> Unit)?): Modifier =
+    if (onLongClick == null) clickable(onClick = onClick)
+    else this
+        .onKeyEvent { event ->
+            if (event.key == Key.Menu) {
+                if (event.type == KeyEventType.KeyUp) onLongClick()
+                true
+            } else false
+        }
+        .combinedClickable(onClick = onClick, onLongClick = onLongClick)
 
 /** Last tile of a row, the same size as a poster. */
 @Composable
@@ -177,7 +199,13 @@ private fun CardFrame(image: @Composable () -> Unit) {
 }
 
 @Composable
-fun MetaCard(meta: Meta, onClick: () -> Unit, modifier: Modifier = Modifier, onFocused: (() -> Unit)? = null) {
+fun MetaCard(
+    meta: Meta,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    onFocused: (() -> Unit)? = null,
+    onLongClick: (() -> Unit)? = null,
+) {
     PosterCard(
         title = meta.name,
         image = meta.poster,
@@ -187,6 +215,7 @@ fun MetaCard(meta: Meta, onClick: () -> Unit, modifier: Modifier = Modifier, onF
         modifier = modifier,
         onFocused = onFocused,
         focusKey = meta.type + meta.id,
+        onLongClick = onLongClick,
     )
 }
 
@@ -204,10 +233,13 @@ fun MetaRow(
     modifier: Modifier = Modifier,
     onSeeAll: (() -> Unit)? = null,
     onMetaFocused: ((Meta) -> Unit)? = null,
+    onMetaLongClick: ((Meta) -> Unit)? = null,
 ) {
     Column(modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
-        CompositionLocalProvider(LocalFocusKeyScope provides title) { MetaRowContent(state, onMetaClick, onSeeAll, onMetaFocused) }
+        CompositionLocalProvider(LocalFocusKeyScope provides title) {
+            MetaRowContent(state, onMetaClick, onSeeAll, onMetaFocused, onMetaLongClick)
+        }
     }
 }
 
@@ -217,6 +249,7 @@ private fun MetaRowContent(
     onMetaClick: (Meta) -> Unit,
     onSeeAll: (() -> Unit)?,
     onMetaFocused: ((Meta) -> Unit)?,
+    onMetaLongClick: ((Meta) -> Unit)?,
 ) {
     val metas = (state as? RowState.Loaded)?.metas?.let { remember(it) { it.distinctBy { meta -> meta.type + meta.id } } }
     if (metas.isNullOrEmpty()) {
@@ -248,6 +281,7 @@ private fun MetaRowContent(
                     meta,
                     onClick = { onMetaClick(meta) },
                     onFocused = onMetaFocused?.let { callback -> { callback(meta) } },
+                    onLongClick = onMetaLongClick?.let { callback -> { callback(meta) } },
                 )
             }
             if (onSeeAll != null) {

@@ -20,6 +20,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import okhttp3.Call
@@ -60,6 +61,10 @@ class Downloader(
     val items get() = repository.items
 
     private val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    private val _speeds = MutableStateFlow<Map<String, Long>>(emptyMap())
+    /** Current speed (bytes per second) of each running download. */
+    val speeds: StateFlow<Map<String, Long>> = _speeds.asStateFlow()
+
     private val _waitingForWifi = MutableStateFlow(false)
     /** Downloads are queued but "Wi-Fi only" is on and the connection is metered (mobile data). */
     val waitingForWifi: StateFlow<Boolean> = _waitingForWifi.asStateFlow()
@@ -323,12 +328,15 @@ class Downloader(
                     var lastPersist = SystemClock.elapsedRealtime()
                     var windowStart = lastPersist
                     var windowBytes = 0L
+                    var speedStart = lastPersist
+                    var speedBytes = 0L
                     while (true) {
                         coroutineContext.ensureActive()
                         val read = input.read(buffer)
                         if (read < 0) break
                         out.write(buffer, 0, read)
                         done += read
+                        speedBytes += read
                         // Speed limit (shared by the downloads running at the same time).
                         val limit = settings.downloadSpeedLimitKb.value * 1024L / activeCount.value.coerceAtLeast(1)
                         if (limit > 0) {
@@ -341,6 +349,12 @@ class Downloader(
                             }
                         }
                         val now = SystemClock.elapsedRealtime()
+                        if (now - speedStart >= SPEED_WINDOW_MS) {
+                            val speed = speedBytes * 1000 / (now - speedStart)
+                            _speeds.update { it + (id to speed) }
+                            speedStart = now
+                            speedBytes = 0
+                        }
                         if (now - lastUiUpdate > 500) {
                             val persist = now - lastPersist > 10_000
                             if (persist) lastPersist = now
@@ -361,6 +375,7 @@ class Downloader(
             }
         } finally {
             calls.remove(id, call)
+            _speeds.update { it - id }
         }
     }
 
@@ -385,5 +400,6 @@ class Downloader(
         const val MAX_PARALLEL = 2
         const val MAX_ATTEMPTS = 6
         const val BUFFER_SIZE = 256 * 1024
+        const val SPEED_WINDOW_MS = 1_000L
     }
 }

@@ -1,5 +1,8 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.ui.components.rememberPosterMenu
+import io.github.sreepv43.streamhub.ui.components.PosterTarget
+import io.github.sreepv43.streamhub.ui.components.PosterMenu
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -94,6 +97,8 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
     }
 
     val listState = rememberLazyListState()
+    val posterMenu = rememberPosterMenu()
+    PosterMenu(posterMenu)
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
@@ -129,6 +134,7 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
                             state = rowState,
                             onMetaClick = onOpenMeta,
                             modifier = Modifier.alignRowOnFocus(listState, i, first = i == 0),
+                            onMetaLongClick = { posterMenu.target = PosterTarget.of(it) },
                         )
                     }
                 }

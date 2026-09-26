@@ -1,5 +1,8 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.ui.components.rememberPosterMenu
+import io.github.sreepv43.streamhub.ui.components.PosterTarget
+import io.github.sreepv43.streamhub.ui.components.PosterMenu
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.joinAll
@@ -129,6 +132,8 @@ fun HomeScreen(
         return
     }
     val listState = rememberLazyListState()
+    val posterMenu = rememberPosterMenu()
+    PosterMenu(posterMenu)
     val continueWatching = history.filterNot { it.isFinished }
     val myList by LocalContext.current.container.library.items.collectAsStateWithLifecycle()
     // List positions: the title is item 0, then the optional rows, then the catalogs.
@@ -165,6 +170,7 @@ fun HomeScreen(
                                         progress = entry.progress,
                                         onClick = { onOpenHistory(entry) },
                                         focusKey = entry.metaId,
+                                        onLongClick = { posterMenu.target = PosterTarget.of(entry) },
                                     )
                                 }
                             }
@@ -188,6 +194,7 @@ fun HomeScreen(
                                         image = item.poster,
                                         onClick = { onOpenMeta(Meta(id = item.id, type = item.type, name = item.name, poster = item.poster)) },
                                         focusKey = item.id,
+                                        onLongClick = { posterMenu.target = PosterTarget.of(item) },
                                     )
                                 }
                             }
@@ -216,6 +223,7 @@ fun HomeScreen(
                     onMetaClick = onOpenMeta,
                     modifier = Modifier.alignRowOnFocus(listState, index, first = index == 1),
                     onSeeAll = { onSeeAll(ref) },
+                    onMetaLongClick = { posterMenu.target = PosterTarget.of(it) },
                 )
             }
         }

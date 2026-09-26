@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Player controls background: dark fades at the top (title) and bottom (controls) only. -->
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:gravity="top" android:height="200dp">
+        <shape>
+            <gradient android:angle="270" android:startColor="#CC000000" android:endColor="#00000000" />
+        </shape>
+    </item>
+    <item android:gravity="bottom" android:height="260dp">
+        <shape>
+            <gradient android:angle="90" android:startColor="#E6000000" android:endColor="#00000000" />
+        </shape>
+    </item>
+</layer-list>

@@ -1,5 +1,10 @@
 package io.github.sreepv43.streamhub.player
 
+import io.github.sreepv43.streamhub.torrent.TorrentEngine
+import android.view.animation.LinearInterpolator
+import android.view.animation.AccelerateDecelerateInterpolator
+import android.graphics.Rect
+import android.animation.ValueAnimator
 import io.github.sreepv43.streamhub.download.DownloadItem
 import android.content.Context
 import android.content.Intent
@@ -85,6 +90,12 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var statusView: TextView
     private lateinit var loadingView: View
     private lateinit var loadingStats: TextView
+    private lateinit var titleBox: FrameLayout
+    private lateinit var titleBase: View
+    private lateinit var titleFill: View
+    private var titlePulse: ValueAnimator? = null
+    private var fillAnimation: ValueAnimator? = null
+    private var titleFillShown = 0f
     private var firstFrameShown = false
     private var player: ExoPlayer? = null
     private lateinit var request: PlayRequest
@@ -140,6 +151,9 @@ class PlayerActivity : ComponentActivity() {
             setShowNextButton(false)
             setShowPreviousButton(false)
             controllerAutoShow = true
+            // Our controls layout (res/layout/exo_player_control_view.xml) fades as a whole; Media3's
+            // bar-sliding animations assume its own layout.
+            setControllerAnimationEnabled(false)
             // The audio line is shown with the player controls (and briefly when the audio starts).
             setControllerVisibilityListener(
                 PlayerView.ControllerVisibilityListener { visibility ->
@@ -189,12 +203,17 @@ class PlayerActivity : ComponentActivity() {
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
                     ViewGroup.LayoutParams.WRAP_CONTENT,
-                    Gravity.TOP or Gravity.START,
+                    Gravity.TOP or Gravity.CENTER_HORIZONTAL,
                 ).apply { setMargins(48, 48, 48, 48) },
             )
             addView(loadingView, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
         }
         setContentView(root)
+        playerView.findViewById<TextView>(R.id.player_title)?.text = request.title
+        playerView.findViewById<TextView>(R.id.player_subtitle)?.apply {
+            text = request.subtitle.orEmpty()
+            visibility = if (request.subtitle.isNullOrEmpty()) View.GONE else View.VISIBLE
+        }
         addSubtitleOptionsButton()
         // Left/Right on the progress bar move by the forward step.
         resources.getIdentifier("exo_progress", "id", packageName).takeIf { it != 0 }
@@ -300,6 +319,8 @@ class PlayerActivity : ComponentActivity() {
             override fun onRenderedFirstFrame() {
                 firstFrameShown = true
                 loadingView.visibility = View.GONE
+                titlePulse?.cancel()
+                fillAnimation?.cancel()
             }
 
             override fun onPlaybackStateChanged(state: Int) {
@@ -372,23 +393,35 @@ class PlayerActivity : ComponentActivity() {
             orientation = LinearLayout.VERTICAL
             gravity = Gravity.CENTER
         }
-        if (request.logo != null) {
-            column.addView(
-                ImageView(this).apply {
-                    scaleType = ImageView.ScaleType.FIT_CENTER
-                    load(request.logo)
-                },
-                LinearLayout.LayoutParams(dp(420), dp(130)),
-            )
+        // The title (logo or name) twice: a dim copy, and a full-colour copy revealed from left to
+        // right as the video loads (see showLoadingProgress).
+        fun titleView(fill: Boolean): View = if (request.logo != null) {
+            ImageView(this).apply {
+                scaleType = ImageView.ScaleType.FIT_CENTER
+                load(request.logo)
+            }
         } else {
-            column.addView(TextView(this).apply {
+            TextView(this).apply {
                 text = request.title
-                setTextColor(Color.WHITE)
+                setTextColor(if (fill) FILL_COLOR else Color.WHITE)
                 textSize = 40f
                 typeface = Typeface.DEFAULT_BOLD
                 gravity = Gravity.CENTER
-            })
+            }
         }
+        titleBase = titleView(fill = false)
+        titleFill = titleView(fill = true).apply { clipBounds = Rect(0, 0, 0, 0) }
+        titleBox = FrameLayout(this).apply {
+            val size = if (request.logo != null) {
+                FrameLayout.LayoutParams(dp(420), dp(130))
+            } else {
+                FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+            }
+            addView(titleBase, size)
+            addView(titleFill, FrameLayout.LayoutParams(size))
+        }
+        column.addView(titleBox, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        showConnecting()
         request.subtitle?.let { episode ->
             column.addView(TextView(this).apply {
                 text = episode
@@ -411,6 +444,41 @@ class PlayerActivity : ComponentActivity() {
             addView(backdrop, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(scrim, FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT))
             addView(column, FrameLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER))
+        }
+    }
+
+    /** Connecting: the title pulses slowly. */
+    private fun showConnecting() {
+        if (titlePulse != null) return
+        titleBase.alpha = 1f
+        titlePulse = ValueAnimator.ofFloat(1f, 0.35f).apply {
+            duration = PULSE_MS
+            repeatMode = ValueAnimator.REVERSE
+            repeatCount = ValueAnimator.INFINITE
+            interpolator = AccelerateDecelerateInterpolator()
+            addUpdateListener { titleBox.alpha = it.animatedValue as Float }
+            start()
+        }
+    }
+
+    /** Loading: the dim title fills with colour from left to right, up to [fraction] (0..1). */
+    private fun showLoadingProgress(fraction: Float) {
+        titlePulse?.cancel()
+        titlePulse = null
+        titleBox.alpha = 1f
+        titleBase.alpha = 0.35f
+        val target = fraction.coerceIn(0f, 1f).coerceAtLeast(titleFillShown)
+        val from = titleFillShown
+        titleFillShown = target
+        fillAnimation?.cancel()
+        fillAnimation = ValueAnimator.ofFloat(from, target).apply {
+            duration = FILL_STEP_MS
+            interpolator = LinearInterpolator()
+            addUpdateListener {
+                val width = titleFill.width
+                if (width > 0) titleFill.clipBounds = Rect(0, 0, (width * (it.animatedValue as Float)).toInt(), titleFill.height)
+            }
+            start()
         }
     }
 
@@ -450,6 +518,7 @@ class PlayerActivity : ComponentActivity() {
                 }
                 if (!firstFrameShown) {
                     loadingStats.text = line
+                    loadingFraction(exo, torrent, engine)?.let(::showLoadingProgress) ?: showConnecting()
                 } else {
                     statusView.text = line
                     statusView.visibility = if (waiting) View.VISIBLE else View.GONE
@@ -457,6 +526,22 @@ class PlayerActivity : ComponentActivity() {
                 delay(1_000)
             }
         }
+    }
+
+    /**
+     * How far loading has got (0..1), or null while still connecting (no torrent peers or data yet,
+     * or no answer from the server). Torrents count their first MB, then the player's buffer.
+     */
+    private suspend fun loadingFraction(exo: ExoPlayer, torrent: Pair<String, Int>?, engine: TorrentEngine): Float? {
+        val buffered = exo.bufferedPosition - exo.currentPosition
+        val bufferFraction = if (buffered > 0) buffered.toFloat() / container.settings.startBufferMs.value else 0f
+        if (torrent != null) {
+            val stats = withContext(Dispatchers.IO) { engine.stats(torrent.first, torrent.second) }
+            if (stats == null || !stats.hasMetadata || (stats.peers == 0 && stats.fileDownloadedBytes == 0L)) return null
+            val torrentFraction = stats.fileDownloadedBytes.toFloat() / TORRENT_START_BYTES
+            return maxOf(torrentFraction * 0.7f, bufferFraction).coerceAtMost(1f)
+        }
+        return if (buffered > 0) bufferFraction.coerceAtMost(1f) else null
     }
 
     private fun buildMediaItem(url: String, subtitles: List<Subtitle>): MediaItem =
@@ -902,6 +987,10 @@ class PlayerActivity : ComponentActivity() {
         private const val SUBTITLE_TIMEOUT_MS = 2_500L
         private const val MIN_REBUFFER_MS = 2_000
         private const val AUDIO_INFO_MS = 8_000L
+        private const val PULSE_MS = 900L
+        private const val FILL_STEP_MS = 950L
+        private const val TORRENT_START_BYTES = 8f * 1024 * 1024
+        private val FILL_COLOR = 0xFFC9B8FF.toInt()
         private const val SEEK_COMMIT_MS = 700L
         private const val SEEK_LABEL_MS = 1_200L
         private const val SEEK_REPEAT_MS = 250L
