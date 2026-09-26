@@ -19,6 +19,9 @@ android {
         versionName = "0.2.$build"
         buildConfigField("int", "BUILD_NUMBER", build.toString())
         buildConfigField("String", "UPDATE_REPO", "\"sreepv43-lab/Test\"")
+        // Trakt API app (trakt.tv/oauth/applications), from GitHub secrets; empty = Trakt sync unavailable.
+        buildConfigField("String", "TRAKT_CLIENT_ID", "\"${System.getenv("TRAKT_CLIENT_ID").orEmpty()}\"")
+        buildConfigField("String", "TRAKT_CLIENT_SECRET", "\"${System.getenv("TRAKT_CLIENT_SECRET").orEmpty()}\"")
     }
 
     // The permanent key and its password come from GitHub secrets in CI (see the workflow); without

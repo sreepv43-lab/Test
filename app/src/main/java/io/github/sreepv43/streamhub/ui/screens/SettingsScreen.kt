@@ -1,5 +1,12 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.sync.Trakt
+import io.github.sreepv43.streamhub.ui.components.flatTextFieldColors
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 
@@ -88,6 +95,14 @@ fun SettingsScreen() {
 
         SettingsSection("Playback") {
             PlaybackSettings()
+        }
+
+        SettingsSection("Import from Stremio") {
+            StremioImportSection()
+        }
+
+        SettingsSection("Trakt") {
+            TraktSection()
         }
 
         SettingsSection("Updates") {
@@ -200,6 +215,95 @@ private fun <T> ChoiceRow(label: String, options: List<Pair<T, String>>, selecte
     Text(label, style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         options.forEach { (value, name) -> FlatChip(name, selected = value == selected, onClick = { onSelect(value) }) }
+    }
+}
+
+@Composable
+private fun StremioImportSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var email by rememberSaveable { mutableStateOf("") }
+    var password by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    Text(
+        "Copy the addons, library (into My List) and titles in progress from your Stremio account. " +
+            "Your password is only sent to Stremio and isn't saved.",
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = email,
+            onValueChange = { email = it },
+            label = { Text("Stremio email") },
+            singleLine = true,
+            colors = flatTextFieldColors(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+            modifier = Modifier.width(320.dp).tvFocus(),
+        )
+        OutlinedTextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text("Password") },
+            singleLine = true,
+            colors = flatTextFieldColors(),
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            modifier = Modifier.width(260.dp).tvFocus(),
+        )
+        FlatButton(
+            text = if (busy) "Importing…" else "Import",
+            prominent = true,
+            enabled = !busy && email.isNotBlank() && password.isNotEmpty(),
+            onClick = {
+                busy = true
+                status = null
+                scope.launch {
+                    status = runCatching { context.container.stremioImport.run(email.trim(), password) }.fold(
+                        { "Imported ${it.addons} addons, ${it.library} titles into My List and ${it.inProgress} into Continue watching." },
+                        { "Import failed: ${it.message}" },
+                    )
+                    password = ""
+                    busy = false
+                }
+            },
+        )
+    }
+    status?.let { Text(it) }
+}
+
+@Composable
+private fun TraktSection() {
+    val trakt = LocalContext.current.container.trakt
+    val state by trakt.state.collectAsStateWithLifecycle()
+    when (val s = state) {
+        Trakt.State.NotConfigured -> Text(
+            "Trakt sync isn't included in this build: it needs a Trakt API app (TRAKT_CLIENT_ID and TRAKT_CLIENT_SECRET).",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Trakt.State.Disconnected -> {
+            Text(
+                "Mark what you finish watching on Trakt, and keep your Trakt watchlist in My List.",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlatButton(text = "Connect Trakt", prominent = true, onClick = trakt::startConnect)
+        }
+        is Trakt.State.WaitingForCode -> {
+            Text("On your phone or computer, open ${s.url} and enter this code:")
+            Text(s.code, style = MaterialTheme.typography.displaySmall, color = AppColors.accent)
+            Text("Waiting for Trakt…", color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        is Trakt.State.Connected -> {
+            Text(s.message ?: "Connected. Finished movies and episodes are marked as watched on Trakt.")
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                FlatButton(text = "Sync watchlist", onClick = trakt::startSync)
+                FlatButton(text = "Disconnect", onClick = trakt::disconnect)
+            }
+        }
+        is Trakt.State.Failed -> {
+            Text(s.message, color = MaterialTheme.colorScheme.error)
+            FlatButton(text = "Try again", onClick = trakt::startConnect)
+        }
     }
 }
 

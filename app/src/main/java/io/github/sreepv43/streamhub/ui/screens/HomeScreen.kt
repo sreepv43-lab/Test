@@ -1,6 +1,8 @@
 package io.github.sreepv43.streamhub.ui.screens
 
-import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.platform.LocalContext
+import io.github.sreepv43.streamhub.container
+androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -98,7 +100,12 @@ fun HomeScreen(
     }
     val listState = rememberLazyListState()
     val continueWatching = history.filterNot { it.isFinished }
-    val firstRowIndex = if (continueWatching.isNotEmpty()) 2 else 1
+    val myList by LocalContext.current.container.library.items.collectAsStateWithLifecycle()
+    // List positions: the title is item 0, then the optional rows, then the catalogs.
+    var nextIndex = 1
+    val continueIndex = if (continueWatching.isNotEmpty()) nextIndex++ else -1
+    val myListIndex = if (myList.isNotEmpty()) nextIndex++ else -1
+    val firstRowIndex = nextIndex
     // Rows position themselves (alignRowOnFocus): one row per Up/Down, always the same distance.
     CompositionLocalProvider(LocalBringIntoViewSpec provides TvScrolling.None) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp)) {
@@ -112,7 +119,7 @@ fun HomeScreen(
             }
             if (continueWatching.isNotEmpty()) {
                 item(key = "continue") {
-                    Column(Modifier.alignRowOnFocus(listState, 1, first = true).padding(vertical = 10.dp)) {
+                    Column(Modifier.alignRowOnFocus(listState, continueIndex, first = continueIndex == 1).padding(vertical = 10.dp)) {
                         Text(
                             "Continue watching",
                             style = MaterialTheme.typography.titleLarge,
@@ -128,6 +135,29 @@ fun HomeScreen(
                                         progress = entry.progress,
                                         onClick = { onOpenHistory(entry) },
                                         focusKey = entry.metaId,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (myList.isNotEmpty()) {
+                item(key = "my-list") {
+                    Column(Modifier.alignRowOnFocus(listState, myListIndex, first = myListIndex == 1).padding(vertical = 10.dp)) {
+                        Text(
+                            "My List",
+                            style = MaterialTheme.typography.titleLarge,
+                            modifier = Modifier.padding(horizontal = 24.dp),
+                        )
+                        CompositionLocalProvider(LocalFocusKeyScope provides "my-list") {
+                            PosterRow {
+                                items(myList, key = { it.id }) { item ->
+                                    PosterCard(
+                                        title = item.name,
+                                        image = item.poster,
+                                        onClick = { onOpenMeta(Meta(id = item.id, type = item.type, name = item.name, poster = item.poster)) },
+                                        focusKey = item.id,
                                     )
                                 }
                             }

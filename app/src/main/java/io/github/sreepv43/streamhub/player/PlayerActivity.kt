@@ -104,6 +104,7 @@ class PlayerActivity : ComponentActivity() {
     private var nextResolve: Job? = null
     private var nextCountdown: Job? = null
     private var skipIntroDismissed = false
+    private var markedWatched = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -589,6 +590,10 @@ class PlayerActivity : ComponentActivity() {
     private fun updateUpNextAndSkipIntro(exo: ExoPlayer) {
         val duration = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
         val position = exo.currentPosition
+        if (!markedWatched && position >= duration * WATCHED_FRACTION) {
+            markedWatched = true
+            request.type?.let { type -> (request.videoId ?: request.metaId)?.let { container.trakt.markWatched(type, it) } }
+        }
         if (!upNextShown && !upNextCancelled && nextEpisode != null && container.settings.autoplayNext.value &&
             duration > MIN_EPISODE_MS && duration - position <= UP_NEXT_BEFORE_END_MS
         ) {
@@ -735,6 +740,7 @@ class PlayerActivity : ComponentActivity() {
         private const val UP_NEXT_COUNTDOWN_S = 10
         private const val MIN_EPISODE_MS = 5 * 60_000L
         private const val NEXT_STREAMS_TIMEOUT_MS = 15_000L
+        private const val WATCHED_FRACTION = 0.9
 
         fun start(context: Context, request: PlayRequest) {
             context.startActivity(request.toIntent(context))

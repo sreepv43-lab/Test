@@ -41,6 +41,8 @@ jobs:
       - name: Build APKs
         env:
           STREAMHUB_KEYSTORE_PASSWORD: ${{ secrets.STREAMHUB_KEYSTORE_PASSWORD }}
+          TRAKT_CLIENT_ID: ${{ secrets.TRAKT_CLIENT_ID }}
+          TRAKT_CLIENT_SECRET: ${{ secrets.TRAKT_CLIENT_SECRET }}
         run: ./gradlew --no-daemon assembleDebug assembleRelease
 
       - uses: actions/upload-artifact@v4

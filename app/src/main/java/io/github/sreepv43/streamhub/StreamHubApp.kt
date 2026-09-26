@@ -12,6 +12,9 @@ import io.github.sreepv43.streamhub.addon.AddonClient
 import io.github.sreepv43.streamhub.addon.AddonRepository
 import io.github.sreepv43.streamhub.data.CrashReports
 import io.github.sreepv43.streamhub.data.IntroMemory
+import io.github.sreepv43.streamhub.data.Library
+import io.github.sreepv43.streamhub.sync.StremioImport
+import io.github.sreepv43.streamhub.sync.Trakt
 import io.github.sreepv43.streamhub.data.Settings
 import io.github.sreepv43.streamhub.update.Updater
 import io.github.sreepv43.streamhub.data.WatchHistory
@@ -72,6 +75,7 @@ class AppContainer(context: Context) {
     val settings = Settings(context)
     val history = WatchHistory(context)
     val introMemory = IntroMemory(context)
+    val library = Library(context)
     val storage = DownloadStorage(context)
     val downloads = DownloadRepository(context)
 
@@ -97,6 +101,8 @@ class AppContainer(context: Context) {
     val downloader = Downloader(context, torrentHttp, downloads, storage, ::playableUrl)
 
     val updater = Updater(context, mediaHttp)
+    val trakt = Trakt(context, http, library, addons)
+    val stremioImport = StremioImport(http, addons, library, history)
 
     private fun fetchBytes(context: Context, url: String): ByteArray {
         val uri = Uri.parse(url)

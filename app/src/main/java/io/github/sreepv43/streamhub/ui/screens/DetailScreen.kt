@@ -1,5 +1,8 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.data.LibraryItem
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Add
 import io.github.sreepv43.streamhub.container
 import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.background
@@ -129,6 +132,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
     val playback = LocalContext.current.container.settings
     val bestFirst by playback.streamsBestFirst.flow.collectAsState()
     val maxResolution by playback.maxResolution.flow.collectAsState()
+    val myList by context.container.library.items.collectAsState()
     val dialogs = rememberStreamDialogState()
     val history by rememberHistory()
     val watch = {
@@ -143,9 +147,21 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
         meta == null -> CenteredMessage(state.error ?: "Not found")
         else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
             item(key = "header") {
-                MetaHeader(meta, onTrailer = { ytId ->
-                    StreamActions.openUrl(context, "https://www.youtube.com/watch?v=$ytId")
-                })
+                MetaHeader(
+                    meta,
+                    onTrailer = { ytId -> StreamActions.openUrl(context, "https://www.youtube.com/watch?v=$ytId") },
+                    inList = myList.any { it.id == meta.id },
+                    onToggleList = {
+                        val container = context.container
+                        if (container.library.contains(meta.id)) {
+                            container.library.remove(meta.id)
+                            container.trakt.removeFromWatchlist(meta.type, meta.id)
+                        } else {
+                            container.library.add(LibraryItem(meta.id, meta.type, meta.name, meta.poster))
+                            container.trakt.addToWatchlist(meta.type, meta.id)
+                        }
+                    },
+                )
             }
             if (meta.isSeries) {
                 val seasons = meta.seasons
@@ -187,7 +203,13 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
  * Header: the backdrop fills the top of the screen and fades into the page, with the title over it.
  */
 @Composable
-fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: String? = null) {
+fun MetaHeader(
+    meta: Meta,
+    onTrailer: ((String) -> Unit)? = null,
+    subtitle: String? = null,
+    inList: Boolean = false,
+    onToggleList: (() -> Unit)? = null,
+) {
     val pageColor = AppColors.background
     val text = AppColors.text
     Box(Modifier.fillMaxWidth().heightIn(min = 360.dp)) {
@@ -257,13 +279,19 @@ fun MetaHeader(meta: Meta, onTrailer: ((String) -> Unit)? = null, subtitle: Stri
                 )
             }
             val trailer = meta.trailers.firstOrNull { it.type == null || it.type == "Trailer" }?.source
-            if (trailer != null && onTrailer != null) {
-                FlatButton(
-                    text = "Trailer",
-                    icon = Icons.Default.Movie,
-                    onClick = { onTrailer(trailer) },
-                    modifier = Modifier.padding(top = 16.dp),
-                )
+            if (onToggleList != null || (trailer != null && onTrailer != null)) {
+                Row(Modifier.padding(top = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    if (onToggleList != null) {
+                        FlatButton(
+                            text = if (inList) "In My List" else "My List",
+                            icon = if (inList) Icons.Default.Check else Icons.Default.Add,
+                            onClick = onToggleList,
+                        )
+                    }
+                    if (trailer != null && onTrailer != null) {
+                        FlatButton(text = "Trailer", icon = Icons.Default.Movie, onClick = { onTrailer(trailer) })
+                    }
+                }
             }
         }
     }
