@@ -78,9 +78,12 @@ class DownloadStorage(private val context: Context) {
         return trees + drives + appDirs
     }
 
-    /** Whether this app may write anywhere on shared storage, including USB drives (Android 11+). */
+    /**
+     * Whether this app may write anywhere on shared storage, including USB drives (Android 11+).
+     * Android throws here when the device has no primary shared storage at all.
+     */
     fun hasAllFilesAccess(): Boolean =
-        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && Environment.isExternalStorageManager()
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && runCatching { Environment.isExternalStorageManager() }.getOrDefault(false)
 
     /** Folders on connected drives the torrent engine may use as cache (when writable). */
     fun writableDriveFolders(child: String): List<File> =

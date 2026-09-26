@@ -447,7 +447,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
-        deleteIfWatched()
+        if (!isChangingConfigurations) deleteIfWatched()
         player?.release()
         player = null
     }
