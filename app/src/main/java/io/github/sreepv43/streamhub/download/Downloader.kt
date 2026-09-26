@@ -2,6 +2,11 @@ package io.github.sreepv43.streamhub.download
 
 import android.content.Context
 import android.content.Intent
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
+import android.net.NetworkRequest
+import io.github.sreepv43.streamhub.data.Settings
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
@@ -35,6 +40,7 @@ class Downloader(
     http: OkHttpClient,
     private val repository: DownloadRepository,
     private val storage: DownloadStorage,
+    private val settings: Settings,
     /** Maps stored URLs (e.g. logical torrent URLs) to the URL to fetch right now. */
     private val resolveUrl: (String) -> String = { it },
 ) {
@@ -52,6 +58,51 @@ class Downloader(
     val activeCount: StateFlow<Int> = _activeCount.asStateFlow()
 
     val items get() = repository.items
+
+    private val connectivity = context.getSystemService(ConnectivityManager::class.java)
+    private val _waitingForWifi = MutableStateFlow(false)
+    /** Downloads are queued but "Wi-Fi only" is on and the connection is metered (mobile data). */
+    val waitingForWifi: StateFlow<Boolean> = _waitingForWifi.asStateFlow()
+
+    init {
+        // Start (or hold) queued downloads when the connection or the "Wi-Fi only" setting changes.
+        runCatching {
+            connectivity?.registerNetworkCallback(
+                NetworkRequest.Builder().addCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET).build(),
+                object : ConnectivityManager.NetworkCallback() {
+                    override fun onAvailable(network: Network) = onNetworkChanged()
+                    override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) = onNetworkChanged()
+                    override fun onLost(network: Network) = onNetworkChanged()
+                },
+            )
+        }
+        scope.launch { settings.downloadsWifiOnly.flow.collect { onNetworkChanged() } }
+    }
+
+    private fun networkAllowed(): Boolean {
+        if (!settings.downloadsWifiOnly.value) return true
+        val cm = connectivity ?: return true
+        val capabilities = cm.getNetworkCapabilities(cm.activeNetwork) ?: return false
+        return capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED)
+    }
+
+    private fun onNetworkChanged() {
+        if (networkAllowed()) schedule() else holdRunning()
+    }
+
+    /** Stops running downloads without pausing them, so they continue on Wi-Fi. */
+    private fun holdRunning() {
+        val held = synchronized(jobs) {
+            jobs.values.forEach { it.cancel() }
+            jobs.keys.toList().also { jobs.clear() }
+        }
+        held.forEach { id ->
+            calls.remove(id)?.cancel()
+            repository.update(id) { it.copy(status = DownloadItem.Status.QUEUED) }
+        }
+        refreshActive()
+        _waitingForWifi.value = repository.items.value.any { it.status == DownloadItem.Status.QUEUED }
+    }
 
     fun enqueue(
         title: String,
@@ -106,6 +157,34 @@ class Downloader(
         schedule()
     }
 
+    /** Continues every paused or failed download. */
+    fun resumeAll() {
+        repository.items.value
+            .filter { it.status == DownloadItem.Status.PAUSED || it.status == DownloadItem.Status.FAILED }
+            .forEach { item -> repository.update(item.id) { it.copy(status = DownloadItem.Status.QUEUED, error = null) } }
+        schedule()
+    }
+
+    /** Starts a (failed) download again from the beginning in another place. */
+    fun moveTo(id: String, location: DownloadLocation) {
+        synchronized(jobs) { jobs.remove(id) }?.cancel()
+        calls.remove(id)?.cancel()
+        val old = repository.get(id) ?: return
+        old.fileUri?.let { runCatching { storage.delete(it) } }
+        repository.update(id) {
+            it.copy(
+                location = location,
+                fileUri = null,
+                downloadedBytes = 0,
+                totalBytes = -1,
+                status = DownloadItem.Status.QUEUED,
+                error = null,
+            )
+        }
+        refreshActive()
+        schedule()
+    }
+
     /** Pauses everything, e.g. when the system stops the foreground service. */
     fun pauseAll() {
         synchronized(jobs) {
@@ -129,6 +208,11 @@ class Downloader(
     }
 
     private fun schedule() {
+        if (!networkAllowed()) {
+            _waitingForWifi.value = repository.items.value.any { it.status == DownloadItem.Status.QUEUED }
+            return
+        }
+        _waitingForWifi.value = false
         val toStart = synchronized(jobs) {
             val free = MAX_PARALLEL - jobs.size
             if (free <= 0) return
@@ -237,12 +321,25 @@ class Downloader(
                     val buffer = ByteArray(BUFFER_SIZE)
                     var lastUiUpdate = 0L
                     var lastPersist = SystemClock.elapsedRealtime()
+                    var windowStart = lastPersist
+                    var windowBytes = 0L
                     while (true) {
                         coroutineContext.ensureActive()
                         val read = input.read(buffer)
                         if (read < 0) break
                         out.write(buffer, 0, read)
                         done += read
+                        // Speed limit (shared by the downloads running at the same time).
+                        val limit = settings.downloadSpeedLimitKb.value * 1024L / activeCount.value.coerceAtLeast(1)
+                        if (limit > 0) {
+                            windowBytes += read
+                            val ahead = windowBytes * 1000 / limit - (SystemClock.elapsedRealtime() - windowStart)
+                            if (ahead > 0) delay(ahead)
+                            if (SystemClock.elapsedRealtime() - windowStart > 2_000) {
+                                windowStart = SystemClock.elapsedRealtime()
+                                windowBytes = 0
+                            }
+                        }
                         val now = SystemClock.elapsedRealtime()
                         if (now - lastUiUpdate > 500) {
                             val persist = now - lastPersist > 10_000

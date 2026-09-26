@@ -86,6 +86,7 @@ class AppContainer(context: Context) {
                 .map { File(it, "torrent-cache") } + storage.writableDriveFolders(".torrent-cache")
         },
         fetchTorrentFile = { url -> fetchBytes(context, url) },
+        cacheLimitBytes = { settings.torrentCacheLimitGb.value * (1L shl 30) },
     )
     val torrentServer = TorrentHttpServer(torrents)
 
@@ -98,7 +99,7 @@ class AppContainer(context: Context) {
     fun playableUrl(url: String): String =
         TorrentLinks.parseLogicalUrl(url)?.let { (source, file) -> torrentServer.urlFor(source, file) } ?: url
 
-    val downloader = Downloader(context, torrentHttp, downloads, storage, ::playableUrl)
+    val downloader = Downloader(context, torrentHttp, downloads, storage, settings, ::playableUrl)
 
     val updater = Updater(context, mediaHttp)
     val trakt = Trakt(context, http, library, addons)

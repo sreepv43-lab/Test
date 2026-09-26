@@ -123,6 +123,23 @@ fun SettingsScreen() {
             }
         }
 
+        SettingsSection("Downloads") {
+            val wifiOnly by settings.downloadsWifiOnly.flow.collectAsStateWithLifecycle()
+            val speedLimit by settings.downloadSpeedLimitKb.flow.collectAsStateWithLifecycle()
+            val deleteAfter by settings.deleteAfterWatching.flow.collectAsStateWithLifecycle()
+            ChoiceRow("Download only on Wi-Fi or Ethernet", listOf(false to "Any connection", true to "Wi-Fi only"), wifiOnly) {
+                settings.downloadsWifiOnly.set(it)
+            }
+            ChoiceRow(
+                "Speed limit",
+                listOf(0 to "No limit", 1024 to "1 MB/s", 2048 to "2 MB/s", 5120 to "5 MB/s", 10240 to "10 MB/s"),
+                speedLimit,
+            ) { settings.downloadSpeedLimitKb.set(it) }
+            ChoiceRow("Delete a download after watching it", listOf(false to "Keep", true to "Delete"), deleteAfter) {
+                settings.deleteAfterWatching.set(it)
+            }
+        }
+
         SettingsSection("Torrents") {
             Text(
                 "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
@@ -131,6 +148,15 @@ fun SettingsScreen() {
                     "a few minutes after you stop watching.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            val cacheLimit by settings.torrentCacheLimitGb.flow.collectAsStateWithLifecycle()
+            ChoiceRow(
+                "Cache limit (torrents you aren't watching are removed when it's exceeded)",
+                listOf(2 to "2 GB", 5 to "5 GB", 10 to "10 GB", 20 to "20 GB", 0 to "No limit"),
+                cacheLimit,
+            ) {
+                settings.torrentCacheLimitGb.set(it)
+                scope.launch(Dispatchers.IO) { container.torrents.trimCache() }
+            }
             LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))

@@ -48,6 +48,8 @@ class TorrentEngine(
     /** Downloads the bytes of a .torrent file from an http(s)/content/file URL. */
     private val fetchTorrentFile: (String) -> ByteArray,
     private val idleTimeoutMs: Long = 5 * 60_000L,
+    /** Cache size above which torrents nobody is watching are removed at once (0 = no limit). */
+    private val cacheLimitBytes: () -> Long = { 0L },
     /** Extra listen settings, e.g. for tests. */
     private val configure: (SettingsPack) -> Unit = {},
 ) {
@@ -58,6 +60,10 @@ class TorrentEngine(
     private val sourcesToHash = HashMap<String, String>()
     private val janitor = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "torrent-janitor").apply { isDaemon = true }
+    }
+
+    init {
+        janitor.scheduleWithFixedDelay({ runCatching { trimCache() } }, 1, 1, TimeUnit.MINUTES)
     }
 
     internal class Entry(val hash: String, val handle: TorrentHandle, val saveDir: File) {
@@ -235,6 +241,21 @@ class TorrentEngine(
     }
 
     fun cacheSizeBytes(): Long = cacheDirs().sumOf { dir -> dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() } }
+
+    /** Over the cache limit: removes torrents nobody is reading, least recently used first. */
+    fun trimCache() {
+        val limit = cacheLimitBytes()
+        if (limit <= 0) return
+        var size = cacheSizeBytes()
+        if (size <= limit) return
+        val idle = synchronized(lock) { torrents.values.filter { it.refs == 0 }.sortedBy { it.lastReleased } }
+        for (entry in idle) {
+            if (size <= limit) break
+            val bytes = entry.saveDir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+            synchronized(lock) { if (entry.refs == 0) removeLocked(entry) }
+            size -= bytes
+        }
+    }
 
     private fun acquire(source: String): Entry {
         val known = synchronized(lock) {

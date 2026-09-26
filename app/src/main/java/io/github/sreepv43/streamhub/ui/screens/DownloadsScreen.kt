@@ -1,5 +1,10 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.filled.DriveFileMove
+import io.github.sreepv43.streamhub.ui.components.StorageChooser
+import io.github.sreepv43.streamhub.ui.components.FlatButton
 import io.github.sreepv43.streamhub.ui.AppColors
 import android.text.format.Formatter
 import androidx.compose.foundation.background
@@ -56,10 +61,33 @@ fun DownloadsScreen() {
     val context = LocalContext.current
     val downloader = context.container.downloader
     val items by downloader.items.collectAsStateWithLifecycle()
+    val waitingForWifi by downloader.waitingForWifi.collectAsStateWithLifecycle()
     var toDelete by remember { mutableStateOf<DownloadItem?>(null) }
+    var toMove by remember { mutableStateOf<DownloadItem?>(null) }
 
     Column(Modifier.fillMaxSize()) {
-        Text("Downloads", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.padding(24.dp))
+        Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
+            Text("Downloads", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            val active = items.any { it.status == DownloadItem.Status.RUNNING || it.status == DownloadItem.Status.QUEUED }
+            val stopped = items.any { it.status == DownloadItem.Status.PAUSED || it.status == DownloadItem.Status.FAILED }
+            if (active) FlatButton(text = "Pause all", icon = Icons.Default.Pause, onClick = downloader::pauseAll, compact = true)
+            if (stopped) {
+                FlatButton(
+                    text = "Resume all",
+                    icon = Icons.Default.PlayArrow,
+                    onClick = downloader::resumeAll,
+                    compact = true,
+                    modifier = Modifier.padding(start = 12.dp),
+                )
+            }
+        }
+        if (waitingForWifi) {
+            Text(
+                "Waiting for Wi-Fi: downloads are set to use Wi-Fi only (Settings → Downloads).",
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(horizontal = 24.dp),
+            )
+        }
         if (items.isEmpty()) {
             CenteredMessage("Nothing downloaded yet. Use the download button next to a stream.")
         } else {
@@ -88,11 +116,42 @@ fun DownloadsScreen() {
                         },
                         onPause = { downloader.pause(item.id) },
                         onResume = { downloader.resume(item.id) },
+                        onMove = { toMove = item },
                         onDelete = { toDelete = item },
                     )
                 }
             }
         }
+    }
+
+    toMove?.let { item ->
+        var selected by remember(item.id) { mutableStateOf(item.location) }
+        AlertDialog(
+            containerColor = AppColors.panel,
+            shape = DialogShape,
+            onDismissRequest = { toMove = null },
+            title = { Text("Download to another place") },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        "The download starts again from the beginning in the place you pick.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(bottom = 12.dp),
+                    )
+                    StorageChooser(selected = selected, onSelect = { selected = it })
+                }
+            },
+            confirmButton = {
+                TextButton(modifier = Modifier.tvFocus(), onClick = {
+                    downloader.moveTo(item.id, selected)
+                    context.container.settings.setDownloadLocation(selected)
+                    toMove = null
+                }) { Text("Download here") }
+            },
+            dismissButton = {
+                TextButton(modifier = Modifier.tvFocus(), onClick = { toMove = null }) { Text("Cancel") }
+            },
+        )
     }
 
     toDelete?.let { item ->
@@ -124,6 +183,7 @@ private fun DownloadRow(
     onPlay: () -> Unit,
     onPause: () -> Unit,
     onResume: () -> Unit,
+    onMove: () -> Unit,
     onDelete: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -181,6 +241,9 @@ private fun DownloadRow(
             DownloadItem.Status.COMPLETED -> FlatIconButton(Icons.Default.PlayArrow, "Play", onPlay, Modifier.padding(start = 8.dp))
             DownloadItem.Status.RUNNING, DownloadItem.Status.QUEUED -> FlatIconButton(Icons.Default.Pause, "Pause", onPause, Modifier.padding(start = 8.dp))
             DownloadItem.Status.PAUSED, DownloadItem.Status.FAILED -> FlatIconButton(Icons.Default.Refresh, "Resume", onResume, Modifier.padding(start = 8.dp))
+        }
+        if (item.status == DownloadItem.Status.FAILED || item.status == DownloadItem.Status.PAUSED) {
+            FlatIconButton(Icons.Default.DriveFileMove, "Change location", onMove, Modifier.padding(start = 8.dp))
         }
         FlatIconButton(Icons.Default.Delete, "Delete", onDelete, Modifier.padding(start = 8.dp))
     }

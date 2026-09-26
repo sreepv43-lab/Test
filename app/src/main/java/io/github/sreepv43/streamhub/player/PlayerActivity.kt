@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.player
 
+import io.github.sreepv43.streamhub.download.DownloadItem
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
@@ -105,6 +106,7 @@ class PlayerActivity : ComponentActivity() {
     private var nextCountdown: Job? = null
     private var skipIntroDismissed = false
     private var markedWatched = false
+    private var deletedAfterWatching = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -220,6 +222,7 @@ class PlayerActivity : ComponentActivity() {
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) {
                     saveProgress()
+                    deleteIfWatched()
                     if (upNextShown && !upNextCancelled) playNext() else finish()
                 }
             }
@@ -444,6 +447,7 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onDestroy() {
         super.onDestroy()
+        deleteIfWatched()
         player?.release()
         player = null
     }
@@ -701,6 +705,20 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun toast(message: String) = Toast.makeText(this, message, Toast.LENGTH_LONG).show()
+
+    /** "Delete downloads after watching": removes the downloaded file once it has been watched. */
+    private fun deleteIfWatched() {
+        if (deletedAfterWatching || !container.settings.deleteAfterWatching.value) return
+        val exo = player ?: return
+        val duration = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: return
+        if (exo.playbackState != Player.STATE_ENDED && exo.currentPosition < duration * WATCHED_FRACTION) return
+        val item = container.downloads.items.value.firstOrNull {
+            it.fileUri == request.url && it.status == DownloadItem.Status.COMPLETED
+        } ?: return
+        deletedAfterWatching = true
+        container.downloader.remove(item.id, deleteFile = true)
+        toast("Deleted the download of ${item.title} after watching")
+    }
 
     private fun formatTime(ms: Long): String {
         val total = ms / 1000
