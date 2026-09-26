@@ -110,6 +110,9 @@ dependencies {
     implementation("androidx.media3:media3-exoplayer-dash:$media3")
     implementation("androidx.media3:media3-datasource-okhttp:$media3")
     implementation("androidx.media3:media3-ui:$media3")
+    // Software decoding of audio the device can't decode itself (DTS, TrueHD, ...): Media3's FFmpeg
+    // extension, built and published by Jellyfin (Google doesn't publish it).
+    implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
 
     val libtorrent = "2.1.0-39"
     implementation("org.libtorrent4j:libtorrent4j:$libtorrent")

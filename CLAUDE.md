@@ -21,7 +21,7 @@ This file provides guidance for AI assistants (Claude and others) working in thi
     │   ├── addon/      # Stremio protocol (pure Kotlin + AddonRepository), StreamRanking, Episodes, AddonCatalog
     │   ├── data/       # Settings, WatchHistory, Library (My List), IntroMemory, CrashReports (SharedPreferences/files)
     │   ├── download/   # Downloader, DownloadService, DownloadStorage (SAF + volumes)
-    │   ├── player/     # PlayerActivity (Media3: up next, skip intro, subtitle options), SubtitleShift
+    │   ├── player/     # PlayerActivity (Media3: up next, skip intro, subtitle options), SubtitleShift, AudioOutput (passthrough, FFmpeg audio)
     │   ├── sync/       # StremioImport (one-time account copy), Trakt (device login + sync), SyncIds
     │   ├── torrent/    # TorrentEngine (libtorrent4j), TorrentHttpServer (local HTTP), TorrentLinks
     │   ├── update/     # UpdateCheck (pure) + Updater (GitHub releases -> APK install)

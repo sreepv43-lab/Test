@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.addon.Stream
 import io.github.sreepv43.streamhub.data.LibraryItem
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
@@ -86,14 +87,18 @@ val Meta.seasons: List<Int> get() = videos.mapNotNull { it.season }.distinct().s
  * Loads metadata for a title and its streams: the movie's streams on the detail screen, or one
  * episode's streams when a `videoId` argument is present (Streams screen).
  */
-class MetaViewModel(repository: AddonRepository, handle: SavedStateHandle) : ViewModel() {
+class MetaViewModel(
+    repository: AddonRepository,
+    handle: SavedStateHandle,
+    prepareStreams: (List<Stream>) -> Unit = {},
+) : ViewModel() {
     val type: String = checkNotNull(handle["type"])
     val metaId: String = handle.get<String>("id") ?: checkNotNull(handle["metaId"])
     val videoId: String? = handle["videoId"]
 
     private val _state = MutableStateFlow(DetailState())
     val state: StateFlow<DetailState> = _state.asStateFlow()
-    val streams = StreamsLoader(repository, this)
+    val streams = StreamsLoader(repository, this, prepareStreams)
 
     init {
         viewModelScope.launch {
@@ -125,7 +130,7 @@ class MetaViewModel(repository: AddonRepository, handle: SavedStateHandle) : Vie
 
 @Composable
 fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) -> Unit) {
-    val vm = appViewModel { c, handle -> MetaViewModel(c.addons, handle) }
+    val vm = appViewModel { c, handle -> MetaViewModel(c.addons, handle, c::prepareTorrents) }
     val state by vm.state.collectAsStateWithLifecycle()
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
     val context = LocalContext.current

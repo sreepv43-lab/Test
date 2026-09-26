@@ -62,8 +62,15 @@ data class StreamsState(
     val noAddons: Boolean = false,
 )
 
-/** Queries every addon that can serve streams for a video, showing results as each one answers. */
-class StreamsLoader(private val repository: AddonRepository, private val viewModel: ViewModel) {
+/**
+ * Queries every addon that can serve streams for a video, showing results as each one answers.
+ * [prepare] gets all streams found so far after each answer (to get torrents ready early).
+ */
+class StreamsLoader(
+    private val repository: AddonRepository,
+    private val viewModel: ViewModel,
+    private val prepare: (List<Stream>) -> Unit = {},
+) {
     private val _state = MutableStateFlow(StreamsState())
     val state: StateFlow<StreamsState> = _state.asStateFlow()
     private var jobs = emptyList<Job>()
@@ -84,6 +91,7 @@ class StreamsLoader(private val repository: AddonRepository, private val viewMod
                     }
                     current.copy(results = ordered, pending = current.pending - 1)
                 }
+                prepare(_state.value.results.flatMap { it.streams })
             }
         }
     }

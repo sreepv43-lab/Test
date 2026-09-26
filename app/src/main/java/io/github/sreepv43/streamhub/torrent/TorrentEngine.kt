@@ -61,6 +61,10 @@ class TorrentEngine(
     private val janitor = Executors.newSingleThreadScheduledExecutor { r ->
         Thread(r, "torrent-janitor").apply { isDaemon = true }
     }
+    private val prefetching = HashSet<String>()
+    private val prefetcher = Executors.newFixedThreadPool(3) { r ->
+        Thread(r, "torrent-prefetch").apply { isDaemon = true }
+    }
 
     init {
         janitor.scheduleWithFixedDelay({ runCatching { trimCache() } }, 1, 1, TimeUnit.MINUTES)
@@ -70,6 +74,8 @@ class TorrentEngine(
         var refs = 0
         var lastReleased = System.currentTimeMillis()
         val openFiles = HashSet<Int>()
+        /** Piece priorities were limited by a prefetch; open() lifts the limit. */
+        var limitedPieces = false
     }
 
     /** One file inside a torrent, opened for reading. Call [close] when done. */
@@ -169,6 +175,14 @@ class TorrentEngine(
                         if (i in entry.openFiles) Priority.DEFAULT else Priority.IGNORE
                     }
                     entry.handle.prioritizeFiles(priorities)
+                    if (entry.limitedPieces) {
+                        entry.limitedPieces = false
+                        val pieces = entry.handle.piecePriorities()
+                        for (i in entry.openFiles) {
+                            (files.pieceIndexAtFile(i)..files.lastPieceIndexAtFile(i)).forEach { pieces[it] = Priority.DEFAULT }
+                        }
+                        entry.handle.prioritizePieces(pieces)
+                    }
                     entry.handle.setFlags(TorrentFlags.SEQUENTIAL_DOWNLOAD)
                     // Containers keep their index at the end (MP4 moov, MKV cues): fetch it early.
                     val last = files.lastPieceIndexAtFile(index)
@@ -188,6 +202,59 @@ class TorrentEngine(
         } catch (e: Throwable) {
             release(entry)
             throw e
+        }
+    }
+
+    /**
+     * Starts fetching a torrent before it is played, so playing it starts sooner: its details
+     * (file list), and with [warmStart] also the first few MB and the index at the end of the file
+     * that would be played. Nothing else is downloaded; if it isn't played, it is removed like any
+     * unused torrent.
+     */
+    fun prefetch(source: String, fileIdx: Int = -1, warmStart: Boolean = false) {
+        synchronized(lock) {
+            if (source in prefetching || sourcesToHash[source]?.let { torrents[it] } != null) return
+            prefetching += source
+        }
+        prefetcher.execute {
+            var entry: Entry? = null
+            try {
+                val acquired = acquire(source).also { entry = it }
+                val info = awaitMetadata(acquired, PREFETCH_METADATA_TIMEOUT_MS)
+                val files = info.files()
+                val index = if (fileIdx in 0 until files.numFiles() && !files.padFileAt(fileIdx)) fileIdx else pickFile(info)
+                // The file stays wanted (libtorrent keeps pieces of unwanted files in a separate part
+                // file, where the player can't read them); only its pieces are limited.
+                val wanted = Array(files.numFiles()) { if (warmStart && it == index) Priority.DEFAULT else Priority.IGNORE }
+                synchronized(lock) {
+                    // Once someone reads the torrent, open() has set its own priorities.
+                    if (acquired.openFiles.isNotEmpty() || !acquired.handle.isValid) return@execute
+                    acquired.handle.prioritizeFiles(wanted)
+                }
+                if (!warmStart) return@execute
+                // File priorities are applied later (on libtorrent's disk thread) and then reset the
+                // piece priorities, so wait for them first.
+                val until = System.currentTimeMillis() + 5_000
+                while (!acquired.handle.filePriorities().contentEquals(wanted) && System.currentTimeMillis() < until) {
+                    Thread.sleep(20)
+                }
+                synchronized(lock) {
+                    if (acquired.openFiles.isNotEmpty() || !acquired.handle.isValid) return@execute
+                    val first = files.pieceIndexAtFile(index)
+                    val last = files.lastPieceIndexAtFile(index)
+                    val count = maxOf(MIN_READAHEAD_PIECES, (PREFETCH_BYTES / info.pieceLength()).toInt())
+                    val pieces = Array(info.numPieces()) { Priority.IGNORE }
+                    (first..minOf(last, first + count - 1)).forEach { pieces[it] = Priority.DEFAULT }
+                    pieces[last] = Priority.DEFAULT
+                    acquired.handle.prioritizePieces(pieces)
+                    acquired.limitedPieces = true
+                }
+            } catch (e: Exception) {
+                log.log(Level.FINE, "prefetch failed for $source", e)
+            } finally {
+                entry?.let(::release)
+                synchronized(lock) { prefetching -= source }
+            }
         }
     }
 
@@ -388,6 +455,8 @@ class TorrentEngine(
     companion object {
         private const val READAHEAD_BYTES = 24L * 1024 * 1024
         private const val MIN_READAHEAD_PIECES = 4
+        private const val PREFETCH_BYTES = 8L * 1024 * 1024
+        private const val PREFETCH_METADATA_TIMEOUT_MS = 90_000L
 
         val VIDEO_EXTENSIONS = setOf("mkv", "mp4", "avi", "webm", "mov", "m4v", "ts", "wmv", "flv", "mpg", "mpeg", "m2ts")
 

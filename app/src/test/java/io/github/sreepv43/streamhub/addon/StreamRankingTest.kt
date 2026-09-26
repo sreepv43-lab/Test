@@ -32,13 +32,23 @@ class StreamRankingTest {
     }
 
     @Test
-    fun prefersTheTvsResolutionThenSeeders() {
+    fun prefersTheTvsResolutionAndPutsBarelySeededTorrentsLast() {
         val few = torrent("1080p", "👤 3 💾 2 GB")
         val many = torrent("1080p", "👤 300 💾 4 GB")
         val uhd = torrent("4K", "👤 500 💾 20 GB")
         val low = torrent("720p", "👤 900 💾 1 GB")
         val ranked = StreamRanking.rank(listOf(uhd, few, low, many), maxResolution = 1080)
-        assertEquals(listOf(many, few, low, uhd), ranked)
+        assertEquals(listOf(many, low, uhd, few), ranked)
+    }
+
+    @Test
+    fun wellSeededLighterFilesStartFirst() {
+        val remux = torrent("1080p", "Movie.1080p.BluRay.REMUX 👤 900 💾 38 GB")
+        val light = torrent("1080p", "Movie.1080p.WEB 👤 150 💾 2.1 GB")
+        val heavierSameSeeds = torrent("1080p", "Movie.1080p.BluRay 👤 400 💾 6 GB")
+        val unknownSeeds = torrent("1080p", "Movie.1080p.WEB 💾 1.8 GB")
+        val ranked = StreamRanking.rank(listOf(remux, unknownSeeds, heavierSameSeeds, light))
+        assertEquals(listOf(light, heavierSameSeeds, unknownSeeds, remux), ranked)
     }
 
     @Test

@@ -35,7 +35,11 @@ import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
-import androidx.media3.exoplayer.DefaultRenderersFactory
+import androidx.media3.common.Format
+import androidx.media3.exoplayer.DecoderReuseEvaluation
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.analytics.AnalyticsListener
+import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.PlayerView
@@ -97,6 +101,9 @@ class PlayerActivity : ComponentActivity() {
     // Up next / skip intro
     private lateinit var upNextView: TextView
     private lateinit var skipIntroView: TextView
+    private lateinit var audioInfoView: TextView
+    private var audioInfo: String? = null
+    private var hideAudioInfo: Job? = null
     private var nextEpisode: Video? = null
     private var upNextShown = false
     private var upNextCancelled = false
@@ -125,6 +132,12 @@ class PlayerActivity : ComponentActivity() {
             setShowNextButton(false)
             setShowPreviousButton(false)
             controllerAutoShow = true
+            // The audio line is shown with the player controls (and briefly when the audio starts).
+            setControllerVisibilityListener(
+                PlayerView.ControllerVisibilityListener { visibility ->
+                    if (visibility == View.VISIBLE) showAudioInfo(null) else if (hideAudioInfo == null) audioInfoView.visibility = View.GONE
+                },
+            )
         }
         statusView = TextView(this).apply {
             setTextColor(Color.WHITE)
@@ -136,6 +149,7 @@ class PlayerActivity : ComponentActivity() {
         loadingView = buildLoadingView()
         upNextView = overlayLabel()
         skipIntroView = overlayLabel().apply { text = "Skip intro   ▸ OK" }
+        audioInfoView = overlayLabel().apply { textSize = 15f }
         val root = FrameLayout(this).apply {
             addView(playerView)
             val corner = FrameLayout.LayoutParams(
@@ -144,6 +158,14 @@ class PlayerActivity : ComponentActivity() {
                 Gravity.BOTTOM or Gravity.END,
             ).apply { setMargins(64, 64, 64, 160) }
             addView(upNextView, corner)
+            addView(
+                audioInfoView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.TOP or Gravity.END,
+                ).apply { setMargins(48, 48, 48, 48) },
+            )
             addView(skipIntroView, FrameLayout.LayoutParams(corner))
             addView(
                 statusView,
@@ -179,14 +201,51 @@ class PlayerActivity : ComponentActivity() {
         val httpFactory = OkHttpDataSource.Factory(if (torrent != null) container.torrentHttp else container.mediaHttp)
             .setDefaultRequestProperties(request.headers)
         val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
-        val renderers = DefaultRenderersFactory(this)
-            .setExtensionRendererMode(DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON)
-            .setEnableDecoderFallback(true)
+        val settings = container.settings
+        // Get the torrent going while subtitles are looked up.
+        if (torrent != null) container.torrents.prefetch(torrent.first, torrent.second, warmStart = true)
+        val passthrough = settings.surroundPassthrough.value
+        val renderers = AudioOutput.renderersFactory(this, passthrough)
+        val startBuffer = settings.startBufferMs.value
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                DefaultLoadControl.DEFAULT_MIN_BUFFER_MS,
+                DefaultLoadControl.DEFAULT_MAX_BUFFER_MS,
+                startBuffer,
+                maxOf(startBuffer * 2, MIN_REBUFFER_MS),
+            )
+            .build()
 
         val exo = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setLoadControl(loadControl)
             .build()
-        val settings = container.settings
+        exo.addAnalyticsListener(object : AnalyticsListener {
+            private var input: Format? = null
+            private var decoder: String? = null
+
+            override fun onAudioInputFormatChanged(
+                eventTime: AnalyticsListener.EventTime,
+                format: Format,
+                decoderReuseEvaluation: DecoderReuseEvaluation?,
+            ) {
+                input = format
+                decoder = null
+            }
+
+            override fun onAudioDecoderInitialized(
+                eventTime: AnalyticsListener.EventTime,
+                decoderName: String,
+                initializedTimestampMs: Long,
+                initializationDurationMs: Long,
+            ) {
+                decoder = decoderName
+            }
+
+            override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
+                AudioOutput.describe(input, decoder, audioTrackConfig, forced = passthrough != "auto")?.let(::showAudioInfo)
+            }
+        })
         exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
             .setPreferredAudioLanguage(settings.audioLanguage.value.ifEmpty { null })
             .setPreferredTextLanguage(settings.subtitleLanguage.value.ifEmpty { null })
@@ -720,6 +779,23 @@ class PlayerActivity : ComponentActivity() {
         toast("Deleted the download of ${item.title} after watching")
     }
 
+    /** Shows [info] (or the last one) in the top corner; a new audio format is shown for a few seconds. */
+    private fun showAudioInfo(info: String?) {
+        if (info != null) audioInfo = info
+        val text = audioInfo ?: return
+        audioInfoView.text = text
+        audioInfoView.visibility = View.VISIBLE
+        hideAudioInfo?.cancel()
+        hideAudioInfo = null
+        if (info != null) {
+            hideAudioInfo = lifecycleScope.launch {
+                delay(AUDIO_INFO_MS)
+                hideAudioInfo = null
+                if (!playerView.isControllerFullyVisible) audioInfoView.visibility = View.GONE
+            }
+        }
+    }
+
     private fun formatTime(ms: Long): String {
         val total = ms / 1000
         val h = total / 3600
@@ -750,7 +826,9 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         private const val STATE_POSITION = "position"
         private const val MAX_SUBTITLES = 40
-        private const val SUBTITLE_TIMEOUT_MS = 4_000L
+        private const val SUBTITLE_TIMEOUT_MS = 2_500L
+        private const val MIN_REBUFFER_MS = 2_000
+        private const val AUDIO_INFO_MS = 8_000L
         private const val PROGRESS_SAVE_INTERVAL_MS = 10_000L
         private const val RESUME_MIN_MS = 30_000L
         private const val SUBTITLE_STEP_MS = 500L

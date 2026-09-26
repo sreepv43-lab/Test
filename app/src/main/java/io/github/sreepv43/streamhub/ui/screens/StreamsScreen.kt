@@ -24,7 +24,7 @@ import io.github.sreepv43.streamhub.ui.components.streamItems
 /** Streams for one episode of a series (or any specific video id). */
 @Composable
 fun StreamsScreen() {
-    val vm = appViewModel { c, handle -> MetaViewModel(c.addons, handle) }
+    val vm = appViewModel { c, handle -> MetaViewModel(c.addons, handle, c::prepareTorrents) }
     val state by vm.state.collectAsStateWithLifecycle()
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
     val playback = LocalContext.current.container.settings

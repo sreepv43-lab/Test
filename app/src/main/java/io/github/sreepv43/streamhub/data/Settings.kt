@@ -73,6 +73,12 @@ class Settings(context: Context) {
     val introSkipSeconds = int("intro_skip_seconds", 85)
     /** Stream lists: one list best first, instead of grouped by addon. */
     val streamsBestFirst = bool("streams_best_first", false)
+    /** How much video is buffered before playback starts (less = starts sooner, may pause more). */
+    val startBufferMs = int("start_buffer_ms", 1_000)
+    /** Start fetching the best torrents' details as soon as a stream list opens. */
+    val prepareTorrents = bool("prepare_torrents", true)
+    /** "auto" (what Android reports), "arc" or "earc": send surround audio undecoded to the receiver. */
+    val surroundPassthrough = string("surround_passthrough", "auto")
 
     // Downloads
     val downloadsWifiOnly = bool("downloads_wifi_only", false)

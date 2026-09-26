@@ -10,6 +10,10 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import io.github.sreepv43.streamhub.addon.AddonClient
 import io.github.sreepv43.streamhub.addon.AddonRepository
+import io.github.sreepv43.streamhub.addon.PlaybackTarget
+import io.github.sreepv43.streamhub.addon.Stream
+import io.github.sreepv43.streamhub.addon.StreamRanking
+import io.github.sreepv43.streamhub.addon.StreamResolver
 import io.github.sreepv43.streamhub.data.CrashReports
 import io.github.sreepv43.streamhub.data.IntroMemory
 import io.github.sreepv43.streamhub.data.Library
@@ -99,11 +103,27 @@ class AppContainer(context: Context) {
     fun playableUrl(url: String): String =
         TorrentLinks.parseLogicalUrl(url)?.let { (source, file) -> torrentServer.urlFor(source, file) } ?: url
 
+    /**
+     * Starts fetching the torrents among the streams "Play best" would pick first, so playing one
+     * starts sooner (the very first one also gets its opening minutes). Settings: prepare torrents.
+     */
+    fun prepareTorrents(streams: List<Stream>) {
+        if (!settings.prepareTorrents.value) return
+        StreamRanking.rank(streams, settings.maxResolution.value).take(PREPARED_STREAMS).forEachIndexed { i, stream ->
+            val target = StreamResolver.resolve(stream) as? PlaybackTarget.Torrent ?: return@forEachIndexed
+            torrents.prefetch(target.source, target.fileIdx, warmStart = i == 0)
+        }
+    }
+
     val downloader = Downloader(context, torrentHttp, downloads, storage, settings, ::playableUrl)
 
     val updater = Updater(context, mediaHttp)
     val trakt = Trakt(context, http, library, addons)
     val stremioImport = StremioImport(http, addons, library, history)
+
+    private companion object {
+        const val PREPARED_STREAMS = 3
+    }
 
     private fun fetchBytes(context: Context, url: String): ByteArray {
         val uri = Uri.parse(url)

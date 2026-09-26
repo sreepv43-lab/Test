@@ -21,29 +21,36 @@ object StreamRanking {
     }
 
     /**
-     * Best first: streams the app can play itself, then by picture quality up to [maxResolution]
-     * (sharper than the TV can show only costs bandwidth), direct links before torrents, more
-     * seeders, then smaller files of the same quality (they start and seek faster).
+     * Best first: streams the app can play itself, then torrents with too few seeders last (they
+     * are slow to start), then picture quality up to [maxResolution] (sharper than the TV can show
+     * only costs bandwidth), direct links before torrents, very large files (remuxes) after lighter
+     * ones, better-seeded torrents, then smaller files (they start and seek faster).
      */
     fun rank(streams: List<Stream>, maxResolution: Int = 1080): List<Stream> {
         val scored = streams.map { stream ->
             val target = StreamResolver.resolve(stream)
             val info = info(stream)
+            val torrent = target is PlaybackTarget.Torrent
             Scored(
                 stream = stream,
                 playable = target != null && target !is PlaybackTarget.External,
                 direct = target is PlaybackTarget.Direct,
                 quality = qualityScore(info, maxResolution),
-                seeders = info.seeders ?: if (target is PlaybackTarget.Torrent) 0 else Int.MAX_VALUE,
+                seedLevel = if (torrent) seedLevel(info.seeders) else DIRECT_SEED_LEVEL,
+                heavy = info.sizeBytes != null && info.sizeBytes > heavyAbove(info.resolution),
+                seeders = info.seeders ?: if (torrent) 0 else Int.MAX_VALUE,
                 size = info.sizeBytes ?: Long.MAX_VALUE,
             )
         }
         return scored.sortedWith(
             compareByDescending<Scored> { it.playable }
+                .thenByDescending { it.seedLevel > WEAK_SEED_LEVEL }
                 .thenByDescending { it.quality }
                 .thenByDescending { it.direct }
-                .thenByDescending { it.seeders }
-                .thenBy { it.size },
+                .thenBy { it.heavy }
+                .thenByDescending { it.seedLevel }
+                .thenBy { it.size }
+                .thenByDescending { it.seeders },
         ).map { it.stream }
     }
 
@@ -64,9 +71,29 @@ object StreamRanking {
         val playable: Boolean,
         val direct: Boolean,
         val quality: Int,
+        val seedLevel: Int,
+        val heavy: Boolean,
         val seeders: Int,
         val size: Long,
     )
+
+    /** 0 = too few seeders to stream well; unknown counts as average (many addons don't say). */
+    private fun seedLevel(seeders: Int?): Int = when {
+        seeders == null -> 1
+        seeders < MIN_SEEDERS -> WEAK_SEED_LEVEL
+        seeders < 20 -> 1
+        seeders < 100 -> 2
+        else -> 3
+    }
+
+    /** File sizes above which a stream is a heavy remux-like file for its resolution. */
+    private fun heavyAbove(resolution: Int?): Long = when {
+        resolution == null -> 15L shl 30
+        resolution >= 2160 -> 30L shl 30
+        resolution >= 1080 -> 10L shl 30
+        resolution >= 720 -> 4L shl 30
+        else -> 2L shl 30
+    }
 
     private fun qualityScore(info: StreamInfo, maxResolution: Int): Int {
         if (info.lowQualitySource) return 1
@@ -106,4 +133,7 @@ object StreamRanking {
     private val SEEDERS = Regex("""(?i)(?:👤\s*(\d+))|(?:\bseed(?:er)?s?\s*[:=]?\s*(\d+))""")
     private val LOW_QUALITY = Regex("""(?i)\b(cam|camrip|hdcam|ts|telesync|hdts|tc|telecine|scr|screener)\b""")
     private const val UNKNOWN_RESOLUTION_SCORE = 500
+    private const val MIN_SEEDERS = 5
+    private const val WEAK_SEED_LEVEL = 0
+    private const val DIRECT_SEED_LEVEL = 4
 }

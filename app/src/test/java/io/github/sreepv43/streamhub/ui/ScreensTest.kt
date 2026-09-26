@@ -131,7 +131,13 @@ class ScreensTest {
 
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_LEFT, times = 3)
-        assertEquals("the audio row is below the quality row", "Video's default", focused())
+        assertEquals("the start buffer row is below the quality row", "0.5 s", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(500, settings.startBufferMs.value)
+
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_LEFT, times = 3)
+        assertEquals("the audio row is below the start buffer row", "Video's default", focused())
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         assertEquals("English", focused())
         press(KeyEvent.KEYCODE_DPAD_CENTER)

@@ -148,6 +148,12 @@ fun SettingsScreen() {
                     "a few minutes after you stop watching.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            val prepare by settings.prepareTorrents.flow.collectAsStateWithLifecycle()
+            ChoiceRow(
+                "Get the best torrents ready as soon as a stream list opens (starts faster, uses some data)",
+                listOf(true to "On", false to "Off"),
+                prepare,
+            ) { settings.prepareTorrents.set(it) }
             val cacheLimit by settings.torrentCacheLimitGb.flow.collectAsStateWithLifecycle()
             ChoiceRow(
                 "Cache limit (torrents you aren't watching are removed when it's exceeded)",
@@ -206,15 +212,38 @@ private fun PlaybackSettings() {
     val scale by settings.subtitleScale.flow.collectAsStateWithLifecycle()
     val autoplay by settings.autoplayNext.flow.collectAsStateWithLifecycle()
     val skip by settings.introSkipSeconds.flow.collectAsStateWithLifecycle()
+    val startBuffer by settings.startBufferMs.flow.collectAsStateWithLifecycle()
+    val passthrough by settings.surroundPassthrough.flow.collectAsStateWithLifecycle()
 
     ChoiceRow("Best quality to pick (\"Play best\" and next episode)", listOf(720 to "720p", 1080 to "1080p", 2160 to "4K"), maxResolution) {
         settings.maxResolution.set(it)
     }
+    ChoiceRow(
+        "Start playing after this much video is loaded (less starts sooner, more pauses less on slow streams)",
+        listOf(500 to "0.5 s", 1_000 to "1 s", 2_500 to "2.5 s", 5_000 to "5 s"),
+        startBuffer,
+    ) { settings.startBufferMs.set(it) }
     ChoiceRow("Audio language", listOf("" to "Video's default") + languages(audio), audio) { settings.audioLanguage.set(it) }
     ChoiceRow("Subtitles", listOf("" to "Off") + languages(subtitles), subtitles) { settings.subtitleLanguage.set(it) }
     ChoiceRow("Subtitle size", listOf(0.8f to "Small", 1f to "Normal", 1.3f to "Large", 1.6f to "Extra large"), scale) {
         settings.subtitleScale.set(it)
     }
+    ChoiceRow(
+        "Surround sound (Dolby, DTS) to a receiver or soundbar",
+        listOf(
+            "auto" to "Auto (as Android reports)",
+            "arc" to "Always: Dolby Digital, DD+, DTS (ARC)",
+            "earc" to "Always: also TrueHD, DTS-HD, Atmos (eARC / HDMI)",
+        ),
+        passthrough,
+    ) { settings.surroundPassthrough.set(it) }
+    Text(
+        "\"Always\" sends surround audio undecoded even when the TV reports stereo only. Choose it when " +
+            "5.1 plays as stereo; if you get no sound, go back to Auto. Over ARC only Dolby Digital, DD+ " +
+            "(incl. Atmos) and DTS fit; TrueHD and DTS-HD need eARC or a box connected to the receiver.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     ChoiceRow("Play the next episode automatically", listOf(true to "On", false to "Off"), autoplay) { settings.autoplayNext.set(it) }
     ChoiceRow("\"Skip intro\" jumps ahead by", listOf(60, 75, 85, 90, 105, 120).map { it to "$it s" }, skip) {
         settings.introSkipSeconds.set(it)

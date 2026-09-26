@@ -4,12 +4,14 @@ import org.junit.After
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Assume.assumeTrue
 import org.junit.Before
 import org.junit.Test
 import org.libtorrent4j.SessionManager
 import org.libtorrent4j.SessionParams
 import org.libtorrent4j.SettingsPack
+import org.libtorrent4j.TcpEndpoint
 import org.libtorrent4j.TorrentBuilder
 import org.libtorrent4j.TorrentInfo
 import java.io.File
@@ -95,6 +97,57 @@ class TorrentEngineTest {
         assertNull(engine.stats(magnet))
         Thread.sleep(6_000)
         assertEquals(0L, engine.cacheSizeBytes())
+    }
+
+    @Test
+    fun prefetchGetsTheDetailsAndOnlyTheStartOfTheVideo() {
+        val pack = File(root, "seed/pack").apply { mkdirs() }
+        val movie = Random(2).nextBytes(48 * 1024 * 1024 + 777)
+        File(pack, "movie.mkv").writeBytes(movie)
+        val torrentBytes = TorrentBuilder().path(pack).pieceSize(256 * 1024).generate().entry().bencode()
+        val info = TorrentInfo(torrentBytes)
+
+        seeder = SessionManager(false)
+        val seederSettings = SettingsPack().listenInterfaces("127.0.0.1:47303")
+        seederSettings.setEnableDht(false)
+        seederSettings.setEnableLsd(false)
+        seeder.start(SessionParams(seederSettings))
+        seeder.download(info, File(root, "seed"))
+
+        engine = TorrentEngine(
+            cacheDirs = { listOf(File(root, "cache")) },
+            fetchTorrentFile = { File(it.removePrefix("file://")).readBytes() },
+            idleTimeoutMs = 60_000,
+            configure = {
+                it.listenInterfaces("127.0.0.1:47304")
+                it.setEnableDht(false)
+                it.setEnableLsd(false)
+            },
+        )
+        // A .torrent file (a magnet link works the same, but on localhost the whole file arrives
+        // in the moment between getting the details and choosing what to download).
+        val source = "file://" + File(root, "x.torrent").apply { writeBytes(torrentBytes) }.path
+        engine.prefetch(source, -1, warmStart = true)
+
+        val eightMb = 8L * 1024 * 1024
+        val until = System.currentTimeMillis() + 30_000
+        fun downloaded() = engine.stats(source, 0)?.fileDownloadedBytes ?: 0L
+        // The .torrent file lists no trackers here, so the seeder dials the engine itself.
+        val seed = seeder.find(info.infoHash())
+        while (downloaded() < eightMb && System.currentTimeMillis() < until) {
+            seed.swig().connect_peer(TcpEndpoint("127.0.0.1", 47304).swig())
+            Thread.sleep(500)
+        }
+        Thread.sleep(2_000)
+        val stats = engine.stats(source, 0)!!
+        assertTrue(stats.hasMetadata)
+        assertTrue("the first 8 MB are ready (${downloaded()})", downloaded() >= eightMb)
+        // (Requests already on their way when the limit is set can bring a few MB more.)
+        assertTrue("not the whole file (${downloaded()} of ${movie.size})", downloaded() < movie.size / 2)
+
+        // Playing it afterwards reads the whole file as usual.
+        val full = open(TorrentHttpServer(engine).urlFor(source, -1), null)
+        assertArrayEquals(movie, full.inputStream.readBytes())
     }
 
     private fun open(url: String, range: String?): HttpURLConnection =
