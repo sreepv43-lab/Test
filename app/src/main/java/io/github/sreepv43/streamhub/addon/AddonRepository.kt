@@ -26,13 +26,25 @@ class AddonRepository(context: Context, private val client: AddonClient) {
 
     val isFirstRun: Boolean get() = !prefs.getBoolean(KEY_INITIALIZED, false)
 
-    /** Installs the official Stremio addons the first time the app starts. */
+    /**
+     * Installs the default addons the first time the app starts; defaults added in later versions
+     * are installed once for existing users too.
+     */
     suspend fun installDefaults() {
-        if (!isFirstRun) return
-        for (url in DEFAULT_ADDONS) {
-            runCatching { install(url) }
+        if (isFirstRun) {
+            for (url in DEFAULT_ADDONS) {
+                runCatching { install(url) }
+            }
+            if (_addons.value.isNotEmpty()) {
+                prefs.edit().putBoolean(KEY_INITIALIZED, true).putInt(KEY_DEFAULTS_VERSION, DEFAULTS_VERSION).apply()
+            }
+            return
         }
-        if (_addons.value.isNotEmpty()) prefs.edit().putBoolean(KEY_INITIALIZED, true).apply()
+        if (prefs.getInt(KEY_DEFAULTS_VERSION, 1) < DEFAULTS_VERSION) {
+            val installed = _addons.value.map { AddonUrls.baseUrl(it.transportUrl) }.toSet()
+            ADDED_IN_VERSION_2.filter { AddonUrls.baseUrl(it) !in installed }.forEach { url -> runCatching { install(url) } }
+            prefs.edit().putInt(KEY_DEFAULTS_VERSION, DEFAULTS_VERSION).apply()
+        }
     }
 
     suspend fun install(url: String): InstalledAddon {
@@ -136,10 +148,14 @@ class AddonRepository(context: Context, private val client: AddonClient) {
     companion object {
         private const val KEY_ADDONS = "installed"
         private const val KEY_INITIALIZED = "initialized"
+        private const val KEY_DEFAULTS_VERSION = "defaults_version"
+        private const val DEFAULTS_VERSION = 2
+
+        private val ADDED_IN_VERSION_2 = listOf(AddonCatalog.YOUTUBE)
 
         val DEFAULT_ADDONS = listOf(
             "https://v3-cinemeta.strem.io/manifest.json",
             "https://opensubtitles-v3.strem.io/manifest.json",
-        )
+        ) + ADDED_IN_VERSION_2
     }
 }

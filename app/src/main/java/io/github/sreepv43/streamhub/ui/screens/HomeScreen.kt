@@ -2,7 +2,7 @@ package io.github.sreepv43.streamhub.ui.screens
 
 import androidx.compose.ui.platform.LocalContext
 import io.github.sreepv43.streamhub.container
-androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize

@@ -25,6 +25,13 @@ object AddonUrls {
         return if (query.isEmpty()) path else "$path?$query"
     }
 
+    /** Every addon link in what the user typed or pasted (separated by spaces, commas or new lines). */
+    fun splitInput(text: String): List<String> =
+        text.split(Regex("""[\s,]+"""))
+            .map { it.trim().trimEnd('.', ';') }
+            .filter { it.startsWith("http://", true) || it.startsWith("https://", true) || it.startsWith("stremio://", true) }
+            .distinct()
+
     /** Base URL of an addon (the manifest URL without the trailing /manifest.json). */
     fun baseUrl(transportUrl: String): String =
         transportUrl.substringBefore('?').removeSuffix(MANIFEST).trimEnd('/')

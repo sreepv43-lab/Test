@@ -1,5 +1,7 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.addon.AddonCatalog
+import io.github.sreepv43.streamhub.addon.SuggestedAddon
 import io.github.sreepv43.streamhub.ui.AppColors
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -69,17 +71,21 @@ fun AddonsScreen(initialUrl: String?) {
     var error by remember { mutableStateOf<String?>(null) }
     var toRemove by remember { mutableStateOf<InstalledAddon?>(null) }
 
-    fun install() {
-        if (url.isBlank() || installing) return
+    /** Installs every addon link in the box (one or several). */
+    fun install(links: List<String> = AddonUrls.splitInput(url).ifEmpty { listOf(url.trim()) }.filter { it.isNotEmpty() }) {
+        if (links.isEmpty() || installing) return
         installing = true
         error = null
         scope.launch {
-            runCatching { repository.install(url) }
-                .onSuccess {
-                    StreamActions.toast(context, "Installed ${it.manifest.name}")
-                    url = ""
-                }
-                .onFailure { error = "Could not install: ${it.message}" }
+            val installed = mutableListOf<String>()
+            val failed = mutableListOf<String>()
+            for (link in links) {
+                runCatching { repository.install(link) }
+                    .onSuccess { installed += it.manifest.name }
+                    .onFailure { failed += "$link (${it.message})" }
+            }
+            if (installed.isNotEmpty()) StreamActions.toast(context, "Installed " + installed.joinToString(", "))
+            if (failed.isEmpty()) url = "" else error = "Could not install: " + failed.joinToString("; ")
             installing = false
         }
     }
@@ -88,8 +94,8 @@ fun AddonsScreen(initialUrl: String?) {
         item {
             Text("Addons", style = MaterialTheme.typography.headlineSmall)
             Text(
-                "Paste the manifest URL of any Stremio addon (https://…/manifest.json or stremio://…). " +
-                    "Addons are listed in priority order.",
+                "Paste the manifest URL of any Stremio addon (https://…/manifest.json or stremio://…), or several " +
+                    "separated by spaces or new lines. Addons are listed in priority order.",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(vertical = 8.dp),
             )
@@ -98,11 +104,11 @@ fun AddonsScreen(initialUrl: String?) {
                     colors = flatTextFieldColors(),
                     value = url,
                     onValueChange = { url = it },
-                    label = { Text("Addon URL") },
-                    singleLine = true,
+                    label = { Text("Addon URLs") },
+                    maxLines = 4,
                     isError = error != null,
                     supportingText = error?.let { message -> @Composable { Text(message) } },
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
                     keyboardActions = KeyboardActions(onDone = { install() }),
                     modifier = Modifier.weight(1f).tvFocus(),
                 )
@@ -114,6 +120,25 @@ fun AddonsScreen(initialUrl: String?) {
                     modifier = Modifier.padding(start = 12.dp),
                 )
             }
+        }
+        item(key = "popular") {
+            val installedBases = addons.map { AddonUrls.baseUrl(it.transportUrl) }.toSet()
+            Text("Popular addons", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(top = 12.dp))
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+                AddonCatalog.suggested.forEach { suggestion ->
+                    SuggestedAddonRow(
+                        suggestion,
+                        installed = AddonUrls.baseUrl(suggestion.url) in installedBases,
+                        busy = installing,
+                        onInstall = { install(listOf(suggestion.url)) },
+                    )
+                }
+            }
+            Text(
+                "Installed",
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.padding(top = 16.dp),
+            )
         }
         items(addons, key = { it.transportUrl }) { addon ->
             AddonRow(
@@ -142,6 +167,28 @@ fun AddonsScreen(initialUrl: String?) {
                 TextButton(modifier = Modifier.tvFocus(), onClick = { toRemove = null }) { Text("Cancel") }
             },
         )
+    }
+}
+
+@Composable
+private fun SuggestedAddonRow(addon: SuggestedAddon, installed: Boolean, busy: Boolean, onInstall: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .panel(RoundedCornerShape(20.dp))
+            .padding(horizontal = 16.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(addon.name, style = MaterialTheme.typography.titleMedium)
+            Text(addon.description, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+        if (installed) {
+            Text("Installed", color = AppColors.accent, modifier = Modifier.padding(horizontal = 12.dp))
+        } else {
+            FlatButton(text = "Install", onClick = onInstall, enabled = !busy, compact = true)
+        }
     }
 }
 

@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import androidx.compose.foundation.layout.width
 import io.github.sreepv43.streamhub.sync.Trakt
 import io.github.sreepv43.streamhub.ui.components.flatTextFieldColors
 import androidx.compose.runtime.saveable.rememberSaveable

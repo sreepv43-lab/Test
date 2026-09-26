@@ -56,4 +56,13 @@ class AddonUrlsTest {
         assertEquals("a%20b!'()*~-_.", AddonUrls.encodeComponent("a b!'()*~-_."))
         assertEquals("%26%3D%2F%3F%23", AddonUrls.encodeComponent("&=/?#"))
     }
+
+    @Test
+    fun findsEveryAddonLinkInPastedText() {
+        val text = "https://a.example/manifest.json, stremio://b.example/manifest.json\n  https://c.example/x.\nnot-a-link https://a.example/manifest.json"
+        assertEquals(
+            listOf("https://a.example/manifest.json", "stremio://b.example/manifest.json", "https://c.example/x"),
+            AddonUrls.splitInput(text),
+        )
+    }
 }
