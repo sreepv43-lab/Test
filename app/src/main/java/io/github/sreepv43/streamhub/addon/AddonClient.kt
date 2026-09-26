@@ -47,10 +47,14 @@ class AddonClient(private val http: OkHttpClient) {
             if (!response.isSuccessful) throw AddonException("HTTP ${response.code} for $url")
             withContext(Dispatchers.IO) { response.body?.string() }.orEmpty()
         }
-        return try {
-            StremioJson.decodeFromString(strategy, body)
-        } catch (e: Exception) {
-            throw AddonException("Invalid response from $url", e)
+        // Parsing a big catalog or a series with hundreds of episodes takes a while; never on the
+        // main thread, where it would stall scrolling.
+        return withContext(Dispatchers.Default) {
+            try {
+                StremioJson.decodeFromString(strategy, body)
+            } catch (e: Exception) {
+                throw AddonException("Invalid response from $url", e)
+            }
         }
     }
 }

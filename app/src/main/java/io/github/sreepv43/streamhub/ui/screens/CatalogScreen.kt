@@ -155,7 +155,7 @@ fun CatalogScreen(onOpenMeta: (Meta) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
             modifier = Modifier.fillMaxSize().tvRow(),
         ) {
-            items(state.items, key = { it.type + it.id }) { meta ->
+            items(state.items, key = { it.type + it.id }, contentType = { "poster" }) { meta ->
                 MetaCard(meta, onClick = { onOpenMeta(meta) })
             }
             if (state.loading) {

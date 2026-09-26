@@ -1,5 +1,6 @@
 package io.github.sreepv43.streamhub.addon
 
+import kotlinx.coroutines.CancellationException
 import android.content.Context
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
@@ -124,6 +125,8 @@ class AddonRepository(context: Context, private val client: AddonClient) {
     suspend fun streams(addon: InstalledAddon, type: String, id: String): AddonStreams =
         try {
             AddonStreams(addon, client.streams(addon, type, id))
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             AddonStreams(addon, emptyList(), e.message ?: e.javaClass.simpleName)
         }

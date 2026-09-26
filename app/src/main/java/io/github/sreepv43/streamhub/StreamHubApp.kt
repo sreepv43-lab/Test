@@ -17,6 +17,7 @@ import io.github.sreepv43.streamhub.addon.StreamResolver
 import io.github.sreepv43.streamhub.data.CrashReports
 import io.github.sreepv43.streamhub.data.IntroMemory
 import io.github.sreepv43.streamhub.data.Library
+import io.github.sreepv43.streamhub.data.HomeCache
 import io.github.sreepv43.streamhub.sync.StremioImport
 import io.github.sreepv43.streamhub.sync.Trakt
 import io.github.sreepv43.streamhub.data.Settings
@@ -80,6 +81,7 @@ class AppContainer(context: Context) {
     val history = WatchHistory(context)
     val introMemory = IntroMemory(context)
     val library = Library(context)
+    val homeCache = HomeCache(File(context.filesDir, "home-rows.json"))
     val storage = DownloadStorage(context)
     val downloads = DownloadRepository(context)
 
@@ -109,7 +111,7 @@ class AppContainer(context: Context) {
      */
     fun prepareTorrents(streams: List<Stream>) {
         if (!settings.prepareTorrents.value) return
-        StreamRanking.rank(streams, settings.maxResolution.value).take(PREPARED_STREAMS).forEachIndexed { i, stream ->
+        StreamRanking.rank(streams, settings.maxResolution.value, settings.surroundPassthrough.value).take(PREPARED_STREAMS).forEachIndexed { i, stream ->
             val target = StreamResolver.resolve(stream) as? PlaybackTarget.Torrent ?: return@forEachIndexed
             torrents.prefetch(target.source, target.fileIdx, warmStart = i == 0)
         }

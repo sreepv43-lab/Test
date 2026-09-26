@@ -6,6 +6,7 @@ data class StreamInfo(
     val sizeBytes: Long?,
     val seeders: Int?,
     val lowQualitySource: Boolean,
+    val audio: StreamAudio? = null,
 )
 
 /** Orders streams so the one that will play best on this TV comes first ("Play best"). */
@@ -17,16 +18,18 @@ object StreamRanking {
             sizeBytes = stream.behaviorHints.videoSize ?: size(text),
             seeders = seeders(text),
             lowQualitySource = LOW_QUALITY.containsMatchIn(text),
+            audio = StreamAudio.parse(text),
         )
     }
 
     /**
      * Best first: streams the app can play itself, then torrents with too few seeders last (they
      * are slow to start), then picture quality up to [maxResolution] (sharper than the TV can show
-     * only costs bandwidth), direct links before torrents, very large files (remuxes) after lighter
+     * only costs bandwidth), with surround [passthrough] on audio the receiver can take undecoded
+     * (Dolby / DTS rather than AAC 5.1, which reaches it as stereo), direct links before torrents, very large files (remuxes) after lighter
      * ones, better-seeded torrents, then smaller files (they start and seek faster).
      */
-    fun rank(streams: List<Stream>, maxResolution: Int = 1080): List<Stream> {
+    fun rank(streams: List<Stream>, maxResolution: Int = 1080, passthrough: String = "auto"): List<Stream> {
         val scored = streams.map { stream ->
             val target = StreamResolver.resolve(stream)
             val info = info(stream)
@@ -36,6 +39,7 @@ object StreamRanking {
                 playable = target != null && target !is PlaybackTarget.External,
                 direct = target is PlaybackTarget.Direct,
                 quality = qualityScore(info, maxResolution),
+                surround = info.audio?.passesThrough(passthrough) == true,
                 seedLevel = if (torrent) seedLevel(info.seeders) else DIRECT_SEED_LEVEL,
                 heavy = info.sizeBytes != null && info.sizeBytes > heavyAbove(info.resolution),
                 seeders = info.seeders ?: if (torrent) 0 else Int.MAX_VALUE,
@@ -46,6 +50,7 @@ object StreamRanking {
             compareByDescending<Scored> { it.playable }
                 .thenByDescending { it.seedLevel > WEAK_SEED_LEVEL }
                 .thenByDescending { it.quality }
+                .thenByDescending { it.surround }
                 .thenByDescending { it.direct }
                 .thenBy { it.heavy }
                 .thenByDescending { it.seedLevel }
@@ -55,22 +60,23 @@ object StreamRanking {
     }
 
     /** The stream to start with one click, or null if none can be played in the app. */
-    fun best(streams: List<Stream>, maxResolution: Int = 1080): Stream? =
-        rank(streams, maxResolution).firstOrNull { StreamResolver.resolve(it).let { t -> t != null && t !is PlaybackTarget.External } }
+    fun best(streams: List<Stream>, maxResolution: Int = 1080, passthrough: String = "auto"): Stream? =
+        rank(streams, maxResolution, passthrough).firstOrNull { StreamResolver.resolve(it).let { t -> t != null && t !is PlaybackTarget.External } }
 
     /**
      * For the next episode: a stream from the same release group as the one just watched (addons
      * mark these with a "binge group"), else the best one.
      */
-    fun next(streams: List<Stream>, bingeGroup: String?, maxResolution: Int = 1080): Stream? =
+    fun next(streams: List<Stream>, bingeGroup: String?, maxResolution: Int = 1080, passthrough: String = "auto"): Stream? =
         bingeGroup?.let { group -> streams.firstOrNull { it.behaviorHints.bingeGroup == group } }
-            ?: best(streams, maxResolution)
+            ?: best(streams, maxResolution, passthrough)
 
     private data class Scored(
         val stream: Stream,
         val playable: Boolean,
         val direct: Boolean,
         val quality: Int,
+        val surround: Boolean,
         val seedLevel: Int,
         val heavy: Boolean,
         val seeders: Int,

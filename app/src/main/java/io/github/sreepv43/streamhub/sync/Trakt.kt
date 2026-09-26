@@ -7,8 +7,10 @@ import io.github.sreepv43.streamhub.addon.StremioJson
 import io.github.sreepv43.streamhub.data.Library
 import io.github.sreepv43.streamhub.data.LibraryItem
 import java.io.IOException
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -57,6 +59,7 @@ class Trakt(
     private val clientId = BuildConfig.TRAKT_CLIENT_ID
     private val clientSecret = BuildConfig.TRAKT_CLIENT_SECRET
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private var connectJob: Job? = null
 
     private val _state = MutableStateFlow(
         when {
@@ -100,12 +103,13 @@ class Trakt(
                 }
             }
             throw IOException("The code expired; try again")
-        }.onFailure { _state.value = State.Failed(it.message ?: "Couldn't connect to Trakt") }
+        }.onFailure { if (it !is CancellationException) _state.value = State.Failed(it.message ?: "Couldn't connect to Trakt") }
     }
 
     /** [connect] / [syncNow] in the app's own scope, so they keep going when Settings is closed. */
     fun startConnect() {
-        scope.launch { connect() }
+        if (connectJob?.isActive == true) return
+        connectJob = scope.launch { connect() }
     }
 
     fun startSync() {
@@ -113,6 +117,7 @@ class Trakt(
     }
 
     fun disconnect() {
+        connectJob?.cancel()
         prefs.edit().clear().apply()
         _state.value = if (clientId.isEmpty()) State.NotConfigured else State.Disconnected
     }

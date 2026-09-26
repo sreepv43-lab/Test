@@ -1,5 +1,7 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.width
 import io.github.sreepv43.streamhub.sync.Trakt
 import io.github.sreepv43.streamhub.ui.components.flatTextFieldColors
@@ -34,8 +36,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -77,129 +77,152 @@ fun SettingsScreen() {
     }
     val scope = rememberCoroutineScope()
 
-    Column(
-        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
+    LazyColumn(
+        Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(24.dp),
         verticalArrangement = Arrangement.spacedBy(20.dp),
     ) {
-        Text("Settings", style = MaterialTheme.typography.headlineLarge)
+        item {
+            Text("Settings", style = MaterialTheme.typography.headlineLarge)
+        }
 
-        SettingsSection("Theme") {
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
-                Palettes.all.forEach { palette ->
-                    ThemeSwatch(palette, selected = palette.id == themeId, onClick = { settings.setTheme(palette.id) })
+        item {
+            SettingsSection("Theme") {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Palettes.all.forEach { palette ->
+                        ThemeSwatch(palette, selected = palette.id == themeId, onClick = { settings.setTheme(palette.id) })
+                    }
                 }
             }
         }
 
-        SettingsSection("Playback") {
-            PlaybackSettings()
+        item {
+            SettingsSection("Playback") {
+                PlaybackSettings()
+            }
         }
 
-        SettingsSection("Import from Stremio") {
-            StremioImportSection()
+        item {
+            SettingsSection("Import from Stremio") {
+                StremioImportSection()
+            }
         }
 
-        SettingsSection("Trakt") {
-            TraktSection()
+        item {
+            SettingsSection("Trakt") {
+                TraktSection()
+            }
         }
 
-        SettingsSection("Updates") {
-            UpdatesSection()
+        item {
+            SettingsSection("Updates") {
+                UpdatesSection()
+            }
         }
 
-        SettingsSection("Download location") {
-            Text(
-                "Pick internal storage or any connected USB drive or SD card. New drives appear here when plugged in.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Column(Modifier.widthIn(max = 720.dp)) {
-                StorageChooser(
-                    selected = location ?: defaultLocation,
-                    onSelect = settings::setDownloadLocation,
+        item {
+            SettingsSection("Download location") {
+                Text(
+                    "Pick internal storage or any connected USB drive or SD card. New drives appear here when plugged in.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                Column(Modifier.widthIn(max = 720.dp)) {
+                    StorageChooser(
+                        selected = location ?: defaultLocation,
+                        onSelect = settings::setDownloadLocation,
+                    )
+                }
             }
         }
 
-        SettingsSection("Downloads") {
-            val wifiOnly by settings.downloadsWifiOnly.flow.collectAsStateWithLifecycle()
-            val speedLimit by settings.downloadSpeedLimitKb.flow.collectAsStateWithLifecycle()
-            val deleteAfter by settings.deleteAfterWatching.flow.collectAsStateWithLifecycle()
-            ChoiceRow("Download only on Wi-Fi or Ethernet", listOf(false to "Any connection", true to "Wi-Fi only"), wifiOnly) {
-                settings.downloadsWifiOnly.set(it)
-            }
-            ChoiceRow(
-                "Speed limit",
-                listOf(0 to "No limit", 1024 to "1 MB/s", 2048 to "2 MB/s", 5120 to "5 MB/s", 10240 to "10 MB/s"),
-                speedLimit,
-            ) { settings.downloadSpeedLimitKb.set(it) }
-            ChoiceRow("Delete a download after watching it", listOf(false to "Keep", true to "Delete"), deleteAfter) {
-                settings.deleteAfterWatching.set(it)
+        item {
+            SettingsSection("Downloads") {
+                val wifiOnly by settings.downloadsWifiOnly.flow.collectAsStateWithLifecycle()
+                val speedLimit by settings.downloadSpeedLimitKb.flow.collectAsStateWithLifecycle()
+                val deleteAfter by settings.deleteAfterWatching.flow.collectAsStateWithLifecycle()
+                ChoiceRow("Download only on Wi-Fi or Ethernet", listOf(false to "Any connection", true to "Wi-Fi only"), wifiOnly) {
+                    settings.downloadsWifiOnly.set(it)
+                }
+                ChoiceRow(
+                    "Speed limit",
+                    listOf(0 to "No limit", 1024 to "1 MB/s", 2048 to "2 MB/s", 5120 to "5 MB/s", 10240 to "10 MB/s"),
+                    speedLimit,
+                ) { settings.downloadSpeedLimitKb.set(it) }
+                ChoiceRow("Delete a download after watching it", listOf(false to "Keep", true to "Delete"), deleteAfter) {
+                    settings.deleteAfterWatching.set(it)
+                }
             }
         }
 
-        SettingsSection("Torrents") {
-            Text(
-                "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
-                    "is fetched, in order, so playback starts after a few seconds when there are enough peers. " +
-                    "Streaming data is kept in a temporary cache on the drive with the most free space and deleted " +
-                    "a few minutes after you stop watching.",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            val prepare by settings.prepareTorrents.flow.collectAsStateWithLifecycle()
-            ChoiceRow(
-                "Get the best torrents ready as soon as a stream list opens (starts faster, uses some data)",
-                listOf(true to "On", false to "Off"),
-                prepare,
-            ) { settings.prepareTorrents.set(it) }
-            val cacheLimit by settings.torrentCacheLimitGb.flow.collectAsStateWithLifecycle()
-            ChoiceRow(
-                "Cache limit (torrents you aren't watching are removed when it's exceeded)",
-                listOf(2 to "2 GB", 5 to "5 GB", 10 to "10 GB", 20 to "20 GB", 0 to "No limit"),
-                cacheLimit,
-            ) {
-                settings.torrentCacheLimitGb.set(it)
-                scope.launch(Dispatchers.IO) { container.torrents.trimCache() }
+        item {
+            SettingsSection("Torrents") {
+                Text(
+                    "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
+                        "is fetched, in order, so playback starts after a few seconds when there are enough peers. " +
+                        "Streaming data is kept in a temporary cache on the drive with the most free space and deleted " +
+                        "a few minutes after you stop watching.",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                val prepare by settings.prepareTorrents.flow.collectAsStateWithLifecycle()
+                ChoiceRow(
+                    "Get the best torrents ready as soon as a stream list opens (starts faster, uses some data)",
+                    listOf(true to "On", false to "Off"),
+                    prepare,
+                ) { settings.prepareTorrents.set(it) }
+                val cacheLimit by settings.torrentCacheLimitGb.flow.collectAsStateWithLifecycle()
+                ChoiceRow(
+                    "Cache limit (torrents you aren't watching are removed when it's exceeded)",
+                    listOf(2 to "2 GB", 5 to "5 GB", 10 to "10 GB", 20 to "20 GB", 0 to "No limit"),
+                    cacheLimit,
+                ) {
+                    settings.torrentCacheLimitGb.set(it)
+                    scope.launch(Dispatchers.IO) { container.torrents.trimCache() }
+                }
+                LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))
+                    FlatButton(
+                        text = "Clear torrent cache",
+                        onClick = {
+                            scope.launch {
+                                cacheSize = withContext(Dispatchers.IO) {
+                                    container.torrents.clearCache()
+                                    container.torrents.cacheSizeBytes()
+                                }
+                                StreamActions.toast(context, "Torrent cache cleared (torrents in use were kept)")
+                            }
+                        },
+                        modifier = Modifier.padding(start = 16.dp),
+                    )
+                }
             }
-            LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))
+        }
+
+        item {
+            SettingsSection("Addons") {
                 FlatButton(
-                    text = "Clear torrent cache",
+                    text = "Update all addon manifests",
                     onClick = {
                         scope.launch {
-                            cacheSize = withContext(Dispatchers.IO) {
-                                container.torrents.clearCache()
-                                container.torrents.cacheSizeBytes()
-                            }
-                            StreamActions.toast(context, "Torrent cache cleared (torrents in use were kept)")
+                            container.addons.refreshAll()
+                            StreamActions.toast(context, "Addons updated")
                         }
                     },
-                    modifier = Modifier.padding(start = 16.dp),
                 )
             }
         }
 
-        SettingsSection("Addons") {
-            FlatButton(
-                text = "Update all addon manifests",
-                onClick = {
-                    scope.launch {
-                        container.addons.refreshAll()
-                        StreamActions.toast(context, "Addons updated")
-                    }
-                },
+        item {
+            Text(
+                "StreamHub ${BuildConfig.VERSION_NAME}. Compatible with Stremio addons. " +
+                    "Only stream and download content you have the rights to.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
-
-        Text(
-            "StreamHub ${BuildConfig.VERSION_NAME}. Compatible with Stremio addons. " +
-                "Only stream and download content you have the rights to.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
     }
 }
 

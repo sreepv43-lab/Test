@@ -1,5 +1,10 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.joinAll
+import kotlinx.coroutines.Dispatchers
+import io.github.sreepv43.streamhub.data.HomeCache
 import androidx.compose.ui.platform.LocalContext
 import io.github.sreepv43.streamhub.container
 import androidx.compose.foundation.layout.Arrangement
@@ -55,30 +60,55 @@ data class HomeState(
     val rows: List<Pair<CatalogRef, RowState>> = emptyList(),
 )
 
-class HomeViewModel(private val repository: AddonRepository) : ViewModel() {
+class HomeViewModel(private val repository: AddonRepository, private val cache: HomeCache) : ViewModel() {
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state.asStateFlow()
+    private var cached: Map<String, List<Meta>>? = null
 
     init {
         viewModelScope.launch {
-            repository.installDefaults()
+            // The very first start needs the default addons before there is anything to show;
+            // later, defaults added by an update are installed in the background.
+            if (repository.isFirstRun) repository.installDefaults() else launch { repository.installDefaults() }
             repository.addons.collectLatest { load() }
         }
     }
 
     private suspend fun load() = coroutineScope {
         val refs = repository.boardCatalogs()
-        _state.value = HomeState(initializing = false, rows = refs.map { it to RowState.Loading })
+        // Rows show what they had (or what the last start showed) until they are reloaded.
+        val saved = cached ?: withContext(Dispatchers.IO) { cache.read() }.also { cached = it }
+        val shown = _state.value.rows.associate { (ref, row) -> ref.key to row }
+        fun previous(key: String): RowState? =
+            shown[key]?.takeIf { it is RowState.Loaded } ?: saved[key]?.let { RowState.Loaded(it) }
+        _state.value = HomeState(initializing = false, rows = refs.map { it to (previous(it.key) ?: RowState.Loading) })
         val limit = Semaphore(4)
-        refs.forEach { ref ->
+        refs.map { ref ->
             launch {
                 val result = limit.withPermit {
                     runCatching { repository.catalog(ref) }
                         .fold({ RowState.Loaded(it) }, { RowState.Failed(it.message ?: "Failed to load") })
                 }
-                _state.update { s -> s.copy(rows = s.rows.map { if (it.first.key == ref.key) ref to result else it }) }
+                ensureActive() // replaced by a newer load: don't touch its rows
+                _state.update { s ->
+                    s.copy(rows = s.rows.map { row ->
+                        if (row.first.key != ref.key) return@map row
+                        val old = row.second
+                        when {
+                            // Offline: keep showing the last rows rather than an error.
+                            result is RowState.Failed && old is RowState.Loaded -> row
+                            // Same titles as shown: nothing to redraw.
+                            result is RowState.Loaded && old is RowState.Loaded &&
+                                old.metas.map { it.id } == result.metas.map { it.id } -> row
+                            else -> ref to result
+                        }
+                    })
+                }
             }
-        }
+        }.joinAll()
+        val loaded = _state.value.rows.mapNotNull { (ref, row) -> (row as? RowState.Loaded)?.let { ref.key to it.metas } }.toMap()
+        cached = loaded
+        withContext(Dispatchers.IO) { cache.write(loaded) }
     }
 }
 
@@ -90,7 +120,7 @@ fun HomeScreen(
     onSeeAll: (CatalogRef) -> Unit,
     onOpenAddons: () -> Unit,
 ) {
-    val vm = appViewModel { c, _ -> HomeViewModel(c.addons) }
+    val vm = appViewModel { c, _ -> HomeViewModel(c.addons, c.homeCache) }
     val state by vm.state.collectAsStateWithLifecycle()
     val history by rememberHistory()
 
@@ -178,7 +208,7 @@ fun HomeScreen(
                     }
                 }
             }
-            itemsIndexed(state.rows, key = { _, row -> row.first.key }) { i, (ref, rowState) ->
+            itemsIndexed(state.rows, key = { _, row -> row.first.key }, contentType = { _, _ -> "catalog-row" }) { i, (ref, rowState) ->
                 val index = firstRowIndex + i
                 MetaRow(
                     title = ref.title,

@@ -70,11 +70,26 @@ object AudioOutput {
                     decoder.startsWith("ffmpeg", ignoreCase = true) -> "decoded by FFmpeg"
                     else -> "decoded by the TV"
                 }
-                "$by, ${channels(Integer.bitCount(track.channelConfig)) ?: "PCM"} out"
+                val count = Integer.bitCount(track.channelConfig)
+                val out = "$by, ${channels(count) ?: "PCM"} out"
+                // Multichannel PCM only survives HDMI to a receiver or eARC; over ARC the TV mixes it
+                // down to stereo, and only Dolby / DTS audio (sent undecoded) stays surround.
+                when {
+                    passthroughCodec(input) && !forced ->
+                        "$out\nTo send it to the receiver undecoded: Settings → Playback → Surround sound → Always"
+                    count > 2 && !passthroughCodec(input) ->
+                        "$out\nOver ARC the TV turns this into stereo; for surround pick a Dolby or DTS stream"
+                    else -> out
+                }
             }
         }
         return "Audio  $source → $output"
     }
+
+    private fun passthroughCodec(format: Format) = format.sampleMimeType in setOf(
+        MimeTypes.AUDIO_AC3, MimeTypes.AUDIO_E_AC3, MimeTypes.AUDIO_E_AC3_JOC, MimeTypes.AUDIO_DTS,
+        MimeTypes.AUDIO_DTS_HD, MimeTypes.AUDIO_TRUEHD,
+    )
 
     private fun isPcm(encoding: Int) = encoding == C.ENCODING_PCM_16BIT || encoding == C.ENCODING_PCM_FLOAT ||
         encoding == C.ENCODING_PCM_24BIT || encoding == C.ENCODING_PCM_32BIT || encoding == C.ENCODING_PCM_8BIT

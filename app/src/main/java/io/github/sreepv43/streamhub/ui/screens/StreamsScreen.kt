@@ -30,6 +30,7 @@ fun StreamsScreen() {
     val playback = LocalContext.current.container.settings
     val bestFirst by playback.streamsBestFirst.flow.collectAsState()
     val maxResolution by playback.maxResolution.flow.collectAsState()
+    val passthrough by playback.surroundPassthrough.flow.collectAsState()
     val dialogs = rememberStreamDialogState()
     val history by rememberHistory()
 
@@ -54,6 +55,6 @@ fun StreamsScreen() {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item(key = "header") { MetaHeader(meta, subtitle = episodeTitle) }
         resumeNote(history.firstOrNull { it.videoId == vm.videoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs)
-        streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution)
+        streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution, passthrough)
     }
 }

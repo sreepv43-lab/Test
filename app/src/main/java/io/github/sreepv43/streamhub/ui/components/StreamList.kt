@@ -45,6 +45,7 @@ import io.github.sreepv43.streamhub.addon.AddonStreams
 import io.github.sreepv43.streamhub.addon.Stream
 import io.github.sreepv43.streamhub.addon.StreamRanking
 import io.github.sreepv43.streamhub.addon.StreamResolver
+import io.github.sreepv43.streamhub.addon.PlaybackTarget
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -108,6 +109,7 @@ fun LazyListScope.streamItems(
     onExternal: (Stream) -> Unit,
     bestFirst: Boolean = false,
     maxResolution: Int = 1080,
+    passthrough: String = "auto",
 ) {
     if (state.noAddons) {
         item {
@@ -119,12 +121,11 @@ fun LazyListScope.streamItems(
         }
         return
     }
-    val all = state.results.flatMap { it.streams }
-    if (all.isNotEmpty()) {
-        item(key = "best") { PlayBestBar(all, maxResolution, bestFirst, onPlay) }
+    val ranked = RankedStreams.of(state.results, maxResolution, passthrough)
+    if (ranked.isNotEmpty()) {
+        item(key = "best") { PlayBestBar(ranked, bestFirst, onPlay) }
     }
     if (bestFirst) {
-        val ranked = StreamRanking.rank(all, maxResolution)
         items(ranked.withIndex().toList(), key = { "b-" + it.index }) { (_, stream) ->
             StreamRow(stream, onPlay = { onPlay(stream) }, onDownload = { onDownload(stream) }, onExternal = { onExternal(stream) })
         }
@@ -167,12 +168,34 @@ fun LazyListScope.streamItems(
     }
 }
 
+/**
+ * Ranking every stream runs a few regular expressions per stream, so it is done once per set of
+ * results (and settings), not on every recomposition of the list. Only used on the main thread.
+ */
+private object RankedStreams {
+    private var results: List<AddonStreams>? = null
+    private var settings: Pair<Int, String>? = null
+    private var ranked: List<Stream> = emptyList()
+
+    fun of(results: List<AddonStreams>, maxResolution: Int, passthrough: String): List<Stream> {
+        val settings = maxResolution to passthrough
+        if (results !== this.results || settings != this.settings) {
+            ranked = StreamRanking.rank(results.flatMap { it.streams }, maxResolution, passthrough)
+            this.results = results
+            this.settings = settings
+        }
+        return ranked
+    }
+}
+
 /** "▶ Play best · 1080p · 2.1 GB · 👤 300" plus the switch between grouped and best-first lists. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PlayBestBar(streams: List<Stream>, maxResolution: Int, bestFirst: Boolean, onPlay: (Stream) -> Unit) {
+private fun PlayBestBar(ranked: List<Stream>, bestFirst: Boolean, onPlay: (Stream) -> Unit) {
     val context = LocalContext.current
-    val best = remember(streams, maxResolution) { StreamRanking.best(streams, maxResolution) }
+    val best = remember(ranked) {
+        ranked.firstOrNull { StreamResolver.resolve(it).let { t -> t != null && t !is PlaybackTarget.External } }
+    }
     FlowRow(
         Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
         horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -184,6 +207,7 @@ private fun PlayBestBar(streams: List<Stream>, maxResolution: Int, bestFirst: Bo
                 info.resolution?.let { if (it >= 2160) "4K" else "${it}p" },
                 info.sizeBytes?.let { Formatter.formatShortFileSize(context, it) },
                 info.seeders?.let { "👤 $it" },
+                info.audio?.label?.ifEmpty { null }?.let { "🔊 $it" },
             ).joinToString(" · ")
             FlatButton(
                 text = if (summary.isEmpty()) "Play best" else "Play best · $summary",
@@ -204,6 +228,7 @@ private fun PlayBestBar(streams: List<Stream>, maxResolution: Int, bestFirst: Bo
 private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit, onExternal: () -> Unit) {
     val shape = RoundedCornerShape(18.dp)
     val torrent = StreamResolver.isTorrent(stream)
+    val audio = remember(stream) { StreamRanking.info(stream).audio?.label?.ifEmpty { null } }
     Row(
         Modifier
             .fillMaxWidth()
@@ -223,7 +248,7 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
         ) {
             Icon(Icons.Default.PlayArrow, contentDescription = "Play")
             Text(
-                (stream.name ?: "Stream") + if (torrent) "\n⇅ torrent" else "",
+                (stream.name ?: "Stream") + (if (torrent) "\n⇅ torrent" else "") + (audio?.let { "\n🔊 $it" } ?: ""),
                 fontWeight = FontWeight.Bold,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.width(150.dp).padding(horizontal = 12.dp),

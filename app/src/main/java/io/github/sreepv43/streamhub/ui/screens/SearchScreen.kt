@@ -123,7 +123,7 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
                     contentPadding = PaddingValues(bottom = 24.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp),
                 ) {
-                    itemsIndexed(state.rows, key = { _, row -> row.first.key }) { i, (ref, rowState) ->
+                    itemsIndexed(state.rows, key = { _, row -> row.first.key }, contentType = { _, _ -> "catalog-row" }) { i, (ref, rowState) ->
                         MetaRow(
                             title = "${ref.title} · ${ref.addon.manifest.name}",
                             state = rowState,

@@ -137,6 +137,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
     val playback = LocalContext.current.container.settings
     val bestFirst by playback.streamsBestFirst.flow.collectAsState()
     val maxResolution by playback.maxResolution.flow.collectAsState()
+    val passthrough by playback.surroundPassthrough.flow.collectAsState()
     val myList by context.container.library.items.collectAsState()
     val dialogs = rememberStreamDialogState()
     val history by rememberHistory()
@@ -190,6 +191,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
                 val episodes = meta.videos
                     .filter { seasons.isEmpty() || it.season == state.season }
                     .sortedWith(compareBy({ it.season ?: 0 }, { it.episodeNumber ?: 0 }))
+                    .distinctBy { it.id } // list keys must be unique; some addons repeat episodes
                 items(episodes, key = { "ep-" + it.id }) { video ->
                     EpisodeRow(video, onClick = { onOpenEpisode(meta.type, meta.id, video.id) })
                 }
@@ -198,7 +200,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
                     Text("Streams", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 }
                 resumeNote(history.firstOrNull { it.videoId == meta.movieVideoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs)
-                streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution)
+                streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution, passthrough)
             }
         }
     }

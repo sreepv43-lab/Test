@@ -253,8 +253,8 @@ class PlayerActivity : ComponentActivity() {
                 format: Format,
                 decoderReuseEvaluation: DecoderReuseEvaluation?,
             ) {
+                // (The decoder is reported just before this, so it is kept.)
                 input = format
-                decoder = null
             }
 
             override fun onAudioDecoderInitialized(
@@ -782,7 +782,12 @@ class PlayerActivity : ComponentActivity() {
                 async { withTimeoutOrNull(NEXT_STREAMS_TIMEOUT_MS) { container.addons.streams(addon, type, next.id).streams }.orEmpty() }
             }.awaitAll().flatten()
         }
-        val stream = StreamRanking.next(streams, request.bingeGroup, container.settings.maxResolution.value) ?: return null
+        val stream = StreamRanking.next(
+            streams,
+            request.bingeGroup,
+            container.settings.maxResolution.value,
+            container.settings.surroundPassthrough.value,
+        ) ?: return null
         val (url, headers) = when (val target = StreamResolver.resolve(stream)) {
             is PlaybackTarget.Direct -> target.url to target.headers
             is PlaybackTarget.Torrent -> TorrentLinks.logicalUrl(target.source, target.fileIdx) to emptyMap()
