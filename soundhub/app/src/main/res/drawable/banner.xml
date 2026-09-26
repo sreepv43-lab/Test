@@ -1,0 +1,22 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <path
+        android:fillColor="#FF111820"
+        android:pathData="M0,0 H320 V180 H0 Z" />
+    <path
+        android:fillColor="#FF1FB5A8"
+        android:pathData="M70,50 A40,40 0 1,1 69.99,50 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M54,96 H62 V112 H54 Z M66,84 H74 V112 H66 Z M78,74 H86 V112 H78 Z" />
+    <!-- "SH" wordmark as simple blocks, legible at launcher size. -->
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M140,62 H190 V72 H150 V85 H190 V118 H140 V108 H180 V95 H140 Z" />
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:pathData="M205,62 H215 V85 H250 V62 H260 V118 H250 V95 H215 V118 H205 Z" />
+</vector>

@@ -7,7 +7,8 @@ This file provides guidance for AI assistants (Claude and others) working in thi
 - **Repository:** sreepv43-lab/Test
 - **App:** StreamHub, an Android TV + tablet app compatible with Stremio addons, with downloads to any connected drive
 - **Stack:** Kotlin 2.0, Jetpack Compose (Material 3), Media3 ExoPlayer, OkHttp, kotlinx.serialization, Coil, libtorrent4j (built-in torrent engine)
-- **Build:** Gradle (wrapper 8.11.1), AGP 8.7, compileSdk/targetSdk 35, minSdk 23, single `:app` module
+- **Build:** Gradle (wrapper 8.11.1), AGP 8.7, compileSdk/targetSdk 35, minSdk 23; modules `:app` (StreamHub), `:soundhub` and `:soundhub-core`
+- **Second app — SoundHub** (`soundhub/`): a Soulseek music client for TV/tablets with format categories and Dolby Atmos passthrough. `:soundhub-core` (`soundhub/core`, plain Kotlin/JVM) holds the Soulseek protocol client, UPnP, format classification/header probing and the library; `:soundhub` (`soundhub/app`) is the Android app (Compose UI, Media3 player, MediaSessionService). See `soundhub/README.md`.
 
 ## Repository Structure
 
@@ -25,6 +26,15 @@ This file provides guidance for AI assistants (Claude and others) working in thi
     │   ├── torrent/    # TorrentEngine (libtorrent4j), TorrentHttpServer (local HTTP), TorrentLinks
     │   └── ui/         # Compose navigation, screens, components (tvFocus)
     └── test/           # JVM unit tests (protocol, URLs, file names, torrent engine end-to-end)
+soundhub/
+├── core/src/main/kotlin/io/github/sreepv43/soundhub/
+│   ├── slsk/       # SoulseekClient (server, peers, transfers), Messages/Wire (protocol), GrowingFile, Upnp
+│   ├── audio/      # AudioFormats (classify by name/attributes, FormatFilter), AudioProbe (file headers, Atmos)
+│   └── library/    # LibraryStore, SearchResults/SearchSession, MusicDownloads, PathNames
+└── app/src/main/java/io/github/sreepv43/soundhub/
+    ├── player/     # PlaybackController (ExoPlayer), AudioOutput (passthrough), TransferDataSource, PlaybackService
+    ├── service/    # TransferService (foreground while downloading)
+    └── ui/         # Compose screens: Search, Atmos, Library, Downloads, Now playing, Settings
 ```
 
 Conventions:
@@ -33,6 +43,8 @@ Conventions:
 - The torrent engine test needs the desktop libtorrent native library and `LD_PRELOAD=libjsig.so` (libtorrent installs signal handlers); `app/build.gradle.kts` sets both up for `Test` tasks.
 - Every focusable UI element should use `Modifier.tvFocus()` (placed before `clickable`) so it is visible when navigating with a remote.
 - Dependencies are wired manually in `AppContainer` (`StreamHubApp.kt`); ViewModels are created with `appViewModel { container, savedState -> ... }`.
+- SoundHub: keep everything Android-free in `:soundhub-core` (tests use a fake Soulseek server/peer on localhost, `FakeNetwork.kt`). The app wires it in `AppContainer` (`SoundHubApp.kt`) and screens read its StateFlows directly. Songs being downloaded play through `slskstream://transfer/<id>/…` URIs (`TransferDataSource`), which block until the bytes arrive.
+- SoundHub passthrough: never put FFmpeg ahead of the platform renderers (`EXTENSION_RENDERER_MODE_ON`, not `PREFER`), or Dolby audio gets decoded and Atmos is lost.
 
 ## Development Workflow
 
@@ -131,7 +143,7 @@ Requires JDK 17 and the Android SDK (API 35).
 ## Running Tests
 
 ```bash
-./gradlew testDebugUnitTest
+./gradlew testDebugUnitTest :soundhub-core:test
 ```
 
 ## CI/CD

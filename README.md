@@ -3,6 +3,10 @@
 An Android TV and tablet media center that works with **Stremio addons**. It also downloads
 videos to **any connected drive**, such as internal storage, an SD card or a USB drive.
 
+This repository also holds **[SoundHub](soundhub/README.md)**, a separate music app. It searches
+Soulseek, sorts music by format (MP3, FLAC, Hi-Res, …) and has a Dolby Atmos page that sends Atmos
+to an AV receiver untouched.
+
 ## Features
 
 - **Stremio addon support.** Install any addon by its manifest URL (`https://…/manifest.json`)
