@@ -63,7 +63,12 @@ class ImdbImport(
         val ids = LinkedHashSet<String>()
         for (page in 1..MAX_PAGES) {
             val url = ImdbList.pageUrl(source, page) ?: break
-            val html = runCatching { get(url) }.getOrElse { if (page == 1) throw it else break }
+            val html = try {
+                get(url)
+            } catch (e: IOException) {
+                if (page == 1) throw e
+                break
+            }
             if (!ids.addAll(ImdbList.idsFromPage(html))) break
         }
         return ids.toList()
