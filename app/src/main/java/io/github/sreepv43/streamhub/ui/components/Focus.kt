@@ -1,7 +1,6 @@
 package io.github.sreepv43.streamhub.ui.components
 
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.currentCompositeKeyHash
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -24,6 +23,8 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.dp
 import io.github.sreepv43.streamhub.ui.LocalTvPage
 import io.github.sreepv43.streamhub.ui.LocalTvShell
+import io.github.sreepv43.streamhub.ui.TvShellState
+import androidx.compose.ui.node.ModifierNodeElement
 import io.github.sreepv43.streamhub.ui.LocalPalette
 
 /**
@@ -44,14 +45,9 @@ fun Modifier.tvFocus(
     val scope = LocalFocusKeyScope.current
     val place = currentCompositeKeyHash
     val id = if (key != null) (scope to key).hashCode() else place
-    if (shell != null) {
-        DisposableEffect(shell, page, id) {
-            shell.register(page, id, requester)
-            onDispose { shell.unregister(page, id, requester) }
-        }
-    }
     this
         .focusRequester(requester)
+        .then(if (shell != null) TvFocusRegistration(shell, page, id, requester) else Modifier)
         .onFocusChanged {
             focused = it.hasFocus
             if (it.hasFocus) shell?.focused(page, id)
@@ -69,6 +65,42 @@ fun Modifier.tvFocus(
                 drawOutline(outline, color = ring, style = Stroke(width = 2.dp.toPx()))
             }
         }
+}
+
+/**
+ * Makes the element known to the shell (to restore the selection) only while it is attached, i.e.
+ * really on screen: posters a lazy row composed in advance or keeps for reuse have a FocusRequester
+ * that can't take focus yet, and handing one of those to Compose as the page's entry crashes.
+ */
+private data class TvFocusRegistration(
+    val shell: TvShellState,
+    val page: Any?,
+    val id: Int,
+    val requester: FocusRequester,
+) : ModifierNodeElement<TvFocusRegistrationNode>() {
+    override fun create() = TvFocusRegistrationNode(shell, page, id, requester)
+
+    override fun update(node: TvFocusRegistrationNode) = node.update(shell, page, id, requester)
+}
+
+private class TvFocusRegistrationNode(
+    private var shell: TvShellState,
+    private var page: Any?,
+    private var id: Int,
+    private var requester: FocusRequester,
+) : Modifier.Node() {
+    override fun onAttach() = shell.register(page, id, requester)
+
+    override fun onDetach() = shell.unregister(page, id, requester)
+
+    fun update(shell: TvShellState, page: Any?, id: Int, requester: FocusRequester) {
+        if (isAttached) this.shell.unregister(this.page, this.id, this.requester)
+        this.shell = shell
+        this.page = page
+        this.id = id
+        this.requester = requester
+        if (isAttached) shell.register(page, id, requester)
+    }
 }
 
 /** Groups the [tvFocus] keys of one list (e.g. a row title), so the same movie in two rows stays apart. */
