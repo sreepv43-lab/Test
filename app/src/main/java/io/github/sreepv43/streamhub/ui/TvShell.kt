@@ -261,9 +261,8 @@ fun TvShell(
         }
     }
 
-    val edgeScroll = remember { EdgeBringIntoViewSpec() }
     Box(modifier.fillMaxSize()) {
-        CompositionLocalProvider(LocalTvShell provides shell, LocalBringIntoViewSpec provides edgeScroll) {
+        CompositionLocalProvider(LocalTvShell provides shell, LocalBringIntoViewSpec provides TvScrolling.Edge) {
             content(
                 Modifier
                     .fillMaxSize()
@@ -405,23 +404,31 @@ private fun MenuItem(
     }
 }
 
-/**
- * Scrolls a list only when the focused element gets close to its edge, and only as far as needed,
- * so moving along a row or down the page doesn't make everything shift on every press. (Android TV
- * devices otherwise default to keeping the focused item pinned a third of the way in.)
- */
+/** How lists follow the selection (install with LocalBringIntoViewSpec). */
 @OptIn(ExperimentalFoundationApi::class)
-private class EdgeBringIntoViewSpec : BringIntoViewSpec {
-    override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
-        val margin = (containerSize * EDGE_MARGIN).coerceAtMost(((containerSize - size) / 2).coerceAtLeast(0f))
-        val leading = offset - margin
-        val trailing = offset + size + margin - containerSize
-        return when {
-            leading >= 0 && trailing <= 0 -> 0f
-            leading < 0 && trailing > 0 -> 0f
-            abs(leading) < abs(trailing) -> leading
-            else -> trailing
+object TvScrolling {
+    /**
+     * Scrolls a list only when the focused element gets close to its edge, and only as far as
+     * needed, so moving along a row doesn't make everything shift on every press. (Android TV
+     * devices otherwise default to keeping the focused item pinned a third of the way in.)
+     */
+    val Edge: BringIntoViewSpec = object : BringIntoViewSpec {
+        override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float): Float {
+            val margin = (containerSize * EDGE_MARGIN).coerceAtMost(((containerSize - size) / 2).coerceAtLeast(0f))
+            val leading = offset - margin
+            val trailing = offset + size + margin - containerSize
+            return when {
+                leading >= 0 && trailing <= 0 -> 0f
+                leading < 0 && trailing > 0 -> 0f
+                abs(leading) < abs(trailing) -> leading
+                else -> trailing
+            }
         }
+    }
+
+    /** For lists that position their rows themselves (see alignRowOnFocus). */
+    val None: BringIntoViewSpec = object : BringIntoViewSpec {
+        override fun calculateScrollDistance(offset: Float, size: Float, containerSize: Float) = 0f
     }
 }
 

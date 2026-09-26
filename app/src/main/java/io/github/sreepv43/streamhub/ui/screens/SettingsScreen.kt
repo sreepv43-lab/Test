@@ -1,5 +1,8 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+
 import android.text.format.Formatter
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -49,6 +52,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen() {
     val context = LocalContext.current
@@ -70,7 +74,10 @@ fun SettingsScreen() {
         Text("Settings", style = MaterialTheme.typography.headlineLarge)
 
         SettingsSection("Theme") {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
                 Palettes.all.forEach { palette ->
                     ThemeSwatch(palette, selected = palette.id == themeId, onClick = { settings.setTheme(palette.id) })
                 }

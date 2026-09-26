@@ -1,5 +1,13 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import io.github.sreepv43.streamhub.ui.TvScrolling
+import io.github.sreepv43.streamhub.ui.components.alignRowOnFocus
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -73,6 +81,7 @@ class SearchViewModel(private val repository: AddonRepository) : ViewModel() {
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
     val vm = appViewModel { c, _ -> SearchViewModel(c.addons) }
@@ -84,6 +93,7 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
         vm.search(text)
     }
 
+    val listState = rememberLazyListState()
     Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
@@ -107,12 +117,20 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
         when {
             state.query.isEmpty() -> CenteredMessage("Search across all installed addons")
             state.rows.isEmpty() -> CenteredMessage("None of your addons support search")
-            else -> LazyColumn(
-                contentPadding = PaddingValues(bottom = 24.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                items(state.rows, key = { it.first.key }) { (ref, rowState) ->
-                    MetaRow(title = "${ref.title} · ${ref.addon.manifest.name}", state = rowState, onMetaClick = onOpenMeta)
+            else -> CompositionLocalProvider(LocalBringIntoViewSpec provides TvScrolling.None) {
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    itemsIndexed(state.rows, key = { _, row -> row.first.key }) { i, (ref, rowState) ->
+                        MetaRow(
+                            title = "${ref.title} · ${ref.addon.manifest.name}",
+                            state = rowState,
+                            onMetaClick = onOpenMeta,
+                            modifier = Modifier.alignRowOnFocus(listState, i, first = i == 0),
+                        )
+                    }
                 }
             }
         }

@@ -14,7 +14,13 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.test.getUnclippedBoundsInRoot
+import io.github.sreepv43.streamhub.ui.components.alignRowOnFocus
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
@@ -270,19 +276,35 @@ class TvShellTest {
     }
 
     @Test
-    fun rowsAndPageDoNotShiftWhileTheSelectionIsInView() {
+    fun rowDoesNotShiftWhileTheSelectionIsInView() {
         val poster = { name: String -> rule.onAllNodesWithText(name)[1].getBoundsInRoot() }
-        val title = { rule.onAllNodesWithText("Row 0")[0].getBoundsInRoot().top }
         val c5 = poster("r0-c5").left
-        val top = title()
         press(KeyEvent.KEYCODE_DPAD_RIGHT, times = 3)
         assertEquals("r0-c3", focused())
         assertEquals("row must not scroll while the poster is visible", c5, poster("r0-c5").left)
+    }
+
+    @Test
+    fun everyDownMovesThePageByExactlyOneRow() {
+        val titleTop = { row: Int -> rule.onAllNodesWithText("Row $row")[0].getUnclippedBoundsInRoot().top }
+        val start = titleTop(0)
         press(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertTrue(focused().startsWith("r1-"))
-        // Only as far as needed to show the row, not pinning it a third of the way down.
-        val scrolled = top - title()
-        assertTrue("page scrolled by $scrolled", scrolled < 100.dp)
+        assertTrue(focused(), focused().startsWith("r1-"))
+        val aligned = titleTop(1)
+        assertTrue("the selected row glides to the top ($aligned vs $start)", aligned < start)
+        for ((key, row) in listOf(
+            KeyEvent.KEYCODE_DPAD_DOWN to 3,
+            KeyEvent.KEYCODE_DPAD_DOWN to 4,
+            KeyEvent.KEYCODE_DPAD_UP to 3,
+            KeyEvent.KEYCODE_DPAD_UP to 1,
+        )) {
+            press(key)
+            assertTrue(focused(), focused().startsWith("r$row-"))
+            assertEquals("Row $row sits where Row 1 did", aligned.value, titleTop(row).value, 1f)
+        }
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertTrue(focused(), focused().startsWith("r0-"))
+        assertEquals("the first row brings the page back to its start", start.value, titleTop(0).value, 1f)
     }
 
     @Test
@@ -401,20 +423,30 @@ private fun FakeApp(onNav: (NavHostController) -> Unit, onShell: (TvShellState?)
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun FakeHome(onOpen: (String) -> Unit, onShell: (TvShellState?) -> Unit) {
     val shell = LocalTvShell.current
     SideEffect { onShell(shell) }
-    LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp)) {
-        item { Text("Home page", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
-        for (r in 0 until 6) {
-            item(key = r) {
-                val state = if (r == 2) {
-                    RowState.Loading
-                } else {
-                    RowState.Loaded(List(20) { c -> Meta(id = "r$r-c$c", name = "r$r-c$c") })
+    val listState = rememberLazyListState()
+    CompositionLocalProvider(LocalBringIntoViewSpec provides TvScrolling.None) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp)) {
+            item { Text("Home page", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
+            for (r in 0 until 6) {
+                item(key = r) {
+                    val state = if (r == 2) {
+                        RowState.Loading
+                    } else {
+                        RowState.Loaded(List(20) { c -> Meta(id = "r$r-c$c", name = "r$r-c$c") })
+                    }
+                    MetaRow(
+                        title = "Row $r",
+                        state = state,
+                        onMetaClick = { onOpen(it.id) },
+                        modifier = Modifier.alignRowOnFocus(listState, r + 1, first = r == 0),
+                        onSeeAll = {},
+                    )
                 }
-                MetaRow(title = "Row $r", state = state, onMetaClick = { onOpen(it.id) }, onSeeAll = {})
             }
         }
     }

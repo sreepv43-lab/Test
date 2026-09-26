@@ -34,7 +34,7 @@ object Palettes {
         text = Color(0xFFF2F4F8), textDim = Color(0xFFA9B0BF), focus = Color(0xFFFFFFFF),
     )
     val Pastel = Palette(
-        id = "pastel", name = "Pastel", isLight = true,
+        id = "pastel", name = "Pastel lavender", isLight = true,
         background = Color(0xFFF6F1F8), panel = Color(0xFFFFFFFF), panelRaised = Color(0xFFEADFF3),
         accent = Color(0xFF9A7BD6), onAccent = Color(0xFFFFFFFF),
         text = Color(0xFF2F2A3A), textDim = Color(0xFF6F6883), focus = Color(0xFF7A5CC4),
@@ -52,7 +52,53 @@ object Palettes {
         text = Color(0xFFFFFFFF), textDim = Color(0xFFB9B9DD), focus = Color(0xFF00E5FF),
     )
 
-    val all = listOf(DarkMoody, Pastel, EarthTones, VibrantBold)
+    val PastelMint = Palette(
+        id = "pastel-mint", name = "Pastel mint", isLight = true,
+        background = Color(0xFFEFF8F3), panel = Color(0xFFFFFFFF), panelRaised = Color(0xFFD6EFE2),
+        accent = Color(0xFF3E9A78), onAccent = Color(0xFFFFFFFF),
+        text = Color(0xFF1F3A30), textDim = Color(0xFF5E7A6E), focus = Color(0xFF2E8A66),
+    )
+    val PastelPeach = Palette(
+        id = "pastel-peach", name = "Pastel peach", isLight = true,
+        background = Color(0xFFFFF4EE), panel = Color(0xFFFFFFFF), panelRaised = Color(0xFFFFE0D1),
+        accent = Color(0xFFD9704F), onAccent = Color(0xFFFFFFFF),
+        text = Color(0xFF3B2A24), textDim = Color(0xFF7D655B), focus = Color(0xFFC75A3C),
+    )
+    val PastelSky = Palette(
+        id = "pastel-sky", name = "Pastel sky", isLight = true,
+        background = Color(0xFFEFF5FC), panel = Color(0xFFFFFFFF), panelRaised = Color(0xFFD6E6F7),
+        accent = Color(0xFF3F84D0), onAccent = Color(0xFFFFFFFF),
+        text = Color(0xFF1F2C3D), textDim = Color(0xFF5E6F85), focus = Color(0xFF2F6FBA),
+    )
+    val PastelRose = Palette(
+        id = "pastel-rose", name = "Pastel rose", isLight = true,
+        background = Color(0xFFFCF1F4), panel = Color(0xFFFFFFFF), panelRaised = Color(0xFFF6DCE4),
+        accent = Color(0xFFCB5F83), onAccent = Color(0xFFFFFFFF),
+        text = Color(0xFF3A2530), textDim = Color(0xFF80636F), focus = Color(0xFFB64B70),
+    )
+    val PastelLemon = Palette(
+        id = "pastel-lemon", name = "Pastel lemon", isLight = true,
+        background = Color(0xFFFFFBEA), panel = Color(0xFFFFFFFF), panelRaised = Color(0xFFF7EDC2),
+        accent = Color(0xFFE2BC3A), onAccent = Color(0xFF2E2A1A),
+        text = Color(0xFF2E2A1A), textDim = Color(0xFF7A7152), focus = Color(0xFFA88412),
+    )
+    val CottonCandy = Palette(
+        id = "cotton-candy", name = "Cotton candy", isLight = true,
+        background = Color(0xFFF8F1FA), panel = Color(0xFFFFFFFF), panelRaised = Color(0xFFF1DDF0),
+        accent = Color(0xFF8FB4EE), onAccent = Color(0xFF1F2A44),
+        text = Color(0xFF34304A), textDim = Color(0xFF76708F), focus = Color(0xFFD9679F),
+    )
+    val PastelNight = Palette(
+        id = "pastel-night", name = "Pastel night", isLight = false,
+        background = Color(0xFF1A1B26), panel = Color(0xFF232536), panelRaised = Color(0xFF30334A),
+        accent = Color(0xFFB8A6F0), onAccent = Color(0xFF1A1B26),
+        text = Color(0xFFF1EEFA), textDim = Color(0xFFADA8C6), focus = Color(0xFFF7C8E0),
+    )
+
+    val all = listOf(
+        DarkMoody, EarthTones, VibrantBold, PastelNight,
+        Pastel, PastelMint, PastelPeach, PastelSky, PastelRose, PastelLemon, CottonCandy,
+    )
 
     fun byId(id: String?): Palette = all.firstOrNull { it.id == id } ?: DarkMoody
 }

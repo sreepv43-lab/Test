@@ -13,8 +13,24 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.lazy.LazyListPrefetchStrategy
+import androidx.compose.foundation.lazy.LazyListScope
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.composed
+import androidx.compose.ui.platform.LocalDensity
+import io.github.sreepv43.streamhub.ui.TvScrolling
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -182,10 +198,11 @@ fun MetaRow(
     title: String,
     state: RowState,
     onMetaClick: (Meta) -> Unit,
+    modifier: Modifier = Modifier,
     onSeeAll: (() -> Unit)? = null,
     onMetaFocused: ((Meta) -> Unit)? = null,
 ) {
-    Column(Modifier.fillMaxWidth().padding(vertical = 10.dp)) {
+    Column(modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
         val metas = (state as? RowState.Loaded)?.metas?.let { remember(it) { it.distinctBy { meta -> meta.type + meta.id } } }
         if (metas.isNullOrEmpty()) {
@@ -211,11 +228,7 @@ fun MetaRow(
                 }
             }
         } else {
-            LazyRow(
-                modifier = Modifier.tvRow(),
-                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
-                horizontalArrangement = Arrangement.spacedBy(16.dp),
-            ) {
+            PosterRow {
                 items(metas, key = { it.type + it.id }, contentType = { "poster" }) { meta ->
                     MetaCard(
                         meta,
@@ -232,6 +245,63 @@ fun MetaRow(
 }
 
 private const val PLACEHOLDER_CARDS = 10
+
+/**
+ * A horizontal row of posters: Left/Right stay inside it, it scrolls only near its edges, and when
+ * the row is about to come on screen its first posters are prepared in advance, so moving to the
+ * next row doesn't have to build them in the middle of the scroll.
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun PosterRow(modifier: Modifier = Modifier, content: LazyListScope.() -> Unit) {
+    val state = rememberLazyListState(
+        prefetchStrategy = remember { LazyListPrefetchStrategy(nestedPrefetchItemCount = VISIBLE_POSTERS) },
+    )
+    CompositionLocalProvider(LocalBringIntoViewSpec provides TvScrolling.Edge) {
+        LazyRow(
+            modifier = modifier.tvRow(),
+            state = state,
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            content = content,
+        )
+    }
+}
+
+private const val VISIBLE_POSTERS = 9
+
+/**
+ * For a vertical list of rows (Home, search results; the list itself uses [TvScrolling.None]):
+ * the row that gets the selection glides to the top in one short animation, so every Up/Down
+ * moves the page by exactly one row and the next row is already on screen. The [first] row
+ * scrolls the page back to its start instead, keeping anything above it visible.
+ */
+fun Modifier.alignRowOnFocus(state: LazyListState, index: Int, first: Boolean = false): Modifier = composed {
+    val scope = rememberCoroutineScope()
+    val gap = with(LocalDensity.current) { RowTopGap.toPx() }
+    onFocusChanged { if (it.hasFocus) scope.launch { state.glideToRow(index, if (first) null else gap) } }
+}
+
+private suspend fun LazyListState.glideToRow(index: Int, gap: Float?) {
+    if (gap == null) {
+        if (firstVisibleItemIndex == 0) {
+            animateScrollBy(-firstVisibleItemScrollOffset.toFloat(), RowGlide)
+        } else {
+            animateScrollToItem(0)
+        }
+        return
+    }
+    val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+    if (item == null) {
+        animateScrollToItem(index)
+        return
+    }
+    val delta = item.offset - (layoutInfo.viewportStartOffset + gap)
+    if (abs(delta) > 1f) animateScrollBy(delta, RowGlide)
+}
+
+private val RowTopGap = 8.dp
+private val RowGlide = tween<Float>(durationMillis = 220, easing = FastOutSlowInEasing)
 
 @Composable
 fun CenteredMessage(text: String, modifier: Modifier = Modifier) {

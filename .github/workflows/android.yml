@@ -24,7 +24,23 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # The permanent signing key (secret STREAMHUB_KEYSTORE = base64 of the .jks file, and
+      # STREAMHUB_KEYSTORE_PASSWORD). Without it the APKs use a throwaway key, and installing a new
+      # build means uninstalling the old one first.
+      - name: Signing key
+        env:
+          KEYSTORE_BASE64: ${{ secrets.STREAMHUB_KEYSTORE }}
+        run: |
+          if [ -n "$KEYSTORE_BASE64" ]; then
+            echo "$KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/streamhub.jks"
+            echo "STREAMHUB_KEYSTORE_FILE=$RUNNER_TEMP/streamhub.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::STREAMHUB_KEYSTORE secret is not set; APKs are signed with a throwaway key"
+          fi
+
       - name: Build APKs
+        env:
+          STREAMHUB_KEYSTORE_PASSWORD: ${{ secrets.STREAMHUB_KEYSTORE_PASSWORD }}
         run: ./gradlew --no-daemon assembleDebug assembleRelease
 
       - uses: actions/upload-artifact@v4
@@ -49,15 +65,15 @@ jobs:
           name: StreamHub build ${{ github.run_number }}
           make_latest: "true"
           body: |
-            StreamHub APKs built from ${{ github.sha }} (branch `${{ github.ref_name }}`).
+            StreamHub build ${{ github.run_number }}, from ${{ github.sha }} (branch `${{ github.ref_name }}`).
 
-            **Which file?** If unsure, use `app-universal-debug.apk` (works on every device).
-            The `armeabi-v7a` / `arm64-v8a` / `x86` / `x86_64` files are smaller builds for one CPU type.
+            **Which file?** Most Android TVs and boxes: `app-armeabi-v7a-release.apk` (about 17 MB).
+            Newer 64-bit devices can use `app-arm64-v8a-release.apk`. `app-universal-release.apk` works
+            everywhere but is about 65 MB because it carries the torrent engine for every processor type.
 
-            Direct link to the newest build, e.g. for the Downloader app on Android TV:
-            https://github.com/${{ github.repository }}/releases/latest/download/app-universal-debug.apk
+            Newest build, e.g. for the Downloader app on Android TV:
+            https://github.com/${{ github.repository }}/releases/latest/download/app-armeabi-v7a-release.apk
           files: |
-            app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
 
       - uses: actions/upload-artifact@v4

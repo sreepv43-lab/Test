@@ -13,16 +13,38 @@ android {
         applicationId = "io.github.sreepv43.streamhub"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI builds count up, so every new build installs over the previous one.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "0.2.$build"
+        buildConfigField("int", "BUILD_NUMBER", build.toString())
+        buildConfigField("String", "UPDATE_REPO", "\"sreepv43-lab/Test\"")
+    }
+
+    // The permanent key and its password come from GitHub secrets in CI (see the workflow); without
+    // them, builds fall back to the debug key and can't update an install made with the real one.
+    val permanentKey = System.getenv("STREAMHUB_KEYSTORE_FILE")?.let(::File)?.takeIf { it.exists() }
+    val permanentKeyPassword = System.getenv("STREAMHUB_KEYSTORE_PASSWORD")
+    signingConfigs {
+        if (permanentKey != null && !permanentKeyPassword.isNullOrEmpty()) {
+            create("permanent") {
+                storeFile = permanentKey
+                storePassword = permanentKeyPassword
+                keyAlias = System.getenv("STREAMHUB_KEY_ALIAS") ?: "streamhub"
+                keyPassword = permanentKeyPassword
+            }
+        }
     }
 
     buildTypes {
+        val signing = signingConfigs.findByName("permanent") ?: signingConfigs.getByName("debug")
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so the release APK can be sideloaded; replace for store builds.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signing
+        }
+        debug {
+            signingConfig = signing
         }
     }
 
