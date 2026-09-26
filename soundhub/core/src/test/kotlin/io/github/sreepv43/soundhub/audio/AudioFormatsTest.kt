@@ -66,6 +66,8 @@ class AudioFormatsTest {
         assertEquals(Atmos.LIKELY, info.atmos)
         assertEquals("TrueHD Atmos", info.label)
         assertEquals(Codec.TRUEHD, AudioFormats.classify("A\\01.thd", 1).codec)
+        assertFalse(AudioFormats.classify("A\\01.thd", 1).playable)
+        assertTrue(info.playable)
     }
 
     @Test

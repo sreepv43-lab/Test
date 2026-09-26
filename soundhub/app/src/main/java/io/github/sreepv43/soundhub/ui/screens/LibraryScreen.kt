@@ -47,6 +47,7 @@ fun LibraryScreen(onPlaying: () -> Unit) {
     var filter by rememberSaveable { mutableStateOf(FormatFilter.ALL) }
     var openKey by rememberSaveable { mutableStateOf<String?>(null) }
     val albums = remember(tracks) { LibraryStore.albums(tracks) }
+    val folder = remember { container.musicFolder().path }
 
     albums.firstOrNull { it.key == openKey }?.let { album ->
         AlbumScreen(album, onBack = { openKey = null }, onPlaying = onPlaying)
@@ -63,7 +64,7 @@ fun LibraryScreen(onPlaying: () -> Unit) {
             ScreenTitle(
                 "Library",
                 if (tracks.isEmpty()) "Songs you play or download from Search are kept here"
-                else "${tracks.size} songs · ${formatSize(tracks.sumOf { it.size })} · in ${container.musicFolder().path}",
+                else "${tracks.size} songs · ${formatSize(tracks.sumOf { it.size })} · in $folder",
             )
         }
         if (albums.isNotEmpty()) item { FilterRow(filter, counts) { filter = it } }

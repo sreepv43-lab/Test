@@ -142,7 +142,7 @@ private fun StorageSection() {
     val folders = remember { container.musicFolders() }
     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
         SectionTitle("Where songs are saved")
-        val current = container.musicFolder().path
+        val current = remember(chosen) { container.musicFolder().path }
         folders.forEach { folder ->
             ChoiceRow(
                 "${folder.label} · ${formatSize(folder.freeBytes)} free",

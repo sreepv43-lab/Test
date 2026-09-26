@@ -80,9 +80,13 @@ data class AudioInfo(
             }
         }
 
-    /** ExoPlayer can play it (decoded, or passed through to a receiver for Dolby/DTS). */
+    /**
+     * ExoPlayer can play it (decoded, or passed through to a receiver for Dolby/DTS). Raw TrueHD and
+     * DTS files have no extractor; the same audio inside MKA/MKV/MP4 plays.
+     */
     val playable: Boolean
-        get() = codec !in setOf(Codec.DSD, Codec.APE, Codec.WAVPACK, Codec.WMA, Codec.AIFF)
+        get() = codec !in setOf(Codec.DSD, Codec.APE, Codec.WAVPACK, Codec.WMA, Codec.AIFF) &&
+            extension !in setOf("thd", "mlp", "truehd", "dts", "dtshd")
 
     private fun channelSuffix(): String? = when (channels) {
         null, 1, 2 -> null
