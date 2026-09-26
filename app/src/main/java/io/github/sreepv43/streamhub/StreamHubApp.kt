@@ -19,6 +19,8 @@ import io.github.sreepv43.streamhub.data.IntroMemory
 import io.github.sreepv43.streamhub.data.Library
 import io.github.sreepv43.streamhub.data.HomeCache
 import io.github.sreepv43.streamhub.sync.StremioImport
+import io.github.sreepv43.streamhub.sync.ImdbImport
+import io.github.sreepv43.streamhub.data.WatchNext
 import io.github.sreepv43.streamhub.sync.Trakt
 import io.github.sreepv43.streamhub.data.Settings
 import io.github.sreepv43.streamhub.update.Updater
@@ -122,6 +124,8 @@ class AppContainer(context: Context) {
     val updater = Updater(context, mediaHttp)
     val trakt = Trakt(context, http, library, addons)
     val stremioImport = StremioImport(http, addons, library, history)
+    val imdbImport = ImdbImport(http, addons, library)
+    val watchNext = WatchNext(context, history, library, settings).also { it.start() }
 
     private companion object {
         const val PREPARED_STREAMS = 3

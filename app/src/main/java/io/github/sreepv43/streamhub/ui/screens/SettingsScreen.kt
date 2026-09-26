@@ -112,6 +112,18 @@ fun SettingsScreen() {
         }
 
         item {
+            SettingsSection("Import from IMDb") {
+                ImdbImportSection()
+            }
+        }
+
+        item {
+            SettingsSection("TV home screen") {
+                HomeScreenRowSection()
+            }
+        }
+
+        item {
             SettingsSection("Trakt") {
                 TraktSection()
             }
@@ -373,6 +385,68 @@ private fun StremioImportSection() {
         )
     }
     status?.let { Text(it) }
+}
+
+@Composable
+private fun ImdbImportSection() {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var link by rememberSaveable { mutableStateOf("") }
+    var status by remember { mutableStateOf<String?>(null) }
+    var busy by remember { mutableStateOf(false) }
+    Text(
+        "Copy an IMDb list or your IMDb watchlist into My List. The list must be public " +
+            "(IMDb → the list → Edit → Privacy). You can also paste IMDb title links.",
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+        OutlinedTextField(
+            value = link,
+            onValueChange = { link = it },
+            label = { Text("IMDb list or watchlist link") },
+            placeholder = { Text("imdb.com/user/ur12345678/watchlist") },
+            singleLine = true,
+            colors = flatTextFieldColors(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+            modifier = Modifier.width(520.dp).tvFocus(),
+        )
+        FlatButton(
+            text = if (busy) "Importing…" else "Import",
+            prominent = true,
+            enabled = !busy && link.isNotBlank(),
+            onClick = {
+                busy = true
+                status = null
+                scope.launch {
+                    status = runCatching { context.container.imdbImport.run(link.trim()) { status = it } }.fold(
+                        { summary ->
+                            "Added ${summary.added} titles to My List." +
+                                if (summary.notFound > 0) " ${summary.notFound} couldn't be found in your addons." else ""
+                        },
+                        { "Import failed: ${it.message}" },
+                    )
+                    busy = false
+                }
+            },
+        )
+    }
+    status?.let { Text(it) }
+}
+
+@Composable
+private fun HomeScreenRowSection() {
+    val settings = LocalContext.current.container.settings
+    val mode by settings.homeScreenRow.flow.collectAsStateWithLifecycle()
+    Text(
+        "Show what you're watching in the \"Continue watching\" (Play next) row of the TV's home screen, so you can " +
+            "go back to it without opening StreamHub first. Needs Android TV 8 or newer.",
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    ChoiceRow(
+        "On the home screen",
+        listOf("continue" to "Continue watching", "continue-list" to "Continue watching + My List", "off" to "Nothing"),
+        mode,
+    ) { settings.homeScreenRow.set(it) }
 }
 
 @Composable

@@ -10,6 +10,12 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Settings → Updates installs newer builds of StreamHub. -->
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
+    <!-- The TV home screen's "Continue watching" (Play next) row. -->
+    <uses-permission android:name="com.android.providers.tv.permission.WRITE_EPG_DATA" />
+
+    <queries>
+        <provider android:authorities="android.media.tv" />
+    </queries>
     <!-- Needed to save downloads to USB drives on Android TV, which has no folder picker. -->
     <uses-permission
         android:name="android.permission.MANAGE_EXTERNAL_STORAGE"

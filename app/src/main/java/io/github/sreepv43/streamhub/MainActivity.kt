@@ -99,6 +99,14 @@ class MainActivity : ComponentActivity() {
             navRequest = Routes.DOWNLOADS
             return
         }
+        if (intent.action == ACTION_OPEN_TITLE) {
+            // From the TV home screen's "Continue watching" row.
+            val type = intent.getStringExtra(EXTRA_TYPE) ?: return
+            val metaId = intent.getStringExtra(EXTRA_META_ID) ?: return
+            val videoId = intent.getStringExtra(EXTRA_VIDEO_ID) ?: metaId
+            navRequest = if (videoId != metaId && type != "movie") Routes.streams(type, metaId, videoId) else Routes.detail(type, metaId)
+            return
+        }
         if (intent.action == Intent.ACTION_SEND) {
             val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
             val link = text?.split(Regex("\\s+"))?.firstOrNull { streamForLink(it) != null }
@@ -137,6 +145,10 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_DOWNLOADS = "open_downloads"
+        const val ACTION_OPEN_TITLE = "io.github.sreepv43.streamhub.OPEN_TITLE"
+        const val EXTRA_TYPE = "type"
+        const val EXTRA_META_ID = "meta_id"
+        const val EXTRA_VIDEO_ID = "video_id"
     }
 }
 

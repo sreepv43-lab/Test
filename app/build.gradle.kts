@@ -96,6 +96,8 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.8.7")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("androidx.documentfile:documentfile:1.0.1")
+    // Android TV home screen "Continue watching" row.
+    implementation("androidx.tvprovider:tvprovider:1.0.0")
     // Installs the libraries' baseline profiles on sideloaded installs, so Compose code is
     // precompiled instead of interpreted (much smoother scrolling on TV boxes).
     implementation("androidx.profileinstaller:profileinstaller:1.4.1")

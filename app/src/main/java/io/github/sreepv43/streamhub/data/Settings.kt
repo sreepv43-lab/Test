@@ -86,6 +86,9 @@ class Settings(context: Context) {
     /** Left/Right seek while the player controls are hidden (otherwise they show the controls). */
     val dpadSeeks = bool("dpad_seeks", true)
 
+    /** TV home screen "Continue watching" row: "continue", "continue-list" (also My List) or "off". */
+    val homeScreenRow = string("home_screen_row", "continue")
+
     // Downloads
     val downloadsWifiOnly = bool("downloads_wifi_only", false)
     /** 0 = no limit. */
