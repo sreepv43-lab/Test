@@ -37,11 +37,17 @@ object StreamActions {
 
     fun play(context: Context, stream: Stream, watch: WatchContext) {
         val target = StreamResolver.resolve(stream) ?: return toast(context, "This stream type is not supported")
-        playTarget(context, target, watch, stream.subtitles)
+        playTarget(context, target, watch, stream.subtitles, stream.behaviorHints.bingeGroup)
     }
 
     /** Plays a direct URL or a torrent in the built-in player; other links open in their app. */
-    fun playTarget(context: Context, target: PlaybackTarget, watch: WatchContext, subtitles: List<Subtitle> = emptyList()) {
+    fun playTarget(
+        context: Context,
+        target: PlaybackTarget,
+        watch: WatchContext,
+        subtitles: List<Subtitle> = emptyList(),
+        bingeGroup: String? = null,
+    ) {
         val (url, headers) = when (target) {
             is PlaybackTarget.Direct -> target.url to target.headers
             is PlaybackTarget.Torrent -> TorrentLinks.logicalUrl(target.source, target.fileIdx) to emptyMap()
@@ -61,6 +67,7 @@ object StreamActions {
                 poster = watch.poster,
                 background = watch.background,
                 logo = watch.logo,
+                bingeGroup = bingeGroup,
             ),
         )
     }

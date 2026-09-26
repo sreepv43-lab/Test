@@ -1,5 +1,7 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.container
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -124,6 +126,9 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
     val state by vm.state.collectAsStateWithLifecycle()
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
     val context = LocalContext.current
+    val playback = LocalContext.current.container.settings
+    val bestFirst by playback.streamsBestFirst.flow.collectAsState()
+    val maxResolution by playback.maxResolution.flow.collectAsState()
     val dialogs = rememberStreamDialogState()
     val history by rememberHistory()
     val watch = {
@@ -172,7 +177,7 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
                     Text("Streams", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 }
                 resumeNote(history.firstOrNull { it.videoId == meta.movieVideoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs)
-                streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal)
+                streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution)
             }
         }
     }

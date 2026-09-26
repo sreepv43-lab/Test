@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import io.github.sreepv43.streamhub.ui.components.FlatButton
+import io.github.sreepv43.streamhub.ui.components.FlatChip
 import io.github.sreepv43.streamhub.ui.components.panel
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -85,6 +86,10 @@ fun SettingsScreen() {
             }
         }
 
+        SettingsSection("Playback") {
+            PlaybackSettings()
+        }
+
         SettingsSection("Updates") {
             UpdatesSection()
         }
@@ -147,6 +152,54 @@ fun SettingsScreen() {
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+    }
+}
+
+@Composable
+private fun PlaybackSettings() {
+    val settings = LocalContext.current.container.settings
+    val maxResolution by settings.maxResolution.flow.collectAsStateWithLifecycle()
+    val audio by settings.audioLanguage.flow.collectAsStateWithLifecycle()
+    val subtitles by settings.subtitleLanguage.flow.collectAsStateWithLifecycle()
+    val scale by settings.subtitleScale.flow.collectAsStateWithLifecycle()
+    val autoplay by settings.autoplayNext.flow.collectAsStateWithLifecycle()
+    val skip by settings.introSkipSeconds.flow.collectAsStateWithLifecycle()
+
+    ChoiceRow("Best quality to pick (\"Play best\" and next episode)", listOf(720 to "720p", 1080 to "1080p", 2160 to "4K"), maxResolution) {
+        settings.maxResolution.set(it)
+    }
+    ChoiceRow("Audio language", listOf("" to "Video's default") + languages(audio), audio) { settings.audioLanguage.set(it) }
+    ChoiceRow("Subtitles", listOf("" to "Off") + languages(subtitles), subtitles) { settings.subtitleLanguage.set(it) }
+    ChoiceRow("Subtitle size", listOf(0.8f to "Small", 1f to "Normal", 1.3f to "Large", 1.6f to "Extra large"), scale) {
+        settings.subtitleScale.set(it)
+    }
+    ChoiceRow("Play the next episode automatically", listOf(true to "On", false to "Off"), autoplay) { settings.autoplayNext.set(it) }
+    ChoiceRow("\"Skip intro\" jumps ahead by", listOf(60, 75, 85, 90, 105, 120).map { it to "$it s" }, skip) {
+        settings.introSkipSeconds.set(it)
+    }
+    Text(
+        "Languages you pick with the player's own buttons are remembered too. \"Skip intro\" appears in the first " +
+            "minutes of an episode; after you use it once, later episodes of that show offer it where the intro started.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+/** Common languages, plus [current] if it was picked in the player and isn't one of them. */
+private fun languages(current: String): List<Pair<String, String>> {
+    val common = listOf(
+        "en", "hi", "ml", "ta", "te", "kn", "bn", "mr", "es", "fr", "de", "it", "pt", "ar", "ja", "ko", "zh",
+    )
+    val codes = if (current.isEmpty() || current in common) common else common + current
+    return codes.map { code -> code to java.util.Locale(code).getDisplayLanguage(java.util.Locale.ENGLISH).ifEmpty { code } }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun <T> ChoiceRow(label: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+    Text(label, style = MaterialTheme.typography.titleSmall)
+    FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        options.forEach { (value, name) -> FlatChip(name, selected = value == selected, onClick = { onSelect(value) }) }
     }
 }
 

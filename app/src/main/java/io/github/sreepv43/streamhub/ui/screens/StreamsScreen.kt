@@ -1,5 +1,8 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import io.github.sreepv43.streamhub.container
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
@@ -24,6 +27,9 @@ fun StreamsScreen() {
     val vm = appViewModel { c, handle -> MetaViewModel(c.addons, handle) }
     val state by vm.state.collectAsStateWithLifecycle()
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
+    val playback = LocalContext.current.container.settings
+    val bestFirst by playback.streamsBestFirst.flow.collectAsState()
+    val maxResolution by playback.maxResolution.flow.collectAsState()
     val dialogs = rememberStreamDialogState()
     val history by rememberHistory()
 
@@ -48,6 +54,6 @@ fun StreamsScreen() {
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item(key = "header") { MetaHeader(meta, subtitle = episodeTitle) }
         resumeNote(history.firstOrNull { it.videoId == vm.videoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs)
-        streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal)
+        streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution)
     }
 }

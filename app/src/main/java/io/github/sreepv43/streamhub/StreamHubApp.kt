@@ -11,6 +11,7 @@ import coil.memory.MemoryCache
 import io.github.sreepv43.streamhub.addon.AddonClient
 import io.github.sreepv43.streamhub.addon.AddonRepository
 import io.github.sreepv43.streamhub.data.CrashReports
+import io.github.sreepv43.streamhub.data.IntroMemory
 import io.github.sreepv43.streamhub.data.Settings
 import io.github.sreepv43.streamhub.update.Updater
 import io.github.sreepv43.streamhub.data.WatchHistory
@@ -70,6 +71,7 @@ class AppContainer(context: Context) {
     val addons = AddonRepository(context, addonClient)
     val settings = Settings(context)
     val history = WatchHistory(context)
+    val introMemory = IntroMemory(context)
     val storage = DownloadStorage(context)
     val downloads = DownloadRepository(context)
 

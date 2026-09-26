@@ -43,7 +43,11 @@ import androidx.lifecycle.viewModelScope
 import io.github.sreepv43.streamhub.addon.AddonRepository
 import io.github.sreepv43.streamhub.addon.AddonStreams
 import io.github.sreepv43.streamhub.addon.Stream
+import io.github.sreepv43.streamhub.addon.StreamRanking
 import io.github.sreepv43.streamhub.addon.StreamResolver
+import android.text.format.Formatter
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import io.github.sreepv43.streamhub.container
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -85,12 +89,17 @@ class StreamsLoader(private val repository: AddonRepository, private val viewMod
     }
 }
 
-/** Adds the stream list (grouped by addon) to a LazyColumn. */
+/**
+ * Adds the stream list to a LazyColumn: a "Play best" button, then the streams grouped by addon or,
+ * with [bestFirst], as one list ordered like "Play best" (see StreamRanking).
+ */
 fun LazyListScope.streamItems(
     state: StreamsState,
     onPlay: (Stream) -> Unit,
     onDownload: (Stream) -> Unit,
     onExternal: (Stream) -> Unit,
+    bestFirst: Boolean = false,
+    maxResolution: Int = 1080,
 ) {
     if (state.noAddons) {
         item {
@@ -102,7 +111,16 @@ fun LazyListScope.streamItems(
         }
         return
     }
-    state.results.forEach { result ->
+    val all = state.results.flatMap { it.streams }
+    if (all.isNotEmpty()) {
+        item(key = "best") { PlayBestBar(all, maxResolution, bestFirst, onPlay) }
+    }
+    if (bestFirst) {
+        val ranked = StreamRanking.rank(all, maxResolution)
+        items(ranked.withIndex().toList(), key = { "b-" + it.index }) { (_, stream) ->
+            StreamRow(stream, onPlay = { onPlay(stream) }, onDownload = { onDownload(stream) }, onExternal = { onExternal(stream) })
+        }
+    } else state.results.forEach { result ->
         item(key = "header-" + result.addon.transportUrl) {
             Text(
                 result.addon.manifest.name,
@@ -138,6 +156,39 @@ fun LazyListScope.streamItems(
                 Text("  Asking ${state.pending} addon(s) for streams…")
             }
         }
+    }
+}
+
+/** "▶ Play best · 1080p · 2.1 GB · 👤 300" plus the switch between grouped and best-first lists. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PlayBestBar(streams: List<Stream>, maxResolution: Int, bestFirst: Boolean, onPlay: (Stream) -> Unit) {
+    val context = LocalContext.current
+    val best = remember(streams, maxResolution) { StreamRanking.best(streams, maxResolution) }
+    FlowRow(
+        Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        if (best != null) {
+            val info = StreamRanking.info(best)
+            val summary = listOfNotNull(
+                info.resolution?.let { if (it >= 2160) "4K" else "${it}p" },
+                info.sizeBytes?.let { Formatter.formatShortFileSize(context, it) },
+                info.seeders?.let { "👤 $it" },
+            ).joinToString(" · ")
+            FlatButton(
+                text = if (summary.isEmpty()) "Play best" else "Play best · $summary",
+                icon = Icons.Default.PlayArrow,
+                prominent = true,
+                onClick = { onPlay(best) },
+            )
+        }
+        FlatChip(
+            text = if (bestFirst) "Best first" else "By addon",
+            selected = bestFirst,
+            onClick = { context.container.settings.streamsBestFirst.set(!bestFirst) },
+        )
     }
 }
 
