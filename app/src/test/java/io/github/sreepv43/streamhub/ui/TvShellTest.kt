@@ -187,11 +187,12 @@ class TvShellTest {
         press(KeyEvent.KEYCODE_DPAD_RIGHT, times = 9)
         val opened = focused()
         assertTrue(opened, opened.startsWith("r4-"))
+        shell?.trace = mutableListOf()
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals("detail/{id}", route())
         press(KeyEvent.KEYCODE_BACK)
         assertEquals("home", route())
-        assertEquals("$shell", opened, focused())
+        assertEquals("$shell; events: ${shell?.trace}", opened, focused())
     }
 
     @Test
@@ -432,7 +433,7 @@ private fun FakeHome(onOpen: (String) -> Unit, onShell: (TvShellState?) -> Unit)
     CompositionLocalProvider(LocalBringIntoViewSpec provides TvScrolling.None) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp)) {
             item { Text("Home page", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }
-            for (r in 0 until 6) {
+            for (r in 0 until 10) {
                 item(key = r) {
                     val state = if (r == 2) {
                         RowState.Loading

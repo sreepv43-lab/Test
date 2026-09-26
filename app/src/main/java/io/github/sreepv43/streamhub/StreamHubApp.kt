@@ -10,7 +10,9 @@ import coil.disk.DiskCache
 import coil.memory.MemoryCache
 import io.github.sreepv43.streamhub.addon.AddonClient
 import io.github.sreepv43.streamhub.addon.AddonRepository
+import io.github.sreepv43.streamhub.data.CrashReports
 import io.github.sreepv43.streamhub.data.Settings
+import io.github.sreepv43.streamhub.update.Updater
 import io.github.sreepv43.streamhub.data.WatchHistory
 import io.github.sreepv43.streamhub.download.DownloadRepository
 import io.github.sreepv43.streamhub.download.DownloadStorage
@@ -31,6 +33,7 @@ class StreamHubApp : Application(), ImageLoaderFactory {
 
     override fun onCreate() {
         super.onCreate()
+        CrashReports.install(this)
         container = AppContainer(this)
     }
 
@@ -90,6 +93,8 @@ class AppContainer(context: Context) {
         TorrentLinks.parseLogicalUrl(url)?.let { (source, file) -> torrentServer.urlFor(source, file) } ?: url
 
     val downloader = Downloader(context, torrentHttp, downloads, storage, ::playableUrl)
+
+    val updater = Updater(context, mediaHttp)
 
     private fun fetchBytes(context: Context, url: String): ByteArray {
         val uri = Uri.parse(url)

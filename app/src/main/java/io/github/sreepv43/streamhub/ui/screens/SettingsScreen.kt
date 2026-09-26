@@ -44,6 +44,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.streamhub.BuildConfig
 import io.github.sreepv43.streamhub.container
+import io.github.sreepv43.streamhub.update.Updater
 import io.github.sreepv43.streamhub.download.DownloadLocation
 import io.github.sreepv43.streamhub.ui.components.StorageChooser
 import io.github.sreepv43.streamhub.ui.components.StreamActions
@@ -82,6 +83,10 @@ fun SettingsScreen() {
                     ThemeSwatch(palette, selected = palette.id == themeId, onClick = { settings.setTheme(palette.id) })
                 }
             }
+        }
+
+        SettingsSection("Updates") {
+            UpdatesSection()
         }
 
         SettingsSection("Download location") {
@@ -143,6 +148,50 @@ fun SettingsScreen() {
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
+}
+
+@Composable
+private fun UpdatesSection() {
+    val context = LocalContext.current
+    val updater = context.container.updater
+    val scope = rememberCoroutineScope()
+    val state by updater.state.collectAsStateWithLifecycle()
+    val install = { file: java.io.File -> updater.install(file)?.let { StreamActions.toast(context, it) } }
+    Text("You have StreamHub ${BuildConfig.VERSION_NAME}.", color = MaterialTheme.colorScheme.onSurfaceVariant)
+    when (val s = state) {
+        Updater.State.Idle -> {}
+        Updater.State.Checking -> Text("Checking for updates…")
+        Updater.State.UpToDate -> Text("You have the newest version.")
+        is Updater.State.Failed -> Text(s.message, color = MaterialTheme.colorScheme.error)
+        is Updater.State.Available ->
+            Text("Build ${s.update.build} is available (${Formatter.formatShortFileSize(context, s.update.size)}).")
+        is Updater.State.Downloading ->
+            Text("Downloading build ${s.update.build}… ${(s.progress * 100).toInt()}%")
+        is Updater.State.Ready -> Text("Build ${s.update.build} is downloaded.")
+    }
+    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        when (val s = state) {
+            is Updater.State.Available -> FlatButton(
+                text = "Download and install",
+                prominent = true,
+                onClick = {
+                    scope.launch {
+                        updater.download(s.update)
+                        (updater.state.value as? Updater.State.Ready)?.let { install(it.file) }
+                    }
+                },
+            )
+            is Updater.State.Ready -> FlatButton(text = "Install", prominent = true, onClick = { install(s.file) })
+            Updater.State.Checking, is Updater.State.Downloading -> {}
+            else -> FlatButton(text = "Check for updates", onClick = { scope.launch { updater.check() } })
+        }
+    }
+    Text(
+        "If Android says the app can't be installed, uninstall StreamHub once and install the new version " +
+            "from the download link. That's only needed until the app is signed with its permanent key.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
