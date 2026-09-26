@@ -214,6 +214,10 @@ private fun PlaybackSettings() {
     val skip by settings.introSkipSeconds.flow.collectAsStateWithLifecycle()
     val startBuffer by settings.startBufferMs.flow.collectAsStateWithLifecycle()
     val passthrough by settings.surroundPassthrough.flow.collectAsStateWithLifecycle()
+    val seekBack by settings.seekBackSeconds.flow.collectAsStateWithLifecycle()
+    val seekForward by settings.seekForwardSeconds.flow.collectAsStateWithLifecycle()
+    val acceleration by settings.seekAcceleration.flow.collectAsStateWithLifecycle()
+    val dpadSeeks by settings.dpadSeeks.flow.collectAsStateWithLifecycle()
 
     ChoiceRow("Best quality to pick (\"Play best\" and next episode)", listOf(720 to "720p", 1080 to "1080p", 2160 to "4K"), maxResolution) {
         settings.maxResolution.set(it)
@@ -248,6 +252,26 @@ private fun PlaybackSettings() {
     ChoiceRow("\"Skip intro\" jumps ahead by", listOf(60, 75, 85, 90, 105, 120).map { it to "$it s" }, skip) {
         settings.introSkipSeconds.set(it)
     }
+    ChoiceRow("Rewind jumps back", listOf(5, 10, 15, 30).map { it to "$it s" }, seekBack) { settings.seekBackSeconds.set(it) }
+    ChoiceRow("Forward jumps ahead", listOf(10, 15, 30, 60).map { it to "$it s" }, seekForward) {
+        settings.seekForwardSeconds.set(it)
+    }
+    ChoiceRow(
+        "Pressing rewind/forward again quickly (or holding it) jumps further",
+        listOf("off" to "Off", "normal" to "Normal (up to ×12)", "fast" to "Fast (up to ×30)"),
+        acceleration,
+    ) { settings.seekAcceleration.set(it) }
+    ChoiceRow(
+        "Left / Right while the controls are hidden",
+        listOf(true to "Rewind / forward", false to "Show the controls"),
+        dpadSeeks,
+    ) { settings.dpadSeeks.set(it) }
+    Text(
+        "Presses in a row add up and the player jumps once, when you stop pressing, so torrents don't reload " +
+            "at every step. The rewind/forward keys of the remote work the same way.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     Text(
         "Languages you pick with the player's own buttons are remembered too. \"Skip intro\" appears in the first " +
             "minutes of an episode; after you use it once, later episodes of that show offer it where the intro started.",

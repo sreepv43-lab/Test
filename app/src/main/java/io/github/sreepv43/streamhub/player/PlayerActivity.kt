@@ -6,6 +6,7 @@ import android.content.Intent
 import android.net.Uri
 import android.graphics.Color
 import android.os.Bundle
+import android.os.SystemClock
 import android.text.format.Formatter
 import android.view.Gravity
 import android.view.View
@@ -42,6 +43,7 @@ import androidx.media3.exoplayer.analytics.AnalyticsListener
 import androidx.media3.exoplayer.audio.AudioSink
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.DefaultTimeBar
 import androidx.media3.ui.PlayerView
 import android.app.AlertDialog
 import android.graphics.drawable.GradientDrawable
@@ -102,6 +104,12 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var upNextView: TextView
     private lateinit var skipIntroView: TextView
     private lateinit var audioInfoView: TextView
+    private lateinit var seekView: TextView
+    private val seekSteps = SeekSteps { SystemClock.elapsedRealtime() }
+    private var seekTarget: Long? = null
+    private var seekFrom = 0L
+    private var seekCommit: Job? = null
+    private var lastSeekRepeatAt = 0L
     private var audioInfo: String? = null
     private var hideAudioInfo: Job? = null
     private var nextEpisode: Video? = null
@@ -150,6 +158,7 @@ class PlayerActivity : ComponentActivity() {
         upNextView = overlayLabel()
         skipIntroView = overlayLabel().apply { text = "Skip intro   ▸ OK" }
         audioInfoView = overlayLabel().apply { textSize = 15f }
+        seekView = overlayLabel().apply { textSize = 22f }
         val root = FrameLayout(this).apply {
             addView(playerView)
             val corner = FrameLayout.LayoutParams(
@@ -168,6 +177,14 @@ class PlayerActivity : ComponentActivity() {
             )
             addView(skipIntroView, FrameLayout.LayoutParams(corner))
             addView(
+                seekView,
+                FrameLayout.LayoutParams(
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    ViewGroup.LayoutParams.WRAP_CONTENT,
+                    Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL,
+                ).apply { setMargins(48, 48, 48, 120) },
+            )
+            addView(
                 statusView,
                 FrameLayout.LayoutParams(
                     ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -179,6 +196,10 @@ class PlayerActivity : ComponentActivity() {
         }
         setContentView(root)
         addSubtitleOptionsButton()
+        // Left/Right on the progress bar move by the forward step.
+        resources.getIdentifier("exo_progress", "id", packageName).takeIf { it != 0 }
+            ?.let { playerView.findViewById<View>(it) as? DefaultTimeBar }
+            ?.setKeyTimeIncrement(container.settings.seekForwardSeconds.value * 1_000L)
         initPlayer(savedInstanceState?.getLong(STATE_POSITION))
         findNextEpisode()
     }
@@ -219,6 +240,9 @@ class PlayerActivity : ComponentActivity() {
         val exo = ExoPlayer.Builder(this, renderers)
             .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
             .setLoadControl(loadControl)
+            // The player's own rewind/forward buttons.
+            .setSeekBackIncrementMs(settings.seekBackSeconds.value * 1_000L)
+            .setSeekForwardIncrementMs(settings.seekForwardSeconds.value * 1_000L)
             .build()
         exo.addAnalyticsListener(object : AnalyticsListener {
             private var input: Format? = null
@@ -479,6 +503,17 @@ class PlayerActivity : ComponentActivity() {
         }
         if (event.keyCode == KeyEvent.KEYCODE_MENU) {
             if (up) showSubtitleOptions()
+            return true
+        }
+        // Rewind / forward keys, and Left / Right while the controls are hidden: jumps that add up.
+        val mediaSeek = event.keyCode == KeyEvent.KEYCODE_MEDIA_REWIND || event.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
+        val dpadSeek = (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) &&
+            !playerView.isControllerFullyVisible && firstFrameShown && container.settings.dpadSeeks.value
+        if (mediaSeek || dpadSeek) {
+            if (event.action == KeyEvent.ACTION_DOWN) {
+                val forward = event.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
+                onSeekKey(forward, repeat = event.repeatCount > 0)
+            }
             return true
         }
         // Let the player view handle D-pad and media keys (shows controls, seeks, play/pause).
@@ -779,6 +814,39 @@ class PlayerActivity : ComponentActivity() {
         toast("Deleted the download of ${item.title} after watching")
     }
 
+    // ---- Rewind / forward ------------------------------------------------------------------------
+
+    private fun onSeekKey(forward: Boolean, repeat: Boolean) {
+        // Holding the key: one jump every SEEK_REPEAT_MS, not one per key repeat.
+        val now = SystemClock.elapsedRealtime()
+        if (repeat && now - lastSeekRepeatAt < SEEK_REPEAT_MS) return
+        lastSeekRepeatAt = now
+        val settings = container.settings
+        val base = (if (forward) settings.seekForwardSeconds.value else settings.seekBackSeconds.value) * 1_000L
+        seekBy(seekSteps.next(forward, base, settings.seekAcceleration.value))
+    }
+
+    /** Moves the pending seek target; the player seeks once the presses stop. */
+    private fun seekBy(deltaMs: Long) {
+        val exo = player ?: return
+        val duration = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 }
+        val from = seekTarget ?: exo.currentPosition.also { seekFrom = it }
+        var target = (from + deltaMs).coerceAtLeast(0)
+        if (duration != null) target = target.coerceAtMost((duration - 1_000).coerceAtLeast(0))
+        seekTarget = target
+        seekView.text = (if (target >= seekFrom) "⏩  " else "⏪  ") + SeekSteps.describe(target - seekFrom) +
+            "      " + formatTime(target) + (duration?.let { " / " + formatTime(it) } ?: "")
+        seekView.visibility = View.VISIBLE
+        seekCommit?.cancel()
+        seekCommit = lifecycleScope.launch {
+            delay(SEEK_COMMIT_MS)
+            seekTarget = null
+            if (player === exo) exo.seekTo(target)
+            delay(SEEK_LABEL_MS)
+            seekView.visibility = View.GONE
+        }
+    }
+
     /** Shows [info] (or the last one) in the top corner; a new audio format is shown for a few seconds. */
     private fun showAudioInfo(info: String?) {
         if (info != null) audioInfo = info
@@ -829,6 +897,9 @@ class PlayerActivity : ComponentActivity() {
         private const val SUBTITLE_TIMEOUT_MS = 2_500L
         private const val MIN_REBUFFER_MS = 2_000
         private const val AUDIO_INFO_MS = 8_000L
+        private const val SEEK_COMMIT_MS = 700L
+        private const val SEEK_LABEL_MS = 1_200L
+        private const val SEEK_REPEAT_MS = 250L
         private const val PROGRESS_SAVE_INTERVAL_MS = 10_000L
         private const val RESUME_MIN_MS = 30_000L
         private const val SUBTITLE_STEP_MS = 500L

@@ -62,6 +62,7 @@ class TorrentEngine(
         Thread(r, "torrent-janitor").apply { isDaemon = true }
     }
     private val prefetching = HashSet<String>()
+    private val prefetched = ArrayDeque<String>()
     private val prefetcher = Executors.newFixedThreadPool(3) { r ->
         Thread(r, "torrent-prefetch").apply { isDaemon = true }
     }
@@ -215,6 +216,15 @@ class TorrentEngine(
         synchronized(lock) {
             if (source in prefetching || sourcesToHash[source]?.let { torrents[it] } != null) return
             prefetching += source
+            // Browsing many titles: drop the oldest prepared torrents nobody went on to play.
+            prefetched.remove(source)
+            prefetched.addLast(source)
+            while (prefetched.size > MAX_PREFETCHED) {
+                val old = prefetched.removeFirst()
+                sourcesToHash[old]?.let { torrents[it] }
+                    ?.takeIf { it.refs == 0 && it.openFiles.isEmpty() }
+                    ?.let(::removeLocked)
+            }
         }
         prefetcher.execute {
             var entry: Entry? = null
@@ -456,6 +466,7 @@ class TorrentEngine(
         private const val READAHEAD_BYTES = 24L * 1024 * 1024
         private const val MIN_READAHEAD_PIECES = 4
         private const val PREFETCH_BYTES = 8L * 1024 * 1024
+        private const val MAX_PREFETCHED = 6
         private const val PREFETCH_METADATA_TIMEOUT_MS = 90_000L
 
         val VIDEO_EXTENSIONS = setOf("mkv", "mp4", "avi", "webm", "mov", "m4v", "ts", "wmv", "flv", "mpg", "mpeg", "m2ts")

@@ -79,6 +79,12 @@ class Settings(context: Context) {
     val prepareTorrents = bool("prepare_torrents", true)
     /** "auto" (what Android reports), "arc" or "earc": send surround audio undecoded to the receiver. */
     val surroundPassthrough = string("surround_passthrough", "auto")
+    val seekBackSeconds = int("seek_back_seconds", 10)
+    val seekForwardSeconds = int("seek_forward_seconds", 10)
+    /** "off", "normal" or "fast": repeated or held rewind/forward presses jump further. */
+    val seekAcceleration = string("seek_acceleration", "normal")
+    /** Left/Right seek while the player controls are hidden (otherwise they show the controls). */
+    val dpadSeeks = bool("dpad_seeks", true)
 
     // Downloads
     val downloadsWifiOnly = bool("downloads_wifi_only", false)

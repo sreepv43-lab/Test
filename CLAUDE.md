@@ -21,7 +21,7 @@ This file provides guidance for AI assistants (Claude and others) working in thi
     │   ├── addon/      # Stremio protocol (pure Kotlin + AddonRepository), StreamRanking, Episodes, AddonCatalog
     │   ├── data/       # Settings, WatchHistory, Library (My List), IntroMemory, CrashReports (SharedPreferences/files)
     │   ├── download/   # Downloader, DownloadService, DownloadStorage (SAF + volumes)
-    │   ├── player/     # PlayerActivity (Media3: up next, skip intro, subtitle options), SubtitleShift, AudioOutput (passthrough, FFmpeg audio)
+    │   ├── player/     # PlayerActivity (Media3: up next, skip intro, subtitle options), SubtitleShift, SeekSteps (accelerated rewind/forward), AudioOutput (passthrough, FFmpeg audio)
     │   ├── sync/       # StremioImport (one-time account copy), Trakt (device login + sync), SyncIds
     │   ├── torrent/    # TorrentEngine (libtorrent4j), TorrentHttpServer (local HTTP), TorrentLinks
     │   ├── update/     # UpdateCheck (pure) + Updater (GitHub releases -> APK install)
@@ -31,7 +31,7 @@ This file provides guidance for AI assistants (Claude and others) working in thi
 ```
 
 Conventions:
-- Keep `addon/Models.kt`, `AddonUrls.kt`, `StreamResolver.kt`, `StreamRanking.kt`, `Episodes.kt`, `AddonClient.kt`, `download/FileNames.kt`, `player/SubtitleShift.kt`, `sync/SyncIds.kt`, `update/UpdateCheck.kt` and everything in `torrent/` free of Android imports so they stay unit-testable on the JVM.
+- Keep `addon/Models.kt`, `AddonUrls.kt`, `StreamResolver.kt`, `StreamRanking.kt`, `Episodes.kt`, `AddonClient.kt`, `download/FileNames.kt`, `player/SubtitleShift.kt`, `player/SeekSteps.kt`, `sync/SyncIds.kt`, `update/UpdateCheck.kt` and everything in `torrent/` free of Android imports so they stay unit-testable on the JVM.
 - Torrents are addressed inside the app by logical URLs `torrent:?src=<magnet or .torrent url>&file=<idx>` (stored in downloads, passed to the player); `AppContainer.playableUrl()` / `TorrentHttpServer.urlFor()` turn them into `http://127.0.0.1:<port>/stream?...` at use time because the port changes per launch.
 - The torrent engine test needs the desktop libtorrent native library and `LD_PRELOAD=libjsig.so` (libtorrent installs signal handlers); `app/build.gradle.kts` sets both up for `Test` tasks.
 - Every focusable UI element should use `Modifier.tvFocus()` (placed before `clickable`) so it is visible when navigating with a remote; it also lets `TvShell` remember and restore the selection per page. Elements in lazy lists pass a stable `key` (e.g. the meta or episode id, inside a `LocalFocusKeyScope` per row), because composite key hashes change with nested prefetch.

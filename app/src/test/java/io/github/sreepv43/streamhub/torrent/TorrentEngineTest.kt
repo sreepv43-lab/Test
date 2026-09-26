@@ -18,6 +18,7 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 import java.nio.file.Files
+import kotlin.concurrent.thread
 import kotlin.random.Random
 
 /**
@@ -145,9 +146,15 @@ class TorrentEngineTest {
         // (Requests already on their way when the limit is set can bring a few MB more.)
         assertTrue("not the whole file (${downloaded()} of ${movie.size})", downloaded() < movie.size / 2)
 
-        // Playing it afterwards reads the whole file as usual.
-        val full = open(TorrentHttpServer(engine).urlFor(source, -1), null)
-        assertArrayEquals(movie, full.inputStream.readBytes())
+        // Playing it afterwards reads the whole file as usual (the seeder keeps dialling in, as
+        // trackers would bring peers back).
+        var read: ByteArray? = null
+        val reader = thread { read = open(TorrentHttpServer(engine).urlFor(source, -1), null).inputStream.readBytes() }
+        while (reader.isAlive) {
+            seed.swig().connect_peer(TcpEndpoint("127.0.0.1", 47304).swig())
+            reader.join(500)
+        }
+        assertArrayEquals(movie, read)
     }
 
     private fun open(url: String, range: String?): HttpURLConnection =

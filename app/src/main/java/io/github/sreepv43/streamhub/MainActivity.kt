@@ -67,7 +67,8 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
-        lifecycleScope.launch {
+        // Once per start (not again when the screen is recreated, e.g. rotated).
+        if (savedInstanceState == null) lifecycleScope.launch {
             val update = container.updater.check()
             if (update is Updater.State.Available) {
                 StreamActions.toast(this@MainActivity, "StreamHub build ${update.update.build} is available: Settings → Updates")

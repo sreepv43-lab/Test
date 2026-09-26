@@ -42,8 +42,10 @@ class AddonRepository(context: Context, private val client: AddonClient) {
         }
         if (prefs.getInt(KEY_DEFAULTS_VERSION, 1) < DEFAULTS_VERSION) {
             val installed = _addons.value.map { AddonUrls.baseUrl(it.transportUrl) }.toSet()
-            ADDED_IN_VERSION_2.filter { AddonUrls.baseUrl(it) !in installed }.forEach { url -> runCatching { install(url) } }
-            prefs.edit().putInt(KEY_DEFAULTS_VERSION, DEFAULTS_VERSION).apply()
+            val failed = ADDED_IN_VERSION_2.filter { AddonUrls.baseUrl(it) !in installed }
+                .count { url -> runCatching { install(url) }.isFailure }
+            // Offline at start: try again next time.
+            if (failed == 0) prefs.edit().putInt(KEY_DEFAULTS_VERSION, DEFAULTS_VERSION).apply()
         }
     }
 
