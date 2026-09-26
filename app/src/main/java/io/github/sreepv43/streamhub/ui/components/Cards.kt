@@ -31,6 +31,7 @@ import androidx.compose.ui.platform.LocalDensity
 import io.github.sreepv43.streamhub.ui.TvScrolling
 import kotlinx.coroutines.launch
 import kotlin.math.abs
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Row
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
@@ -69,6 +70,7 @@ fun PosterCard(
     progress: Float? = null,
     caption: String? = null,
     onFocused: (() -> Unit)? = null,
+    focusKey: Any? = null,
 ) {
     val shape = RoundedCornerShape(16.dp)
     Column(modifier.width(width)) {
@@ -77,7 +79,7 @@ fun PosterCard(
                 .fillMaxWidth()
                 .aspectRatio(if (landscape) 16f / 9f else 2f / 3f)
                 .then(if (onFocused != null) Modifier.onFocusChanged { if (it.hasFocus) onFocused() } else Modifier)
-                .tvFocus(shape, scale = 1.07f)
+                .tvFocus(shape, scale = 1.07f, key = focusKey)
                 .clip(shape)
                 .panel(shape)
                 .clickable(onClick = onClick),
@@ -137,7 +139,7 @@ fun SeeAllCard(onClick: () -> Unit) {
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
-                .tvFocus(shape, scale = 1.07f)
+                .tvFocus(shape, scale = 1.07f, key = "see-all")
                 .clip(shape)
                 .panel(shape)
                 .clickable(onClick = onClick),
@@ -184,6 +186,7 @@ fun MetaCard(meta: Meta, onClick: () -> Unit, modifier: Modifier = Modifier, onF
         caption = meta.releaseInfo,
         modifier = modifier,
         onFocused = onFocused,
+        focusKey = meta.type + meta.id,
     )
 }
 
@@ -204,41 +207,51 @@ fun MetaRow(
 ) {
     Column(modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
-        val metas = (state as? RowState.Loaded)?.metas?.let { remember(it) { it.distinctBy { meta -> meta.type + meta.id } } }
-        if (metas.isNullOrEmpty()) {
-            // Same height as a loaded row, so nothing below moves when the row finishes loading.
-            val message = when (state) {
-                RowState.Loading -> null
-                is RowState.Failed -> state.message
-                is RowState.Loaded -> "Nothing here"
+        CompositionLocalProvider(LocalFocusKeyScope provides title) { MetaRowContent(state, onMetaClick, onSeeAll, onMetaFocused) }
+    }
+}
+
+@Composable
+private fun MetaRowContent(
+    state: RowState,
+    onMetaClick: (Meta) -> Unit,
+    onSeeAll: (() -> Unit)?,
+    onMetaFocused: ((Meta) -> Unit)?,
+) {
+    val metas = (state as? RowState.Loaded)?.metas?.let { remember(it) { it.distinctBy { meta -> meta.type + meta.id } } }
+    if (metas.isNullOrEmpty()) {
+        // Same height as a loaded row, so nothing below moves when the row finishes loading.
+        val message = when (state) {
+            RowState.Loading -> null
+            is RowState.Failed -> state.message
+            is RowState.Loaded -> "Nothing here"
+        }
+        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
+            Row(
+                Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                repeat(PLACEHOLDER_CARDS) { PlaceholderCard(visible = message == null) }
             }
-            Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.CenterStart) {
-                Row(
-                    Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    repeat(PLACEHOLDER_CARDS) { PlaceholderCard(visible = message == null) }
-                }
-                if (message != null) {
-                    Text(
-                        message,
-                        color = if (state is RowState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(horizontal = 24.dp),
-                    )
-                }
+            if (message != null) {
+                Text(
+                    message,
+                    color = if (state is RowState.Failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(horizontal = 24.dp),
+                )
             }
-        } else {
-            PosterRow {
-                items(metas, key = { it.type + it.id }, contentType = { "poster" }) { meta ->
-                    MetaCard(
-                        meta,
-                        onClick = { onMetaClick(meta) },
-                        onFocused = onMetaFocused?.let { callback -> { callback(meta) } },
-                    )
-                }
-                if (onSeeAll != null) {
-                    item(key = "see-all", contentType = "see-all") { SeeAllCard(onSeeAll) }
-                }
+        }
+    } else {
+        PosterRow {
+            items(metas, key = { it.type + it.id }, contentType = { "poster" }) { meta ->
+                MetaCard(
+                    meta,
+                    onClick = { onMetaClick(meta) },
+                    onFocused = onMetaFocused?.let { callback -> { callback(meta) } },
+                )
+            }
+            if (onSeeAll != null) {
+                item(key = "see-all", contentType = "see-all") { SeeAllCard(onSeeAll) }
             }
         }
     }
@@ -293,14 +306,15 @@ private suspend fun LazyListState.glideToRow(index: Int, gap: Float?) {
     }
     val item = layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
     if (item == null) {
-        animateScrollToItem(index)
+        animateScrollToItem(index, (-(layoutInfo.viewportStartOffset + gap)).roundToInt().coerceAtLeast(0))
         return
     }
     val delta = item.offset - (layoutInfo.viewportStartOffset + gap)
     if (abs(delta) > 1f) animateScrollBy(delta, RowGlide)
 }
 
-private val RowTopGap = 8.dp
+// Keeps the (empty) bottom margin of the row above on screen, so it is already built for Up.
+private val RowTopGap = 24.dp
 private val RowGlide = tween<Float>(durationMillis = 220, easing = FastOutSlowInEasing)
 
 @Composable

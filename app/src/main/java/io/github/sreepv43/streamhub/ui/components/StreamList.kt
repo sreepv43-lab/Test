@@ -155,7 +155,7 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
         Row(
             Modifier
                 .weight(1f)
-                .tvFocus(shape, scale = 1.02f)
+                .tvFocus(shape, scale = 1.02f, key = streamKey(stream))
                 .clip(shape)
                 .panel(shape)
                 .clickable(onClick = onPlay)
@@ -181,6 +181,9 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
         FlatIconButton(Icons.Default.OpenInNew, "Open in external player", onExternal, Modifier.padding(start = 10.dp))
     }
 }
+
+private fun streamKey(stream: Stream): String =
+    stream.infoHash + ":" + stream.fileIdx + stream.url + stream.externalUrl + stream.ytId + stream.name
 
 /** State of the "where to download to" dialog. */
 class StreamDialogState {

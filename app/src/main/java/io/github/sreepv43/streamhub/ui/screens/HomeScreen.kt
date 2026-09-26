@@ -30,6 +30,7 @@ import io.github.sreepv43.streamhub.ui.components.CenteredLoading
 import io.github.sreepv43.streamhub.ui.components.MetaRow
 import io.github.sreepv43.streamhub.ui.components.PosterCard
 import io.github.sreepv43.streamhub.ui.components.RowState
+import io.github.sreepv43.streamhub.ui.components.LocalFocusKeyScope
 import io.github.sreepv43.streamhub.ui.components.PosterRow
 import io.github.sreepv43.streamhub.ui.components.alignRowOnFocus
 import io.github.sreepv43.streamhub.ui.TvScrolling
@@ -117,15 +118,18 @@ fun HomeScreen(
                             style = MaterialTheme.typography.titleLarge,
                             modifier = Modifier.padding(horizontal = 24.dp),
                         )
-                        PosterRow {
-                            items(continueWatching, key = { it.metaId }) { entry ->
-                                PosterCard(
-                                    title = entry.name,
-                                    image = entry.poster,
-                                    caption = entry.videoTitle,
-                                    progress = entry.progress,
-                                    onClick = { onOpenHistory(entry) },
-                                )
+                        CompositionLocalProvider(LocalFocusKeyScope provides "continue") {
+                            PosterRow {
+                                items(continueWatching, key = { it.metaId }) { entry ->
+                                    PosterCard(
+                                        title = entry.name,
+                                        image = entry.poster,
+                                        caption = entry.videoTitle,
+                                        progress = entry.progress,
+                                        onClick = { onOpenHistory(entry) },
+                                        focusKey = entry.metaId,
+                                    )
+                                }
                             }
                         }
                     }

@@ -271,7 +271,7 @@ private fun EpisodeRow(video: Video, onClick: () -> Unit) {
         Modifier
             .fillMaxWidth()
             .padding(horizontal = 24.dp, vertical = 4.dp)
-            .tvFocus(shape, scale = 1.02f)
+            .tvFocus(shape, scale = 1.02f, key = video.id)
             .clip(shape)
             .panel(shape)
             .clickable(onClick = onClick)
