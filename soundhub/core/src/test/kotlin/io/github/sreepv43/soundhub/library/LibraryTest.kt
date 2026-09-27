@@ -73,6 +73,20 @@ class LibraryTest {
     }
 
     @Test
+    fun resultsKeepTheirPlaceWhenMoreAnswersArrive() {
+        fun response(user: String, free: Boolean, speed: Int) = SearchResponse(
+            user, 1, listOf(SharedFile("@@$user\\A - B\\01 One.mp3", 8_000_000, "", mapOf(0 to 320))),
+            slotFree = free, avgSpeed = speed, queueLength = if (free) 0 else 5,
+        )
+        val first = SearchResults.group(listOf(response("slow", false, 10), response("ok", true, 100)))
+        assertEquals(listOf("ok", "slow"), first.map { it.username })
+        // A faster user answers later: listed after the rows already shown, not above them.
+        val fresh = SearchResults.group(listOf(response("slow", false, 10), response("ok", true, 100), response("fast", true, 9_999)))
+        assertEquals(listOf("fast", "ok", "slow"), fresh.map { it.username })
+        assertEquals(listOf("ok", "slow", "fast"), SearchResults.merge(first, fresh).map { it.username })
+    }
+
+    @Test
     fun libraryPersistsAndGroupsAlbums() {
         val index = temp.root.resolve("library.json")
         val store = LibraryStore(index)

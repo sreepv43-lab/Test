@@ -1,54 +1,98 @@
 package io.github.sreepv43.soundhub.ui.components
 
+import android.content.ActivityNotFoundException
+import android.content.Context
+import android.content.Intent
+import android.speech.RecognizerIntent
+import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import io.github.sreepv43.soundhub.audio.Atmos
 import io.github.sreepv43.soundhub.audio.AudioInfo
 import io.github.sreepv43.soundhub.audio.FormatFilter
 import io.github.sreepv43.soundhub.slsk.TransferInfo
 import io.github.sreepv43.soundhub.slsk.TransferStatus
 import io.github.sreepv43.soundhub.ui.Accent
+import io.github.sreepv43.soundhub.ui.AppColors
 import io.github.sreepv43.soundhub.ui.AtmosColor
 import io.github.sreepv43.soundhub.ui.HiResColor
+import io.github.sreepv43.soundhub.ui.LocalTvShell
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import java.util.Locale
 
 @Composable
 fun ScreenTitle(text: String, subtitle: String? = null) {
-    Column(Modifier.padding(bottom = 12.dp)) {
-        Text(text, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
+    Column(Modifier.padding(bottom = 4.dp)) {
+        Text(text, style = MaterialTheme.typography.headlineSmall, color = MaterialTheme.colorScheme.onBackground)
         if (subtitle != null) {
             Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
+}
+
+@Composable
+fun Note(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = color)
 }
 
 @Composable
@@ -82,53 +126,83 @@ fun FormatBadge(info: AudioInfo) {
 }
 
 @Composable
-fun Chip(label: String, selected: Boolean, onClick: () -> Unit) {
+fun Chip(label: String, selected: Boolean, modifier: Modifier = Modifier, key: Any? = null, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
+    val background = when {
+        focused -> AppColors.text
+        selected -> Accent
+        else -> MaterialTheme.colorScheme.surfaceVariant
+    }
     Box(
-        Modifier
-            .tvFocus(shape)
+        modifier
+            .onFocusChanged { focused = it.hasFocus }
+            .tvFocus(shape, key = key)
             .clip(shape)
-            .background(if (selected) Accent else MaterialTheme.colorScheme.surfaceVariant)
+            .background(background)
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
+            .padding(horizontal = 16.dp, vertical = 9.dp),
     ) {
         Text(
             label,
-            color = if (selected) Color.Black else MaterialTheme.colorScheme.onSurface,
+            color = if (focused || selected) Color.Black else MaterialTheme.colorScheme.onSurface,
             style = MaterialTheme.typography.labelLarge,
+            maxLines = 1,
         )
     }
 }
 
-/** Format chips (only the ones with something in them), each with its count. */
+/** All format chips, always in the same places, each with how many albums it matches. */
 @Composable
 fun FilterRow(selected: FormatFilter, counts: Map<FormatFilter, Int>, onSelect: (FormatFilter) -> Unit) {
-    val shown = FormatFilter.entries.filter { it == FormatFilter.ALL || it == selected || (counts[it] ?: 0) > 0 }
     LazyRow(
+        modifier = Modifier.tvRow().tvEnterAt { "filter-${selected.name}" }.testTag("filters"),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(horizontal = 4.dp, vertical = 8.dp),
+        contentPadding = PaddingValues(vertical = 6.dp),
     ) {
-        items(shown, key = { it.name }) { filter ->
-            val count = counts[filter]
-            Chip(if (count != null) "${filter.label}  $count" else filter.label, filter == selected) { onSelect(filter) }
+        items(FormatFilter.entries, key = { it.name }) { filter ->
+            Chip("${filter.label}  ${counts[filter] ?: 0}", filter == selected, key = "filter-${filter.name}") { onSelect(filter) }
         }
     }
 }
 
+/** A list row: lights up when selected with the remote. */
 @Composable
-fun ListRow(onClick: () -> Unit, modifier: Modifier = Modifier, content: @Composable RowScope.() -> Unit) {
+fun ListRow(onClick: () -> Unit, modifier: Modifier = Modifier, key: Any? = null, content: @Composable RowScope.() -> Unit) {
+    var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
     Row(
         modifier
             .fillMaxWidth()
-            .tvFocus(shape, scale = 1.02f)
+            .onFocusChanged { focused = it.hasFocus }
+            .tvFocus(shape, key = key)
             .clip(shape)
-            .background(MaterialTheme.colorScheme.surface)
+            .background(if (focused) AppColors.rowFocused else AppColors.row)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         content = content,
+    )
+}
+
+/** Text the remote can scroll to (plain text after the last button can't be reached otherwise). */
+@Composable
+fun ReadableText(text: String, modifier: Modifier = Modifier) {
+    var focused by remember { mutableStateOf(false) }
+    val shape = RoundedCornerShape(10.dp)
+    Text(
+        text,
+        style = MaterialTheme.typography.bodyMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        modifier = modifier
+            .fillMaxWidth()
+            .onFocusChanged { focused = it.hasFocus }
+            .tvFocus(shape)
+            .clip(shape)
+            .background(if (focused) AppColors.row else Color.Transparent)
+            .focusable()
+            .padding(horizontal = 12.dp, vertical = 8.dp),
     )
 }
 
@@ -149,17 +223,239 @@ fun TwoLines(title: String, subtitle: String?, modifier: Modifier = Modifier) {
 }
 
 @Composable
-fun ActionButton(text: String, icon: ImageVector? = null, primary: Boolean = true, onClick: () -> Unit) {
-    val modifier = Modifier.tvFocus(RoundedCornerShape(50))
+fun ActionButton(
+    text: String,
+    icon: ImageVector? = null,
+    primary: Boolean = true,
+    modifier: Modifier = Modifier,
+    pageDefault: Boolean = false,
+    onClick: () -> Unit,
+) {
+    val styled = modifier.tvFocus(RoundedCornerShape(50), scale = 1.05f, pageDefault = pageDefault).testTag(text)
     val content: @Composable RowScope.() -> Unit = {
         if (icon != null) {
-            Icon(icon, contentDescription = null, modifier = Modifier.size(18.dp))
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text)
+        Text(text, style = MaterialTheme.typography.labelLarge)
     }
-    if (primary) Button(onClick = onClick, modifier = modifier, content = content)
-    else OutlinedButton(onClick = onClick, modifier = modifier, content = content)
+    if (primary) Button(onClick = onClick, modifier = styled, content = content)
+    else OutlinedButton(onClick = onClick, modifier = styled, content = content)
+}
+
+/**
+ * The search box. It is a button until pressed, so moving past it with the remote never pops up
+ * the on-screen keyboard; pressing it opens the keyboard, and the keyboard's Search runs the search.
+ */
+@Composable
+fun SearchBar(query: String, hint: String, onSearch: (String) -> Unit) {
+    val context = LocalContext.current
+    var editing by remember { mutableStateOf(false) }
+    var text by rememberSaveable(query) { mutableStateOf(query) }
+    var hadFocus by remember { mutableStateOf(false) }
+    val field = remember { FocusRequester() }
+    val bar = remember { FocusRequester() }
+    var refocusBar by remember { mutableStateOf(false) }
+    val keyboard = LocalSoftwareKeyboardController.current
+    val voiceIntent = remember {
+        Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            .putExtra(RecognizerIntent.EXTRA_PROMPT, hint)
+    }
+    val voiceAvailable = remember {
+        runCatching { context.packageManager.queryIntentActivities(voiceIntent, 0).isNotEmpty() }.getOrDefault(false)
+    }
+    val voice = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+        val spoken = result.data?.getStringArrayListExtra(RecognizerIntent.EXTRA_RESULTS)?.firstOrNull()
+        if (!spoken.isNullOrBlank()) {
+            text = spoken
+            onSearch(spoken.trim())
+        }
+    }
+    fun submit() {
+        keyboard?.hide()
+        editing = false
+        hadFocus = false
+        refocusBar = true
+        if (text.isNotBlank()) onSearch(text.trim())
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        val shape = RoundedCornerShape(10.dp)
+        if (editing) {
+            OutlinedTextField(
+                value = text,
+                onValueChange = { text = it },
+                singleLine = true,
+                label = { Text(hint) },
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(onSearch = { submit() }),
+                modifier = Modifier
+                    .weight(1f)
+                    .focusRequester(field)
+                    .onFocusChanged {
+                        if (it.isFocused) hadFocus = true
+                        // Moved away with the remote: back to the button.
+                        if (!it.isFocused && hadFocus) {
+                            editing = false
+                            hadFocus = false
+                        }
+                    }
+                    .testTag("search-field"),
+            )
+            LaunchedEffect(Unit) {
+                runCatching { field.requestFocus() }
+                keyboard?.show()
+            }
+        } else {
+            var focused by remember { mutableStateOf(false) }
+            Row(
+                Modifier
+                    .weight(1f)
+                    .height(56.dp)
+                    .focusRequester(bar)
+                    .onFocusChanged { focused = it.hasFocus }
+                    .tvFocus(shape)
+                    .clip(shape)
+                    .background(if (focused) AppColors.rowFocused else AppColors.row)
+                    .clickable { editing = true }
+                    .padding(horizontal = 16.dp)
+                    .testTag("search-bar"),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(12.dp))
+                Text(
+                    query.ifEmpty { hint },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (query.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (refocusBar) {
+                LaunchedEffect(Unit) {
+                    runCatching { bar.requestFocus() }
+                    refocusBar = false
+                }
+            }
+        }
+        if (voiceAvailable) {
+            ActionButton("Voice", Icons.Default.Mic, primary = false) {
+                try {
+                    voice.launch(voiceIntent)
+                } catch (e: ActivityNotFoundException) {
+                    toast(context, "Voice search isn't available on this device")
+                }
+            }
+        }
+    }
+}
+
+/** One-press repeats of earlier searches. */
+@Composable
+fun RecentSearches(recent: List<String>, onSearch: (String) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            Icons.Default.History,
+            contentDescription = "Recent searches",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(end = 8.dp),
+        )
+        LazyRow(
+            modifier = Modifier.tvRow().tvEnterAt { recent.firstOrNull()?.let { "recent-$it" } }.testTag("recent"),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(vertical = 6.dp),
+        ) {
+            items(recent, key = { it }) { query ->
+                Chip(query, selected = false, key = "recent-$query") { onSearch(query) }
+            }
+        }
+    }
+}
+
+class DialogButton(val text: String, val primary: Boolean = false, val onClick: () -> Unit)
+
+/**
+ * A dialog for the remote: the first button is selected when it opens. Elements inside aren't
+ * remembered by the page behind it, so closing it leaves the page's selection alone.
+ */
+@Composable
+fun TvDialog(
+    title: String,
+    onDismiss: () -> Unit,
+    buttons: List<DialogButton>,
+    focusFirstButton: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit = {},
+) {
+    val first = remember { FocusRequester() }
+    Dialog(onDismissRequest = onDismiss) {
+        CompositionLocalProvider(LocalTvShell provides null) {
+            Surface(shape = RoundedCornerShape(16.dp), color = AppColors.panel, modifier = Modifier.widthIn(max = 560.dp)) {
+                Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Text(title, style = MaterialTheme.typography.titleLarge)
+                    content()
+                    Row(
+                        Modifier.fillMaxWidth().padding(top = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                    ) {
+                        buttons.forEachIndexed { index, button ->
+                            ActionButton(
+                                button.text,
+                                primary = button.primary,
+                                modifier = if (index == 0) Modifier.focusRequester(first) else Modifier,
+                                onClick = button.onClick,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        if (focusFirstButton && buttons.isNotEmpty()) {
+            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        }
+    }
+}
+
+/** Asks for one line of text with the on-screen keyboard already open. */
+@Composable
+fun TextEntryDialog(
+    title: String,
+    initial: String,
+    password: Boolean = false,
+    onDismiss: () -> Unit,
+    onDone: (String) -> Unit,
+) {
+    var text by remember { mutableStateOf(initial) }
+    val field = remember { FocusRequester() }
+    TvDialog(
+        title = title,
+        onDismiss = onDismiss,
+        buttons = listOf(DialogButton("OK", primary = true) { onDone(text) }, DialogButton("Cancel", onClick = onDismiss)),
+        focusFirstButton = false,
+    ) {
+        val keyboard = LocalSoftwareKeyboardController.current
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            singleLine = true,
+            visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+            keyboardOptions = KeyboardOptions(
+                keyboardType = if (password) KeyboardType.Password else KeyboardType.Text,
+                imeAction = ImeAction.Done,
+            ),
+            keyboardActions = KeyboardActions(onDone = { onDone(text) }),
+            modifier = Modifier.fillMaxWidth().focusRequester(field),
+        )
+        LaunchedEffect(Unit) {
+            runCatching { field.requestFocus() }
+            keyboard?.show()
+        }
+    }
+}
+
+fun toast(context: Context, text: String) {
+    Toast.makeText(context.applicationContext, text, Toast.LENGTH_LONG).show()
 }
 
 fun formatSize(bytes: Long): String = when {

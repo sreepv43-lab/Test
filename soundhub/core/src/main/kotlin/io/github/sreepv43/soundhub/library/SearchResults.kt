@@ -70,6 +70,18 @@ object SearchResults {
                 .thenBy { it.queueLength }
                 .thenByDescending { it.avgSpeed },
         )
+
+    /**
+     * Keeps folders that are already listed where they are (updated in place) and adds new ones
+     * after them, best first. Re-sorting everything as answers arrive would move rows away from
+     * under the remote's selection.
+     */
+    fun merge(shown: List<SearchFolder>, fresh: List<SearchFolder>): List<SearchFolder> {
+        val byKey = fresh.associateBy { it.key }
+        val kept = shown.mapNotNull { byKey[it.key] }
+        val keptKeys = kept.mapTo(HashSet()) { it.key }
+        return kept + fresh.filter { it.key !in keptKeys }
+    }
 }
 
 /** A search whose grouped results update as answers come in. */
@@ -99,7 +111,8 @@ class SearchSession(private val client: SoulseekClient, private val scope: Corou
                     val responses = search.responses.value
                     if (responses.size != seen) {
                         seen = responses.size
-                        _folders.value = withContext(Dispatchers.Default) { SearchResults.group(responses) }
+                        val fresh = withContext(Dispatchers.Default) { SearchResults.group(responses) }
+                        _folders.value = SearchResults.merge(_folders.value, fresh)
                     }
                     delay(REFRESH_MS)
                 }
@@ -117,7 +130,7 @@ class SearchSession(private val client: SoulseekClient, private val scope: Corou
     }
 
     private companion object {
-        const val REFRESH_MS = 500L
+        const val REFRESH_MS = 1_000L
         const val RESULTS_WINDOW_MS = 90_000L
     }
 }

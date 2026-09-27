@@ -12,8 +12,10 @@ android {
         applicationId = "io.github.sreepv43.soundhub"
         minSdk = 23
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI builds count up, so a newer build is always a newer version.
+        val build = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
+        versionCode = build
+        versionName = "0.1.$build"
     }
 
     buildTypes {
@@ -35,6 +37,10 @@ android {
     buildFeatures {
         compose = true
     }
+    // Robolectric runs the remote-navigation UI tests on the JVM.
+    testOptions {
+        unitTests.isIncludeAndroidResources = true
+    }
 }
 
 dependencies {
@@ -51,6 +57,9 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.8.7")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
+    // Installs the libraries' baseline profiles on sideloaded installs, so Compose code is
+    // precompiled instead of interpreted (much smoother scrolling on TV boxes).
+    implementation("androidx.profileinstaller:profileinstaller:1.4.1")
 
     val media3 = "1.5.1"
     implementation("androidx.media3:media3-exoplayer:$media3")
@@ -58,4 +67,17 @@ dependencies {
     // Software decoding where the device has no decoder and no passthrough (e.g. TrueHD on a
     // tablet): Media3's FFmpeg extension, built and published by Jellyfin.
     implementation("org.jellyfin.media3:media3-ffmpeg-decoder:1.5.0+1")
+
+    testImplementation("junit:junit:4.13.2")
+    testImplementation("org.robolectric:robolectric:4.14.1")
+    testImplementation(composeBom)
+    testImplementation("androidx.compose.ui:ui-test-junit4")
+    debugImplementation("androidx.compose.ui:ui-test-manifest")
+}
+
+tasks.withType<Test>().configureEach {
+    testLogging {
+        events("failed")
+        exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+    }
 }

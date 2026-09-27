@@ -45,6 +45,7 @@ Conventions:
 - Dependencies are wired manually in `AppContainer` (`StreamHubApp.kt`); ViewModels are created with `appViewModel { container, savedState -> ... }`.
 - SoundHub: keep everything Android-free in `:soundhub-core` (tests use a fake Soulseek server/peer on localhost, `FakeNetwork.kt`). The app wires it in `AppContainer` (`SoundHubApp.kt`) and screens read its StateFlows directly. Songs being downloaded play through `slskstream://transfer/<id>/…` URIs (`TransferDataSource`), which block until the bytes arrive.
 - SoundHub passthrough: never put FFmpeg ahead of the platform renderers (`EXTENSION_RENDERER_MODE_ON`, not `PREFER`), or Dolby audio gets decoded and Atmos is lost.
+- SoundHub remote navigation (`ui/TvShell.kt`, `ui/Navigation.kt`): pages live in a `Navigator` stack (Search is home; Back pops) inside `SoundHubShell`, which wraps each page in `TvPage` + a `SaveableStateProvider`. The side menu only takes focus on Left at the page edge. Every focusable uses `tvFocus` (pass `key` for list rows so the selection is restored after Back; `pageDefault = true` for the element a page should start on). Use `ListRow`/`Chip`/`ActionButton`/`TvDialog`; never put a bare `TextField` on a page (it pops the keyboard when passed over) — use `SearchBar` or `TextEntryDialog`. Plain text after the last focusable element can't be scrolled to with a remote; use `ReadableText`. `RemoteNavigationTest` (Robolectric) drives the shell with key presses; extend it when navigation changes.
 
 ## Development Workflow
 

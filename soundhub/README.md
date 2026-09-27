@@ -37,6 +37,21 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
   - Downloads keep running in a foreground service.
   - UPnP opens the listening port on your router.
 
+## Using it with the remote
+
+- **Left** at the left edge of a page opens the menu (Search, Dolby Atmos, Library, Downloads, Now
+  playing, Settings). Use Up/Down to move and OK to choose. **Right** or **Back** closes the menu
+  without changing page.
+- **Back** goes to the previous page and puts the selection back where it was. Search is home, and
+  Back there leaves the app; music keeps playing.
+- **Search box:** press OK on it to type, then press the keyboard's Search key. **Voice** appears
+  when the box has voice input. Recent searches sit under the box and run again with one press.
+- **Format chips** always stay in the same places and show how many albums each one matches.
+  Results that arrive later are added at the end, so the list doesn't move while you browse it.
+- Pressing play opens **Now playing** with Play/Pause selected. Back returns to the album. The
+  remote's play/pause key works everywhere.
+- On **Downloads**, press OK on a song to stop it, retry it or remove it.
+
 ## Getting Atmos to the receiver
 
 | Connection | DD+ Atmos (streaming rips: .m4a/.ec3) | TrueHD Atmos (Blu-ray rips: .mka/.thd) | Multichannel PCM |

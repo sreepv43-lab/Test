@@ -21,6 +21,7 @@ import io.github.sreepv43.soundhub.service.TransferService
 import io.github.sreepv43.soundhub.slsk.ConnectionState
 import io.github.sreepv43.soundhub.slsk.SoulseekClient
 import io.github.sreepv43.soundhub.slsk.Upnp
+import io.github.sreepv43.soundhub.ui.components.toast
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -85,6 +86,28 @@ class AppContainer(private val context: Context) {
         settings.username.set(username.trim())
         settings.password.set(password)
         appScope.launch { client.connect(username.trim(), password) }
+    }
+
+    /** Runs a search (remembered for one-press repeats); the Atmos page adds "atmos" to the words. */
+    fun startSearch(text: String, atmos: Boolean = false) {
+        val query = text.trim()
+        if (query.isEmpty()) return
+        if (atmos) {
+            atmosSearch.start(if (query.contains("atmos", ignoreCase = true)) query else "$query atmos")
+        } else {
+            settings.addRecentSearch(query)
+            search.start(query)
+        }
+        if (client.state.value !is ConnectionState.Connected) {
+            toast(context, "Sign in to Soulseek first: press Left for the menu, then Settings.")
+        }
+    }
+
+    /** True when signed in; otherwise says how to sign in. */
+    fun requireSignIn(): Boolean {
+        if (client.state.value is ConnectionState.Connected) return true
+        toast(context, "Sign in to Soulseek first: press Left for the menu, then Settings.")
+        return false
     }
 
     fun signOut() {

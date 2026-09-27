@@ -1,6 +1,5 @@
 package io.github.sreepv43.soundhub.ui.screens
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -8,13 +7,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,6 +21,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.soundhub.audio.FormatFilter
@@ -30,68 +29,82 @@ import io.github.sreepv43.soundhub.container
 import io.github.sreepv43.soundhub.library.Album
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.ui.components.ActionButton
+import io.github.sreepv43.soundhub.ui.components.DialogButton
 import io.github.sreepv43.soundhub.ui.components.FilterRow
 import io.github.sreepv43.soundhub.ui.components.FormatBadge
 import io.github.sreepv43.soundhub.ui.components.ListRow
+import io.github.sreepv43.soundhub.ui.components.Note
 import io.github.sreepv43.soundhub.ui.components.ScreenTitle
+import io.github.sreepv43.soundhub.ui.components.TvDialog
 import io.github.sreepv43.soundhub.ui.components.TwoLines
 import io.github.sreepv43.soundhub.ui.components.formatDuration
 import io.github.sreepv43.soundhub.ui.components.formatSize
-import io.github.sreepv43.soundhub.ui.components.tvFocus
 
 /** Downloaded music by album, sorted into the same format categories as search results. */
 @Composable
-fun LibraryScreen(onPlaying: () -> Unit) {
+fun LibraryScreen(onOpenAlbum: (Album) -> Unit) {
     val container = LocalContext.current.container
     val tracks by container.library.tracks.collectAsStateWithLifecycle()
     var filter by rememberSaveable { mutableStateOf(FormatFilter.ALL) }
-    var openKey by rememberSaveable { mutableStateOf<String?>(null) }
     val albums = remember(tracks) { LibraryStore.albums(tracks) }
     val folder = remember { container.musicFolder().path }
-
-    albums.firstOrNull { it.key == openKey }?.let { album ->
-        AlbumScreen(album, onBack = { openKey = null }, onPlaying = onPlaying)
-        return
-    }
     val counts = remember(albums) { FormatFilter.entries.associateWith { f -> albums.count { it.matches(f) } } }
     val shown = remember(albums, filter) { albums.filter { it.matches(filter) } }
     LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
+        Modifier.fillMaxSize().testTag("page-list"),
+        state = rememberLazyListState(),
+        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item {
+        item(key = "title") {
             ScreenTitle(
                 "Library",
-                if (tracks.isEmpty()) "Songs you play or download from Search are kept here"
-                else "${tracks.size} songs · ${formatSize(tracks.sumOf { it.size })} · in $folder",
+                if (tracks.isEmpty()) null else "${tracks.size} songs · ${formatSize(tracks.sumOf { it.size })} · in $folder",
             )
         }
-        if (albums.isNotEmpty()) item { FilterRow(filter, counts) { filter = it } }
+        if (albums.isEmpty()) {
+            item(key = "empty") {
+                Note("Nothing here yet. Songs you play or download from Search are kept here. Press Left for the menu.")
+            }
+        } else {
+            item(key = "filters") { FilterRow(filter, counts) { filter = it } }
+        }
         items(shown, key = { it.key }) { album ->
-            ListRow(onClick = { openKey = album.key }) {
+            ListRow(onClick = { onOpenAlbum(album) }, key = album.key) {
                 TwoLines(album.title, listOfNotNull(album.artist, "${album.tracks.size} songs").joinToString(" · "), Modifier.weight(1f))
                 album.tracks.map { it.info }.filter(filter::matches).groupBy { it.label }.maxByOrNull { it.value.size }
                     ?.value?.first()?.let { FormatBadge(it) }
             }
         }
+        if (albums.isNotEmpty() && shown.isEmpty()) {
+            item(key = "none") { Note("No ${filter.label} albums. Choose All to see everything.") }
+        }
     }
 }
 
 @Composable
-private fun AlbumScreen(album: Album, onBack: () -> Unit, onPlaying: () -> Unit) {
-    BackHandler(onBack = onBack)
+fun AlbumScreen(albumKey: String, onPlaying: () -> Unit, onGone: () -> Unit) {
     val container = LocalContext.current.container
+    val tracks by container.library.tracks.collectAsStateWithLifecycle()
+    val album = remember(tracks, albumKey) { LibraryStore.albums(tracks).firstOrNull { it.key == albumKey } }
     var confirmDelete by remember { mutableStateOf(false) }
+    if (album == null) {
+        LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(24.dp)) {
+            item { Note("This album is no longer in your library.") }
+            item { ActionButton("Back", pageDefault = true, onClick = onGone) }
+        }
+        return
+    }
     LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
+        Modifier.fillMaxSize().testTag("page-list"),
+        state = rememberLazyListState(),
+        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 48.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item { ScreenTitle(album.title, listOfNotNull(album.artist, "${album.tracks.size} songs").joinToString(" · ")) }
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 8.dp)) {
-                ActionButton("Play album", Icons.Default.PlayArrow) {
+        item(key = "title") { ScreenTitle(album.title, listOfNotNull(album.artist, "${album.tracks.size} songs").joinToString(" · ")) }
+        item(key = "actions") {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(vertical = 4.dp)) {
+                ActionButton("Play album", Icons.Default.PlayArrow, pageDefault = true) {
                     container.playLibrary(album.tracks)
                     onPlaying()
                 }
@@ -99,10 +112,13 @@ private fun AlbumScreen(album: Album, onBack: () -> Unit, onPlaying: () -> Unit)
             }
         }
         items(album.tracks, key = { it.id }) { track ->
-            ListRow(onClick = {
-                container.playLibrary(album.tracks, track)
-                onPlaying()
-            }) {
+            ListRow(
+                onClick = {
+                    container.playLibrary(album.tracks, track)
+                    onPlaying()
+                },
+                key = track.id,
+            ) {
                 TwoLines(
                     listOfNotNull(track.trackNumber?.let { "$it." }, track.title).joinToString(" "),
                     listOfNotNull(
@@ -122,20 +138,20 @@ private fun AlbumScreen(album: Album, onBack: () -> Unit, onPlaying: () -> Unit)
         }
     }
     if (confirmDelete) {
-        AlertDialog(
-            onDismissRequest = { confirmDelete = false },
-            title = { Text("Delete ${album.title}?") },
-            text = { Text("The ${album.tracks.size} downloaded files are removed from this device.") },
-            confirmButton = {
-                TextButton(onClick = {
+        TvDialog(
+            title = "Delete ${album.title}?",
+            onDismiss = { confirmDelete = false },
+            // "Keep" first, so a quick OK never deletes anything.
+            buttons = listOf(
+                DialogButton("Keep", primary = true) { confirmDelete = false },
+                DialogButton("Delete") {
                     confirmDelete = false
                     container.library.remove(album.tracks.map { it.id }, deleteFiles = true)
-                    onBack()
-                }, modifier = Modifier.tvFocus()) { Text("Delete") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmDelete = false }, modifier = Modifier.tvFocus()) { Text("Keep") }
-            },
-        )
+                    onGone()
+                },
+            ),
+        ) {
+            Note("The ${album.tracks.size} downloaded files are removed from this device.")
+        }
     }
 }
