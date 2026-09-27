@@ -72,6 +72,17 @@ On the box, go to Settings → Display & Sound → Advanced sound settings → S
 Every push builds the APK on GitHub Actions (**Actions → Android build → Artifacts →
 soundhub-apks**).
 
+## Install
+
+Every build on this branch (and on the default branch) is published on the
+[Releases page](https://github.com/sreepv43-lab/Test/releases) as **SoundHub build N**. Its
+direct link has this form:
+
+`https://github.com/sreepv43-lab/Test/releases/download/soundhub-build-N/soundhub-debug.apk`
+
+On Google TV, install the free **Downloader** app, allow it to install unknown apps, type the
+link and install. With adb: `adb install -r soundhub-debug.apk`.
+
 ## Layout
 
 ```

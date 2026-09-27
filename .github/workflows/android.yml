@@ -67,6 +67,28 @@ jobs:
             app/build/outputs/apk/debug/*.apk
             app/build/outputs/apk/release/*.apk
 
+      # SoundHub (the music app) gets its own public releases. They never become "latest", so the
+      # StreamHub link above keeps pointing at StreamHub.
+      - name: Publish SoundHub release
+        if: >-
+          github.event_name == 'push' &&
+          (github.ref_name == github.event.repository.default_branch ||
+           github.ref_name == 'claude/soulseek-streaming-atmos-7iyvn7')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: soundhub-build-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: SoundHub build ${{ github.run_number }}
+          make_latest: "false"
+          body: |
+            SoundHub (Soulseek music with Dolby Atmos passthrough) built from ${{ github.sha }} (branch `${{ github.ref_name }}`).
+
+            Install `soundhub-debug.apk` (works on every device). Direct link, e.g. for the Downloader app on Google TV:
+            https://github.com/${{ github.repository }}/releases/download/soundhub-build-${{ github.run_number }}/soundhub-debug.apk
+          files: |
+            soundhub/app/build/outputs/apk/debug/*.apk
+            soundhub/app/build/outputs/apk/release/*.apk
+
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
