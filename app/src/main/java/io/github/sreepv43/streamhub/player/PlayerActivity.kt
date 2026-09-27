@@ -133,6 +133,7 @@ class PlayerActivity : ComponentActivity() {
     private var skipIntroDismissed = false
     private var markedWatched = false
     private var deletedAfterWatching = false
+    private var restartedFromStart = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -309,6 +310,15 @@ class PlayerActivity : ComponentActivity() {
             }
 
             override fun onPlayerError(error: PlaybackException) {
+                // The resume point lies past what this file holds (an incomplete file, or a
+                // different release than the one watched before): start from the beginning.
+                if (error.errorCode == PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE && !restartedFromStart) {
+                    restartedFromStart = true
+                    toast("Couldn't continue where you left off in this file (it may be incomplete); starting from the beginning")
+                    exo.seekTo(0)
+                    exo.prepare()
+                    return
+                }
                 Toast.makeText(
                     this@PlayerActivity,
                     "Playback error: ${error.errorCodeName}. Try another stream or an external player.",

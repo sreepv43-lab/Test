@@ -190,6 +190,23 @@ class Downloader(
         schedule()
     }
 
+    /**
+     * Whether a finished download's file is really all there. If it's shorter than the download's
+     * size (e.g. the drive lost data), it goes back to paused so Resume can finish it.
+     */
+    fun verifyComplete(id: String): Boolean {
+        val item = repository.get(id) ?: return false
+        val uri = item.fileUri ?: return false
+        val actual = runCatching { storage.length(uri) }.getOrDefault(-1L)
+        if (item.totalBytes > 0 && actual in 0 until item.totalBytes) {
+            repository.update(id) {
+                it.copy(status = DownloadItem.Status.PAUSED, downloadedBytes = actual, error = null)
+            }
+            return false
+        }
+        return true
+    }
+
     /** Pauses everything, e.g. when the system stops the foreground service. */
     fun pauseAll() {
         synchronized(jobs) {
@@ -281,6 +298,13 @@ class Downloader(
         try {
             call.execute().use { response ->
                 if (response.code == 416 && existing > 0) {
+                    // "Nothing more to send": only complete if the file really has everything; a
+                    // server that refuses the range of an unfinished file starts it again instead.
+                    if (item.totalBytes > 0 && existing < item.totalBytes) {
+                        storage.delete(item.fileUri!!)
+                        repository.update(id) { it.copy(fileUri = null, downloadedBytes = 0) }
+                        throw IOException("The server refused to continue the download; starting it again")
+                    }
                     repository.update(id) {
                         it.copy(status = DownloadItem.Status.COMPLETED, downloadedBytes = existing, totalBytes = existing)
                     }
@@ -322,49 +346,62 @@ class Downloader(
                 }
 
                 storage.openOutput(fileUri, append).use { out ->
-                    val input = body.byteStream()
-                    val buffer = ByteArray(BUFFER_SIZE)
-                    var lastUiUpdate = 0L
-                    var lastPersist = SystemClock.elapsedRealtime()
-                    var windowStart = lastPersist
-                    var windowBytes = 0L
-                    var speedStart = lastPersist
-                    var speedBytes = 0L
-                    while (true) {
-                        coroutineContext.ensureActive()
-                        val read = input.read(buffer)
-                        if (read < 0) break
-                        out.write(buffer, 0, read)
-                        done += read
-                        speedBytes += read
-                        // Speed limit (shared by the downloads running at the same time).
-                        val limit = settings.downloadSpeedLimitKb.value * 1024L / activeCount.value.coerceAtLeast(1)
-                        if (limit > 0) {
-                            windowBytes += read
-                            val ahead = windowBytes * 1000 / limit - (SystemClock.elapsedRealtime() - windowStart)
-                            if (ahead > 0) delay(ahead)
-                            if (SystemClock.elapsedRealtime() - windowStart > 2_000) {
-                                windowStart = SystemClock.elapsedRealtime()
-                                windowBytes = 0
+                    try {
+                        val input = body.byteStream()
+                        val buffer = ByteArray(BUFFER_SIZE)
+                        var lastUiUpdate = 0L
+                        var lastPersist = SystemClock.elapsedRealtime()
+                        var windowStart = lastPersist
+                        var windowBytes = 0L
+                        var speedStart = lastPersist
+                        var speedBytes = 0L
+                        while (true) {
+                            coroutineContext.ensureActive()
+                            val read = input.read(buffer)
+                            if (read < 0) break
+                            out.write(buffer, 0, read)
+                            done += read
+                            speedBytes += read
+                            // Speed limit (shared by the downloads running at the same time).
+                            val limit = settings.downloadSpeedLimitKb.value * 1024L / activeCount.value.coerceAtLeast(1)
+                            if (limit > 0) {
+                                windowBytes += read
+                                val ahead = windowBytes * 1000 / limit - (SystemClock.elapsedRealtime() - windowStart)
+                                if (ahead > 0) delay(ahead)
+                                if (SystemClock.elapsedRealtime() - windowStart > 2_000) {
+                                    windowStart = SystemClock.elapsedRealtime()
+                                    windowBytes = 0
+                                }
+                            }
+                            val now = SystemClock.elapsedRealtime()
+                            if (now - speedStart >= SPEED_WINDOW_MS) {
+                                val speed = speedBytes * 1000 / (now - speedStart)
+                                _speeds.update { it + (id to speed) }
+                                speedStart = now
+                                speedBytes = 0
+                            }
+                            if (now - lastUiUpdate > 500) {
+                                val persist = now - lastPersist > 10_000
+                                if (persist) lastPersist = now
+                                repository.update(id, persist) { it.copy(downloadedBytes = done) }
+                                lastUiUpdate = now
                             }
                         }
-                        val now = SystemClock.elapsedRealtime()
-                        if (now - speedStart >= SPEED_WINDOW_MS) {
-                            val speed = speedBytes * 1000 / (now - speedStart)
-                            _speeds.update { it + (id to speed) }
-                            speedStart = now
-                            speedBytes = 0
+                        out.flush()
+                    } catch (e: IOException) {
+                        if (FILE_TOO_LARGE.containsMatchIn(e.message.orEmpty())) {
+                            throw PermanentFailure(
+                                "${item.location.label} can't hold files over 4 GB (it is probably formatted as FAT32). " +
+                                    "Choose another location, or format the drive as exFAT.",
+                            )
                         }
-                        if (now - lastUiUpdate > 500) {
-                            val persist = now - lastPersist > 10_000
-                            if (persist) lastPersist = now
-                            repository.update(id, persist) { it.copy(downloadedBytes = done) }
-                            lastUiUpdate = now
-                        }
+                        throw e
                     }
-                    out.flush()
                 }
                 if (total > 0 && done < total) throw IOException("Connection closed early ($done of $total bytes)")
+                // The drive must really hold what was written (some storage silently drops data).
+                val saved = runCatching { storage.length(fileUri) }.getOrDefault(done)
+                if (saved in 1 until done) throw IOException("The drive kept only $saved of $done bytes")
                 repository.update(id) {
                     it.copy(
                         status = DownloadItem.Status.COMPLETED,
@@ -401,5 +438,7 @@ class Downloader(
         const val MAX_ATTEMPTS = 6
         const val BUFFER_SIZE = 256 * 1024
         const val SPEED_WINDOW_MS = 1_000L
+        /** What Android says when a file outgrows a FAT32 drive (EFBIG). */
+        val FILE_TOO_LARGE = Regex("(?i)EFBIG|file too large")
     }
 }

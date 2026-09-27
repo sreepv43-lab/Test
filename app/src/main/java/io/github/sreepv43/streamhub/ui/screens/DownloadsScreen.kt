@@ -1,5 +1,9 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.filled.DriveFileMove
@@ -63,6 +67,7 @@ fun DownloadsScreen() {
     val items by downloader.items.collectAsStateWithLifecycle()
     val waitingForWifi by downloader.waitingForWifi.collectAsStateWithLifecycle()
     val speeds by downloader.speeds.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
     var toDelete by remember { mutableStateOf<DownloadItem?>(null) }
     var toMove by remember { mutableStateOf<DownloadItem?>(null) }
 
@@ -101,7 +106,13 @@ fun DownloadsScreen() {
                         item,
                         speed = speeds[item.id],
                         onPlay = {
-                            item.fileUri?.let { uri ->
+                            item.fileUri?.let { uri -> scope.launch {
+                                // A file shorter than its download (e.g. the drive lost data) can't
+                                // play to the end; it goes back to paused so Resume can finish it.
+                                if (!withContext(Dispatchers.IO) { downloader.verifyComplete(item.id) }) {
+                                    StreamActions.toast(context, "This download isn't complete. Press Resume to finish it.")
+                                    return@launch
+                                }
                                 StreamActions.playFile(
                                     context,
                                     uri,
@@ -114,7 +125,7 @@ fun DownloadsScreen() {
                                         poster = item.poster,
                                     ),
                                 )
-                            }
+                            } }
                         },
                         onPause = { downloader.pause(item.id) },
                         onResume = { downloader.resume(item.id) },
