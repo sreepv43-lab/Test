@@ -1,5 +1,7 @@
 package io.github.sreepv43.streamhub.addon
 
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
@@ -14,6 +16,18 @@ import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
 class AddonException(message: String, cause: Throwable? = null) : IOException(message, cause)
+
+/** What an addon's HTTP error means, in words (the URL's host names the addon's server). */
+internal fun errorMessage(code: Int, url: String): String {
+    val host = url.toHttpUrlOrNull()?.host ?: url
+    return when (code) {
+        502, 503, 504 -> "The addon's server ($host) is busy or not responding (HTTP $code). Try again in a little while."
+        429 -> "The addon's server ($host) is getting too many requests (HTTP 429). Try again in a little while."
+        404 -> "The addon doesn't have this (HTTP 404)."
+        in 500..599 -> "The addon's server ($host) had an error (HTTP $code)."
+        else -> "The addon answered HTTP $code ($host)."
+    }
+}
 
 /** Talks the Stremio addon HTTP protocol. */
 class AddonClient(private val http: OkHttpClient) {
@@ -43,19 +57,34 @@ class AddonClient(private val http: OkHttpClient) {
 
     private suspend fun <T> get(url: String, strategy: DeserializationStrategy<T>): T {
         val request = Request.Builder().url(url).header("Accept", "application/json").build()
-        val body = http.newCall(request).await().use { response ->
-            if (!response.isSuccessful) throw AddonException("HTTP ${response.code} for $url")
-            withContext(Dispatchers.IO) { response.body?.string() }.orEmpty()
+        var attempt = 0
+        var body: String? = null
+        while (body == null) {
+            attempt++
+            val (code, text) = http.newCall(request).await().use { response ->
+                response.code to if (response.isSuccessful) withContext(Dispatchers.IO) { response.body?.string() }.orEmpty() else null
+            }
+            body = text
+            if (body != null) break
+            // Community-hosted addons are often briefly overloaded: try once more before giving up.
+            if (code in BUSY && attempt < MAX_ATTEMPTS) delay(RETRY_DELAY_MS)
+            else throw AddonException(errorMessage(code, url))
         }
         // Parsing a big catalog or a series with hundreds of episodes takes a while; never on the
         // main thread, where it would stall scrolling.
         return withContext(Dispatchers.Default) {
             try {
-                StremioJson.decodeFromString(strategy, body)
+                StremioJson.decodeFromString(strategy, body!!)
             } catch (e: Exception) {
                 throw AddonException("Invalid response from $url", e)
             }
         }
+    }
+
+    private companion object {
+        val BUSY = setOf(429, 502, 503, 504)
+        const val MAX_ATTEMPTS = 2
+        const val RETRY_DELAY_MS = 1_500L
     }
 }
 

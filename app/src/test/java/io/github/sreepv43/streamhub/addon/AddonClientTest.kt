@@ -40,6 +40,21 @@ class AddonClientTest {
     }
 
     @Test
+    fun aBusyServerIsTriedOnceMore() = runTest {
+        server.enqueue(MockResponse().setResponseCode(504))
+        server.enqueue(MockResponse().setBody("""{"streams":[{"url":"https://v/1.mp4","name":"HD"}]}"""))
+        val addon = InstalledAddon(server.url("/manifest.json").toString(), Manifest(id = "x"))
+        assertEquals("HD", client.streams(addon, "movie", "tt1").single().name)
+        assertEquals(2, server.requestCount)
+    }
+
+    @Test
+    fun errorsSayWhatHappened() {
+        val message = errorMessage(504, "https://abc-tmdb-addon.baby-beamup.club/catalog/movie/tmdb.year/genre=2025.json")
+        assertTrue(message, message.contains("(abc-tmdb-addon.baby-beamup.club) is busy or not responding (HTTP 504)"))
+    }
+
+    @Test
     fun httpErrorsBecomeAddonExceptions() = runTest {
         server.enqueue(MockResponse().setResponseCode(500))
         val addon = InstalledAddon(server.url("/manifest.json").toString(), Manifest(id = "x"))

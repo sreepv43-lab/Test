@@ -1,5 +1,8 @@
 package io.github.sreepv43.streamhub.ui.screens
 
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.Icons
+import io.github.sreepv43.streamhub.ui.components.FlatButton
 import io.github.sreepv43.streamhub.ui.components.rememberPosterMenu
 import io.github.sreepv43.streamhub.ui.components.PosterTarget
 import io.github.sreepv43.streamhub.ui.components.PosterMenu
@@ -149,7 +152,18 @@ fun CatalogScreen(onOpenMeta: (Meta) -> Unit) {
             }
         }
         if (state.items.isEmpty() && !state.loading) {
-            CenteredMessage(state.error ?: "Nothing found")
+            if (state.error != null) {
+                Column(
+                    Modifier.fillMaxWidth().padding(32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text(state.error!!, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    FlatButton(text = "Try again", icon = Icons.Default.Refresh, onClick = { vm.selectGenre(state.genre) })
+                }
+            } else {
+                CenteredMessage("Nothing found")
+            }
             return@Column
         }
         LazyVerticalGrid(
