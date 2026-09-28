@@ -67,6 +67,12 @@ fun SoundScreen(onOpenRelease: (Release) -> Unit, onOpenAlbum: (String) -> Unit,
     var tab by rememberSaveable { mutableStateOf(SoundTab.ATMOS) }
     val releases by container.atmosReleases.collectAsStateWithLifecycle()
     val query by container.atmosSearch.query.collectAsStateWithLifecycle()
+    // A new Atmos search (e.g. an artist picked on the Artists page) shows its results.
+    var shownQuery by rememberSaveable { mutableStateOf(query) }
+    if (query != shownQuery) {
+        shownQuery = query
+        tab = SoundTab.ATMOS
+    }
     val library by container.library.tracks.collectAsStateWithLifecycle()
     val mode by container.settings.outputMode.flow.collectAsStateWithLifecycle()
     val output by container.playback.output.collectAsStateWithLifecycle()
