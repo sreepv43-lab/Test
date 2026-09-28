@@ -128,7 +128,14 @@ fun FormatBadge(info: AudioInfo) {
 }
 
 @Composable
-fun Chip(label: String, selected: Boolean, modifier: Modifier = Modifier, key: Any? = null, onClick: () -> Unit) {
+fun Chip(
+    label: String,
+    selected: Boolean,
+    modifier: Modifier = Modifier,
+    key: Any? = null,
+    pageDefault: Boolean = false,
+    onClick: () -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
     val background = when {
@@ -139,7 +146,7 @@ fun Chip(label: String, selected: Boolean, modifier: Modifier = Modifier, key: A
     Box(
         modifier
             .onFocusChanged { focused = it.hasFocus }
-            .tvFocus(shape, key = key)
+            .tvFocus(shape, key = key, pageDefault = pageDefault)
             .clip(shape)
             .background(background)
             .clickable(onClick = onClick)

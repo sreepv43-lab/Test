@@ -3,7 +3,6 @@ package io.github.sreepv43.soundhub.ui.screens
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -30,6 +29,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
@@ -41,6 +41,7 @@ import io.github.sreepv43.soundhub.library.ArtistGenre
 import io.github.sreepv43.soundhub.library.FamousArtist
 import io.github.sreepv43.soundhub.library.FamousArtists
 import io.github.sreepv43.soundhub.ui.AppColors
+import io.github.sreepv43.soundhub.ui.RailCollapsed
 import io.github.sreepv43.soundhub.ui.Section
 import io.github.sreepv43.soundhub.ui.components.AlbumArt
 import io.github.sreepv43.soundhub.ui.components.Chip
@@ -93,46 +94,46 @@ fun ArtistsLayout(
     onPick: (FamousArtist) -> Unit,
 ) {
     val shown = genres[genre.coerceIn(genres.indices)]
-    BoxWithConstraints(Modifier.fillMaxSize()) {
-        val columns = (maxWidth / CARD_WIDTH).toInt().coerceIn(2, 5)
-        val rows = remember(shown, columns) { shown.artists.chunked(columns) }
-        LazyColumn(
-            Modifier.fillMaxSize().testTag("page-list"),
-            state = rememberLazyListState(),
-            contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            item(key = "title") { ScreenTitle("Artists", "Press OK on an artist to search Soulseek for their music") }
-            item(key = "mode") {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Note("Search for", modifier = Modifier.padding(end = 12.dp))
-                    LazyRow(
-                        Modifier.tvRow().tvEnterAt { "mode-${mode.name}" }.testTag("artist-mode"),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp),
-                    ) {
-                        items(ArtistSearch.entries, key = { it.name }) { entry ->
-                            Chip(entry.label, entry == mode, key = "mode-${entry.name}") { onMode(entry) }
-                        }
-                    }
-                }
-            }
-            item(key = "genres") {
+    val width = LocalConfiguration.current.screenWidthDp.dp - RailCollapsed - 48.dp
+    val columns = (width / CARD_WIDTH).toInt().coerceIn(2, 5)
+    val rows = remember(shown, columns) { shown.artists.chunked(columns) }
+    LazyColumn(
+        Modifier.fillMaxSize().testTag("page-list"),
+        state = rememberLazyListState(),
+        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item(key = "title") { ScreenTitle("Artists", "Press OK on an artist to search Soulseek for their music") }
+        item(key = "mode") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Note("Search for", modifier = Modifier.padding(end = 12.dp))
                 LazyRow(
-                    Modifier.tvRow().tvEnterAt { "genre-$genre" }.testTag("genres"),
+                    Modifier.tvRow().tvEnterAt { "mode-${mode.name}" }.testTag("artist-mode"),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 4.dp),
                 ) {
-                    itemsIndexed(genres, key = { _, it -> it.name }) { index, entry ->
-                        Chip(entry.name, index == genre, key = "genre-$index") { onGenre(index) }
+                    items(ArtistSearch.entries, key = { it.name }) { entry ->
+                        Chip(entry.label, entry == mode, key = "mode-${entry.name}") { onMode(entry) }
                     }
                 }
             }
-            items(rows, key = { row -> "row:${shown.name}:${row.first().name}" }) { row ->
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    row.forEach { artist -> ArtistCard(artist, Modifier.weight(1f)) { onPick(artist) } }
-                    repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+        }
+        item(key = "genres") {
+            LazyRow(
+                Modifier.tvRow().tvEnterAt { "genre-$genre" }.testTag("genres"),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                contentPadding = PaddingValues(vertical = 4.dp),
+            ) {
+                itemsIndexed(genres, key = { _, it -> it.name }) { index, entry ->
+                    // The page starts here: one press down reaches the artists.
+                    Chip(entry.name, index == genre, key = "genre-$index", pageDefault = index == genre) { onGenre(index) }
                 }
+            }
+        }
+        items(rows, key = { row -> "row:${shown.name}:${row.first().name}" }) { row ->
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                row.forEach { artist -> ArtistCard(artist, Modifier.weight(1f)) { onPick(artist) } }
+                repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
     }
