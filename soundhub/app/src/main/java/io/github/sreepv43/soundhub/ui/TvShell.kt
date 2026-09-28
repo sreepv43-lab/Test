@@ -417,12 +417,16 @@ fun TvShell(
                                         shell.remembered(PANEL_KEY) ?: shell.defaultOf(PANEL_KEY) ?: FocusRequester.Default
                                     }
                                 }
-                                // Left goes back to the page, to its element selected last.
+                                // Left goes back to the page, to its element selected last; the other
+                                // arrows stay in the panel. The shell itself may still move the
+                                // selection out (a new page, Back).
                                 exit = { direction ->
-                                    if (direction == FocusDirection.Left) {
-                                        shell.pageRequester(shell.shownPage) ?: FocusRequester.Default
-                                    } else {
-                                        FocusRequester.Cancel
+                                    when {
+                                        direction == FocusDirection.Left ->
+                                            shell.pageRequester(shell.shownPage) ?: FocusRequester.Default
+                                        direction == FocusDirection.Right || direction == FocusDirection.Up ||
+                                            direction == FocusDirection.Down -> FocusRequester.Cancel
+                                        else -> FocusRequester.Default
                                     }
                                 }
                             }

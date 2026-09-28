@@ -482,6 +482,16 @@ class RemoteNavigationTest {
     }
 
     @Test
+    fun backFromThePlayerPanelMovesTheSelectionToThePreviousPage() {
+        downTo("release-Album 2")
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("panel-play", focused())
+        press(KeyEvent.KEYCODE_BACK)
+        assertEquals(SectionPage(Section.HOME), navigator.current)
+        assertEquals("the page shown takes the selection back from the panel", "Home button", focused())
+    }
+
+    @Test
     fun rightFromThePageEntersThePlayerPanelAndLeftComesBack() {
         downTo("release-Album 2")
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
@@ -525,7 +535,7 @@ class RemoteNavigationTest {
         screenshot("2-search-selected")
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         screenshot("3-player-panel")
-        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        moveUntil(KeyEvent.KEYCODE_DPAD_LEFT) { it.startsWith("release-") }
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         settle(1_000)
         screenshot("4-album")
@@ -533,12 +543,15 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         screenshot("5-menu")
         press(KeyEvent.KEYCODE_BACK)
+        moveTo("atmos-switch", KeyEvent.KEYCODE_DPAD_UP)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        screenshot("6-atmos-switch-on")
         rule.runOnUiThread { navigator.select(Section.ARTISTS) }
         settle(1_000)
-        screenshot("6-artists")
+        screenshot("7-artists")
         rule.runOnUiThread { navigator.open(SettingsPage(SettingsKind.APPEARANCE)) }
         settle(1_000)
-        screenshot("7-appearance")
+        screenshot("8-appearance")
     }
 
     /** Saves the screen as [name].png; if it can't be captured, says why in errors.txt instead of failing. */

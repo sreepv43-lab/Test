@@ -101,7 +101,7 @@ object Palettes {
     val SKY = Palette(
         id = "sky",
         name = "Sky",
-        description = "Light blue with white cards (the default)",
+        description = "Light blue with white cards",
         dark = false,
         background = Color(0xFFD3EAFD),
         backgroundEnd = Color(0xFF8CC6F4),
