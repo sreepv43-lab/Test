@@ -23,7 +23,6 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
-import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -225,11 +224,11 @@ class RemoteNavigationTest {
         openSection(Section.TRANSFERS)
         downTo("transfer-8")
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        rule.onNodeWithTag("option-Try again").assertIsFocused()
+        awaitFocus("option-Try again")
         rule.onNodeWithTag("option-Remove…").performClick()
         settle()
         // Removing a part-downloaded song asks first, on Keep.
-        rule.onNodeWithTag("Keep").assertIsFocused()
+        awaitFocus("Keep")
         rule.onNodeWithTag("Keep").performClick()
         settle()
         assertTrue(actions.toString(), actions.isEmpty())
@@ -237,7 +236,7 @@ class RemoteNavigationTest {
         upTo("transfer-12")
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         // Stopping is the only action for a waiting song: the dialog starts on Cancel.
-        rule.onNodeWithTag("option-Cancel").assertIsFocused()
+        awaitFocus("option-Cancel")
         rule.onNodeWithTag("option-Cancel").performClick()
         settle()
         assertTrue(actions.toString(), actions.isEmpty())
@@ -259,7 +258,7 @@ class RemoteNavigationTest {
         repeat(MusicFilter.SHORTCUTS.size) { press(KeyEvent.KEYCODE_DPAD_RIGHT) }
         assertEquals("More filters…", focused())
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        rule.onNodeWithText("Any quality").assertIsFocused()
+        awaitFocus("Any quality")
         rule.onNodeWithText("MP3").performClick()
         rule.onNodeWithTag("Done").performClick()
         settle()
@@ -309,6 +308,15 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         settle(1_000)
         assertEquals(SectionPage(section), navigator.current)
+    }
+
+    /** Dialogs take the selection a frame or two after they open. */
+    private fun awaitFocus(target: String) {
+        repeat(20) {
+            if (focused() == target) return
+            settle(100)
+        }
+        assertEquals(target, focused())
     }
 
     private fun downTo(target: String) = moveTo(target, KeyEvent.KEYCODE_DPAD_DOWN)

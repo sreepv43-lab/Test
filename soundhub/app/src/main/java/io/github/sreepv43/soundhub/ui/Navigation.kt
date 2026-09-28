@@ -75,7 +75,7 @@ data class SettingsPage(val kind: SettingsKind) : Page {
 /**
  * The pages the user went through, so Back goes to the previous one. [home] is always at the bottom;
  * Back on it leaves the app. Choosing a section in the menu goes back to it if it is already open
- * underneath, otherwise opens it on top of home.
+ * underneath, otherwise opens it on top of the current page (so Back returns there).
  */
 @Stable
 class Navigator(start: Section, private val home: Section = Section.HOME) {
@@ -103,12 +103,7 @@ class Navigator(start: Section, private val home: Section = Section.HOME) {
 
     fun select(section: Section) {
         val existing = stack.indexOf(SectionPage(section))
-        if (existing >= 0) {
-            popTo(existing)
-            return
-        }
-        popTo(0)
-        stack.add(SectionPage(section))
+        if (existing >= 0) popTo(existing) else stack.add(SectionPage(section))
     }
 
     private fun popTo(index: Int) {

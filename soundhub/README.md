@@ -57,8 +57,9 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
 - **Left** at the left edge of a page opens the menu (Home, Search, Library, Transfers, Atmos &
   sound, Now playing, Settings). Use Up/Down to move and OK to choose. **Right** or **Back** closes
   the menu without changing page.
-- **Back** goes to the previous page and puts the selection back where it was. Home is at the
-  bottom, and Back there leaves the app; music keeps playing.
+- **Back** goes to the previous page (also after choosing another section in the menu) and puts the
+  selection back where it was. Home is at the bottom, and Back there leaves the app; music keeps
+  playing.
 - **Search box:** press OK on it to type, then press the keyboard's Search key. **Voice** appears
   when the box has voice input. Recent searches sit under the box and run again with one press.
 - **Filter chips** always stay in the same places and show how many albums each one matches.
