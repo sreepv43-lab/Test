@@ -18,12 +18,27 @@ android {
         versionName = "0.1.$build"
     }
 
+    // One permanent key (the SOUNDHUB_KEYSTORE secret on CI), so every build installs over the last
+    // one and the in-app updater works. Without it, builds use the CI machine's throwaway debug key.
+    val stableKeystore = System.getenv("SOUNDHUB_KEYSTORE_FILE")?.let(::file)?.takeIf { it.isFile }
+    val stable = stableKeystore?.let { keystore ->
+        signingConfigs.create("stable") {
+            storeFile = keystore
+            storePassword = System.getenv("SOUNDHUB_KEYSTORE_PASSWORD")
+            keyAlias = System.getenv("SOUNDHUB_KEY_ALIAS") ?: "soundhub"
+            keyPassword = System.getenv("SOUNDHUB_KEYSTORE_PASSWORD")
+        }
+    }
+
     buildTypes {
+        debug {
+            if (stable != null) signingConfig = stable
+        }
         release {
             isMinifyEnabled = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so the release APK can be sideloaded; replace for store builds.
-            signingConfig = signingConfigs.getByName("debug")
+            // Sideloaded, not from a store: the permanent key when there is one, else the debug key.
+            signingConfig = stable ?: signingConfigs.getByName("debug")
         }
     }
 

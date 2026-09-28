@@ -24,7 +24,24 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest :soundhub-core:test
 
+      # SoundHub's permanent signing key, from the repository secret SOUNDHUB_KEYSTORE (a base64
+      # keystore). With it every SoundHub build installs over the previous one; without it (forks,
+      # or before the secret is added) builds are signed with this machine's throwaway debug key.
+      - name: SoundHub signing key
+        env:
+          SOUNDHUB_KEYSTORE: ${{ secrets.SOUNDHUB_KEYSTORE }}
+        run: |
+          if [ -n "$SOUNDHUB_KEYSTORE" ]; then
+            echo "$SOUNDHUB_KEYSTORE" | base64 -d > "$RUNNER_TEMP/soundhub.p12"
+            echo "SOUNDHUB_KEYSTORE_FILE=$RUNNER_TEMP/soundhub.p12" >> "$GITHUB_ENV"
+            echo "Using the permanent SoundHub signing key"
+          else
+            echo "No SOUNDHUB_KEYSTORE secret: SoundHub is signed with a throwaway key"
+          fi
+
       - name: Build APKs
+        env:
+          SOUNDHUB_KEYSTORE_PASSWORD: ${{ secrets.SOUNDHUB_KEYSTORE_PASSWORD || 'soundhub-key' }}
         run: ./gradlew --no-daemon assembleDebug assembleRelease
 
       - uses: actions/upload-artifact@v4
@@ -80,11 +97,17 @@ jobs:
           target_commitish: ${{ github.sha }}
           name: SoundHub build ${{ github.run_number }}
           make_latest: "false"
+          # SoundHub's updater shows the "What's new" part (up to the --- line).
           body: |
+            ## What's new
+            ${{ github.event.head_commit.message }}
+
+            ---
             SoundHub (Soulseek music with Dolby Atmos passthrough) built from ${{ github.sha }} (branch `${{ github.ref_name }}`).
 
-            Install `soundhub-debug.apk` (works on every device). Direct link, e.g. for the Downloader app on Google TV:
-            https://github.com/${{ github.repository }}/releases/download/soundhub-build-${{ github.run_number }}/soundhub-debug.apk
+            Install `soundhub-release.apk` (or `soundhub-debug.apk` for troubleshooting). Direct link, e.g. for the Downloader app on Google TV:
+            https://github.com/${{ github.repository }}/releases/download/soundhub-build-${{ github.run_number }}/soundhub-release.apk
+            Installed SoundHub updates itself from Settings → Updates.
           files: |
             soundhub/app/build/outputs/apk/debug/*.apk
             soundhub/app/build/outputs/apk/release/*.apk

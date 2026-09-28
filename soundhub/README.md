@@ -111,6 +111,19 @@ Output mode to **HDMI to the receiver**.
 Every push builds the APK on GitHub Actions (**Actions → Android build → Artifacts →
 soundhub-apks**).
 
+## Updates
+
+SoundHub checks GitHub for a newer build when it starts (at most every six hours) and under
+**Settings → Updates**. Home shows **Update** when one is ready; SoundHub downloads it and Android
+asks you to confirm the install. Your library, playlists and sign-in stay. The first time, Android
+asks you to allow SoundHub to install apps (Install unknown apps → SoundHub → Allowed).
+
+Updates only install over a build signed with the same key. CI signs SoundHub with the permanent
+key in the repository secret `SOUNDHUB_KEYSTORE` (a base64-encoded PKCS12 keystore with the alias
+`soundhub`; its password is the secret `SOUNDHUB_KEYSTORE_PASSWORD`, or `soundhub-key` when that
+secret isn't set). Without the secret, each build gets a throwaway key and must be installed after
+uninstalling the previous one; the updater says so instead of failing.
+
 ## Install
 
 Every build on this branch (and on the default branch) is published on the

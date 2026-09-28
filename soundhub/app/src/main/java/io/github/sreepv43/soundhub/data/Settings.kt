@@ -57,6 +57,9 @@ class Settings(context: Context) {
     /** The notification permission was explained and asked for once (on the first play or download). */
     val notificationsAsked = bool("notifications_asked", false)
 
+    /** When GitHub was last asked for a newer SoundHub build. */
+    val updateCheckedAt = long("update_checked_at", 0L)
+
     /** When the last crash report was mentioned at startup (so it is mentioned once). */
     val crashSeen = long("crash_seen", 0L)
 

@@ -33,6 +33,7 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import io.github.sreepv43.soundhub.audio.AudioFormats
+import io.github.sreepv43.soundhub.data.UpdateState
 import io.github.sreepv43.soundhub.audio.MusicFilter
 import io.github.sreepv43.soundhub.library.FamousArtists
 import io.github.sreepv43.soundhub.library.PathNames
@@ -56,6 +57,8 @@ import io.github.sreepv43.soundhub.ui.screens.SearchLayout
 import io.github.sreepv43.soundhub.ui.screens.SearchStatus
 import io.github.sreepv43.soundhub.ui.screens.TransferAction
 import io.github.sreepv43.soundhub.ui.screens.TransfersLayout
+import io.github.sreepv43.soundhub.ui.screens.UpdatesLayout
+import io.github.sreepv43.soundhub.update.AvailableUpdate
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -86,6 +89,7 @@ class RemoteNavigationTest {
     private val actions = mutableListOf<TransferAction>()
     private var signIns = 0
     private val picked = mutableListOf<String>()
+    private val installs = mutableListOf<Int>()
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Before
@@ -103,6 +107,7 @@ class RemoteNavigationTest {
                     onTransferAction = { actions += it },
                     onSignIn = { signIns++ },
                     onArtist = { picked += it },
+                    onInstall = { installs += it },
                 )
             }
         }
@@ -316,6 +321,17 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_BACK)
         assertEquals(SectionPage(Section.ARTISTS), navigator.current)
         assertEquals(artist, focused())
+    }
+
+    @Test
+    fun anAvailableUpdateIsOnePressAway() {
+        rule.runOnUiThread { navigator.open(SettingsPage(SettingsKind.UPDATES)) }
+        settle(1_000)
+        assertEquals("Download and install build 70", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf(70), installs)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Check again", focused())
     }
 
     @Test
@@ -570,6 +586,7 @@ private fun FakeApp(
     onTransferAction: (TransferAction) -> Unit,
     onSignIn: () -> Unit,
     onArtist: (String) -> Unit,
+    onInstall: (Int) -> Unit,
 ) {
     val navigator = remember { Navigator(Section.SEARCH) }
     SideEffect { onNavigator(navigator) }
@@ -660,6 +677,13 @@ private fun FakeApp(
                 onEnqueue = { _, _ -> },
                 onDownload = {},
                 onChooseSource = {},
+            )
+            is SettingsPage -> UpdatesLayout(
+                state = UpdateState.Available(AvailableUpdate(70, "SoundHub build 70", "feat: updates", "https://example.test/a.apk", 1)),
+                currentBuild = 61,
+                onCheck = {},
+                onInstall = { onInstall(it.build) },
+                onAllow = {},
             )
             else -> Text("other page")
         }

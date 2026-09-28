@@ -90,7 +90,13 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
             ) { page ->
                 when (page) {
                     is SectionPage -> when (page.section) {
-                        Section.HOME -> HomeScreen(onOpenAlbum = openAlbum, onGo = go, onSignIn = signIn, onPlaying = showPlayer)
+                        Section.HOME -> HomeScreen(
+                            onOpenAlbum = openAlbum,
+                            onGo = go,
+                            onSignIn = signIn,
+                            onPlaying = showPlayer,
+                            onUpdate = { navigator.open(SettingsPage(SettingsKind.UPDATES)) },
+                        )
                         Section.SEARCH -> SearchScreen(onOpen = { navigator.open(ReleasePage(it, Section.SEARCH)) }, onSignIn = signIn)
                         Section.ARTISTS -> ArtistsScreen(onSearching = { navigator.bringToTop(it) })
                         Section.LIBRARY -> LibraryScreen(

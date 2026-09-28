@@ -31,7 +31,13 @@ enum class Section(val label: String, val icon: ImageVector) {
     SETTINGS("Settings", Icons.Default.Settings),
 }
 
-enum class SettingsKind(val label: String) { ACCOUNT("Account"), STORAGE("Storage"), NETWORK("Network (advanced)"), ABOUT("About") }
+enum class SettingsKind(val label: String) {
+    ACCOUNT("Account"),
+    STORAGE("Storage"),
+    NETWORK("Network (advanced)"),
+    UPDATES("Updates"),
+    ABOUT("About"),
+}
 
 /** What is on screen. [section] is the one highlighted in the side menu. */
 sealed interface Page {

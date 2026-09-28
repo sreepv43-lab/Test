@@ -11,6 +11,7 @@ import android.util.Log
 import androidx.core.content.ContextCompat
 import io.github.sreepv43.soundhub.audio.FormatFilter
 import io.github.sreepv43.soundhub.audio.MusicFilter
+import io.github.sreepv43.soundhub.data.AppUpdater
 import io.github.sreepv43.soundhub.data.CoverCache
 import io.github.sreepv43.soundhub.data.CrashLog
 import io.github.sreepv43.soundhub.data.LibraryEnricher
@@ -84,6 +85,7 @@ class AppContainer(private val context: Context) {
     val search = SearchSession(client, appScope)
     val atmosSearch = SearchSession(client, appScope)
     val playback = PlaybackController(context, this)
+    val updater = AppUpdater(context, settings, appScope)
 
     /** Search results as albums (each with every user's copy), grouped off the main thread. */
     val releases: StateFlow<List<Release>> = search.folders.map(Releases::group).flowOn(Dispatchers.Default)
@@ -114,6 +116,7 @@ class AppContainer(private val context: Context) {
         // Songs on an unplugged drive stay in the library (shown as unavailable) until the
         // listener removes them; nothing is dropped automatically.
         LibraryEnricher(library, covers, ioScope)
+        updater.checkIfDue()
         appScope.launch { library.tracks.collect { refreshMissing() } }
         if (settings.username.value.isNotBlank() && settings.password.value.isNotEmpty()) {
             signIn(settings.username.value, settings.password.value)

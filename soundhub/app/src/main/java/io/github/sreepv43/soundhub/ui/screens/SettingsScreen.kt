@@ -7,9 +7,11 @@ import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
@@ -38,7 +41,9 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.soundhub.container
+import io.github.sreepv43.soundhub.data.AppUpdater
 import io.github.sreepv43.soundhub.data.CrashLog
+import io.github.sreepv43.soundhub.data.UpdateState
 import io.github.sreepv43.soundhub.slsk.ConnectionState
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.SettingsKind
@@ -55,6 +60,7 @@ import io.github.sreepv43.soundhub.ui.components.TvDialog
 import io.github.sreepv43.soundhub.ui.components.TwoLines
 import io.github.sreepv43.soundhub.ui.components.formatSize
 import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
+import io.github.sreepv43.soundhub.update.AvailableUpdate
 
 /** Settings, one row per area; each opens its own page. */
 @Composable
@@ -65,6 +71,7 @@ fun SettingsScreen(onOpen: (SettingsKind) -> Unit, onSound: () -> Unit) {
     val chosenFolder by container.settings.musicFolder.flow.collectAsStateWithLifecycle()
     val upnp by container.settings.upnp.flow.collectAsStateWithLifecycle()
     val mode by container.settings.outputMode.flow.collectAsStateWithLifecycle()
+    val update by container.updater.state.collectAsStateWithLifecycle()
     val folder = remember(chosenFolder) { container.musicFolders().firstOrNull { it.dir.path == container.musicFolder().path } }
     var allowed by remember { mutableStateOf(container.notificationsAllowed) }
     val permission = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
@@ -127,6 +134,17 @@ fun SettingsScreen(onOpen: (SettingsKind) -> Unit, onSound: () -> Unit) {
                 key = "settings-NETWORK",
             ) { onOpen(SettingsKind.NETWORK) }
         }
+        item(key = "updates") {
+            SettingsRow(
+                "Updates",
+                when (val u = update) {
+                    is UpdateState.Available -> "Build ${u.update.build} is available: press OK to install"
+                    UpdateState.UpToDate -> "Up to date (build ${container.updater.currentBuild})"
+                    else -> "Build ${container.updater.currentBuild} · press OK to check for a newer one"
+                },
+                key = "settings-UPDATES",
+            ) { onOpen(SettingsKind.UPDATES) }
+        }
         item(key = "about") { SettingsRow("About", "Version, and what SoundHub is", key = "settings-ABOUT") { onOpen(SettingsKind.ABOUT) } }
     }
 }
@@ -165,6 +183,7 @@ fun SettingsDetailScreen(kind: SettingsKind) {
         SettingsKind.ACCOUNT -> AccountSettings()
         SettingsKind.STORAGE -> StorageSettings()
         SettingsKind.NETWORK -> NetworkSettings()
+        SettingsKind.UPDATES -> UpdateSettings()
         SettingsKind.ABOUT -> AboutSettings()
     }
 }
@@ -403,6 +422,94 @@ private fun NetworkSettings() {
                 "Soulseek users connect to each other directly. When the router forwards this port to this device, " +
                     "more users can send to you and results arrive faster. Most home routers do this by themselves " +
                     "when UPnP is on.",
+            )
+        }
+    }
+}
+
+@Composable
+private fun UpdateSettings() {
+    val updater = LocalContext.current.container.updater
+    val state by updater.state.collectAsStateWithLifecycle()
+    // Look as soon as the page opens, unless a result is already here.
+    LaunchedEffect(Unit) { if (state == UpdateState.Idle || state is UpdateState.Failed) updater.check() }
+    UpdatesLayout(
+        state = state,
+        currentBuild = updater.currentBuild,
+        onCheck = updater::check,
+        onInstall = updater::install,
+        onAllow = updater::openInstallPermission,
+    )
+}
+
+/** Checking for, downloading and installing a newer build (no app state here, so tests can drive it). */
+@Composable
+fun UpdatesLayout(
+    state: UpdateState,
+    currentBuild: Int,
+    onCheck: () -> Unit,
+    onInstall: (AvailableUpdate) -> Unit,
+    onAllow: () -> Unit,
+) {
+    val update = when (state) {
+        is UpdateState.Available -> state.update
+        is UpdateState.Downloading -> state.update
+        is UpdateState.NeedsPermission -> state.update
+        is UpdateState.Installing -> state.update
+        is UpdateState.NeedsReinstall -> state.update
+        is UpdateState.Failed -> state.update
+        else -> null
+    }
+    SettingsList {
+        item(key = "title") { ScreenTitle("Updates", "This is SoundHub build $currentBuild") }
+        item(key = "status") {
+            when (state) {
+                UpdateState.Idle, UpdateState.Checking -> Note("Checking GitHub for a newer build…")
+                UpdateState.UpToDate -> Note("You have the newest build.", LosslessColor)
+                is UpdateState.Available -> Text("Build ${state.update.build} is available", style = MaterialTheme.typography.titleMedium)
+                is UpdateState.Downloading -> Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Note("Downloading build ${state.update.build}… ${(state.progress * 100).toInt()}%")
+                    LinearProgressIndicator(progress = { state.progress }, modifier = Modifier.fillMaxWidth())
+                }
+                is UpdateState.NeedsPermission -> Note(
+                    "Android needs your OK once: in the screen that opens, allow SoundHub to install apps " +
+                        "(Install unknown apps → SoundHub → Allowed). Then come back and press Install.",
+                    WarningColor,
+                )
+                is UpdateState.Installing -> Note("Android is installing build ${state.update.build}: confirm on the screen it shows.")
+                is UpdateState.NeedsReinstall -> Note(
+                    "Build ${state.update.build} is signed with a different key than the SoundHub installed now, so " +
+                        "Android won't install it over it. Uninstall SoundHub and install build ${state.update.build} once " +
+                        "from ${AppUpdater.RELEASES_PAGE}; after that, updates install from here.",
+                    WarningColor,
+                )
+                is UpdateState.Failed -> Note(state.message, WarningColor)
+            }
+        }
+        item(key = "buttons") {
+            Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                when {
+                    state is UpdateState.NeedsPermission -> {
+                        ActionButton("Allow installing", pageDefault = true, onClick = onAllow)
+                        ActionButton("Install", primary = false) { onInstall(state.update) }
+                    }
+                    update != null && (state is UpdateState.Available || state is UpdateState.Failed) ->
+                        ActionButton("Download and install build ${update.build}", pageDefault = true) { onInstall(update) }
+                    state is UpdateState.Downloading || state is UpdateState.Installing -> Unit
+                    else -> ActionButton("Check for updates", pageDefault = true, onClick = onCheck)
+                }
+                if (state is UpdateState.Available || state is UpdateState.Failed || state is UpdateState.NeedsReinstall) {
+                    ActionButton("Check again", primary = false, onClick = onCheck)
+                }
+            }
+        }
+        if (update != null && update.notes.isNotBlank()) {
+            item(key = "notes-title") { Text("What's new in build ${update.build}", style = MaterialTheme.typography.titleMedium) }
+            item(key = "notes") { ReadableText(update.notes) }
+        }
+        item(key = "how") {
+            ReadableText(
+                "Updates come from SoundHub's page on GitHub. Your library, playlists and sign-in stay as they are.",
             )
         }
     }

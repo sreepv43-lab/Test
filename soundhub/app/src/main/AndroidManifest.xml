@@ -8,6 +8,8 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Installs SoundHub's own updates (Android asks the listener to confirm each one). -->
+    <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES" />
 
     <!-- Runs on Android TV / Google TV (remote control) as well as tablets (touch). -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
@@ -50,5 +52,9 @@
             android:name=".service.TransferService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <receiver
+            android:name=".data.InstallResultReceiver"
+            android:exported="false" />
     </application>
 </manifest>

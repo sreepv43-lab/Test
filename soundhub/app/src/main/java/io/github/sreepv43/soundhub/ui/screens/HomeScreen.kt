@@ -20,6 +20,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.SystemUpdate
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -30,10 +31,12 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.soundhub.container
+import io.github.sreepv43.soundhub.data.UpdateState
 import io.github.sreepv43.soundhub.library.Album
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.library.LibraryViews
 import io.github.sreepv43.soundhub.slsk.ConnectionState
+import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.Section
 import io.github.sreepv43.soundhub.ui.components.ActionButton
 import io.github.sreepv43.soundhub.ui.components.AlbumCard
@@ -41,8 +44,8 @@ import io.github.sreepv43.soundhub.ui.components.Note
 import io.github.sreepv43.soundhub.ui.components.ScreenTitle
 import io.github.sreepv43.soundhub.ui.components.SectionHeader
 import io.github.sreepv43.soundhub.ui.components.toast
-import io.github.sreepv43.soundhub.ui.components.tvRow
 import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
+import io.github.sreepv43.soundhub.ui.components.tvRow
 
 /**
  * Where listening starts: carry on with what was playing (or resume the last session; nothing
@@ -50,7 +53,13 @@ import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun HomeScreen(onOpenAlbum: (String) -> Unit, onGo: (Section) -> Unit, onSignIn: () -> Unit, onPlaying: () -> Unit) {
+fun HomeScreen(
+    onOpenAlbum: (String) -> Unit,
+    onGo: (Section) -> Unit,
+    onSignIn: () -> Unit,
+    onPlaying: () -> Unit,
+    onUpdate: () -> Unit,
+) {
     val context = LocalContext.current
     val container = context.container
     val tracks by container.library.tracks.collectAsStateWithLifecycle()
@@ -58,6 +67,7 @@ fun HomeScreen(onOpenAlbum: (String) -> Unit, onGo: (Section) -> Unit, onSignIn:
     val current by container.playback.current.collectAsStateWithLifecycle()
     val state by container.client.state.collectAsStateWithLifecycle()
     val missing by container.missing.collectAsStateWithLifecycle()
+    val update by container.updater.state.collectAsStateWithLifecycle()
     val albums = remember(tracks) { LibraryStore.albums(tracks) }
     val recentlyPlayed = remember(collection.history, albums) { LibraryViews.recentlyPlayed(collection.history, albums) }
     val favourites = remember(collection.favouriteAlbums, albums) { albums.filter { it.key in collection.favouriteAlbums } }
@@ -83,6 +93,19 @@ fun HomeScreen(onOpenAlbum: (String) -> Unit, onGo: (Section) -> Unit, onSignIn:
                     else -> "${tracks.size} songs in your library"
                 },
             )
+        }
+        (update as? UpdateState.Available)?.let { available ->
+            item(key = "update") {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Note(
+                        "A new SoundHub is ready: build ${available.update.build}" +
+                            available.update.notes.lineSequence().firstOrNull { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
+                        LosslessColor,
+                        Modifier.weight(1f),
+                    )
+                    ActionButton("Update", Icons.Default.SystemUpdate, primary = false, onClick = onUpdate)
+                }
+            }
         }
         if (!signedIn && state !is ConnectionState.Connecting) {
             item(key = "sign-in") {
