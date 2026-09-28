@@ -21,6 +21,8 @@ import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.drawOutline
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.node.LayoutAwareModifierNode
 import androidx.compose.ui.node.ModifierNodeElement
 import androidx.compose.ui.unit.dp
 import io.github.sreepv43.soundhub.ui.FocusColor
@@ -72,7 +74,7 @@ fun Modifier.tvFocus(
 }
 
 /**
- * Registers the element with the shell only while it is attached (really on screen): rows a lazy
+ * Registers the element with the shell only while it is placed (really on screen): rows a lazy
  * list composed in advance have a FocusRequester that can't take focus yet, and handing one of
  * those to Compose as a page's entry crashes.
  */
@@ -94,23 +96,36 @@ private class TvFocusRegistrationNode(
     private var id: Int,
     private var requester: FocusRequester,
     private var pageDefault: Boolean,
-) : Modifier.Node() {
-    override fun onAttach() = register()
+) : Modifier.Node(), LayoutAwareModifierNode {
+    private var placed = false
 
-    override fun onDetach() = unregister()
+    // Only elements really on screen are handed out as where to put the selection: a lazy list
+    // composes rows ahead of scrolling (not placed yet) and keeps rows scrolled away for reuse, and
+    // moving the selection to either can crash.
+    override fun onPlaced(coordinates: LayoutCoordinates) {
+        if (placed) return
+        placed = true
+        register()
+    }
 
-    // A lazy list keeps rows scrolled out of view for reuse: they stay attached but can't take
-    // focus, so they must not be handed out as where to put the selection.
-    override fun onReset() = unregister()
+    override fun onDetach() {
+        placed = false
+        unregister()
+    }
+
+    override fun onReset() {
+        placed = false
+        unregister()
+    }
 
     fun update(shell: TvShellState, page: Any?, id: Int, requester: FocusRequester, pageDefault: Boolean) {
-        if (isAttached) unregister()
+        unregister()
         this.shell = shell
         this.page = page
         this.id = id
         this.requester = requester
         this.pageDefault = pageDefault
-        if (isAttached) register()
+        if (placed) register()
     }
 
     private fun register() {
