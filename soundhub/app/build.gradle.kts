@@ -58,6 +58,11 @@ android {
     }
 }
 
+// The navigation tests save pictures of the main pages here; CI attaches them to each release.
+tasks.withType<Test>().configureEach {
+    systemProperty("soundhub.screenshots", layout.buildDirectory.dir("screenshots").get().asFile.absolutePath)
+}
+
 dependencies {
     implementation(project(":soundhub-core"))
 

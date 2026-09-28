@@ -2,6 +2,7 @@ package io.github.sreepv43.soundhub.ui
 
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
@@ -540,12 +541,21 @@ class RemoteNavigationTest {
         screenshot("7-appearance")
     }
 
+    /** Saves the screen as [name].png; if it can't be captured, says why in errors.txt instead of failing. */
     private fun screenshot(name: String) {
-        runCatching {
-            val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
-            val dir = File("build/screenshots").apply { mkdirs() }
-            File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-        }.onFailure { println("Screenshot $name failed: $it") }
+        val dir = File(System.getProperty("soundhub.screenshots") ?: "build/screenshots").apply { mkdirs() }
+        val bitmap = runCatching { rule.onRoot().captureToImage().asAndroidBitmap() }.getOrElse { composeError ->
+            runCatching {
+                rule.runOnUiThread {
+                    val view = rule.activity.window.decorView
+                    Bitmap.createBitmap(view.width, view.height, Bitmap.Config.ARGB_8888).also { view.draw(Canvas(it)) }
+                }
+            }.getOrElse { viewError ->
+                File(dir, "errors.txt").appendText("$name: $composeError / $viewError\n")
+                return
+            }
+        }
+        File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
     }
 
     // ---- helpers ----
