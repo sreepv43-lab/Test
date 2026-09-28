@@ -73,6 +73,7 @@ import io.github.sreepv43.soundhub.ui.components.formatSize
 import io.github.sreepv43.soundhub.ui.components.toast
 import io.github.sreepv43.soundhub.ui.components.tvEnterAt
 import io.github.sreepv43.soundhub.ui.components.tvRow
+import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 
 enum class LibraryTab(val label: String) {
     ALBUMS("Albums"),
@@ -127,7 +128,7 @@ fun LibraryScreen(
         }
         if (tracks.isEmpty()) {
             item(key = "empty") {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Note("Nothing here yet. Songs you play or download from Search are kept here.", modifier = Modifier.weight(1f))
                     ActionButton("Search Soulseek", Icons.Default.Search, pageDefault = true, onClick = onSearch)
                 }
@@ -173,7 +174,7 @@ fun LibraryScreen(
         val missingCount = tracks.count { it.id in missing }
         if (missingCount > 0) {
             item(key = "missing") {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Note(
                         "$missingCount song${if (missingCount == 1) " is" else "s are"} on a drive that isn't connected. " +
                             "They play again once it is plugged in.",
@@ -186,7 +187,7 @@ fun LibraryScreen(
         }
         if (visible.isEmpty()) {
             item(key = "nothing") {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Note("Nothing in your library matches.", modifier = Modifier.weight(1f))
                     ActionButton("Clear search and filters") {
                         query = ""
@@ -213,7 +214,9 @@ fun LibraryScreen(
             }
             LibraryTab.PLAYLISTS -> {
                 item(key = "new-playlist") {
-                    ActionButton("New playlist", Icons.Default.Add, primary = false) { dialog = LibraryDialog.NEW_PLAYLIST }
+                    Row(Modifier.tvButtonGroup()) {
+                        ActionButton("New playlist", Icons.Default.Add, primary = false) { dialog = LibraryDialog.NEW_PLAYLIST }
+                    }
                 }
                 if (collection.playlists.isEmpty()) {
                     item(key = "no-playlists") {
@@ -398,7 +401,7 @@ fun AlbumScreen(albumKey: String, onPlaying: () -> Unit, onGone: () -> Unit, onO
             }
         }
         item(key = "actions") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionButton("Play", Icons.Default.PlayArrow, pageDefault = true) {
                     if (playOrExplain(context, container, album.tracks, album.tracks.firstOrNull { it.id !in missing && it.info.playable })) onPlaying()
                 }
@@ -477,7 +480,7 @@ fun ArtistScreen(name: String, onOpenAlbum: (String) -> Unit, onPlaying: () -> U
         if (artist != null) {
             val all = artist.albums.flatMap { it.tracks }
             item(key = "actions") {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ActionButton("Play all", Icons.Default.PlayArrow, pageDefault = true) {
                         if (playOrExplain(context, container, all, all.firstOrNull { it.id !in missing && it.info.playable })) onPlaying()
                     }
@@ -522,7 +525,7 @@ fun PlaylistScreen(id: String, onPlaying: () -> Unit, onGone: () -> Unit) {
     ) {
         item(key = "title") { ScreenTitle(playlist.name, "${playlist.trackIds.size} songs") }
         item(key = "actions") {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (tracks.isNotEmpty()) {
                     ActionButton("Play", Icons.Default.PlayArrow, pageDefault = true) {
                         if (playOrExplain(context, container, tracks, tracks.firstOrNull { it.id !in missing && it.info.playable })) onPlaying()

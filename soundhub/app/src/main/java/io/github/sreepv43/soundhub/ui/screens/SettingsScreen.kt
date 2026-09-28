@@ -28,7 +28,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -49,6 +53,7 @@ import io.github.sreepv43.soundhub.ui.components.TextEntryDialog
 import io.github.sreepv43.soundhub.ui.components.TvDialog
 import io.github.sreepv43.soundhub.ui.components.TwoLines
 import io.github.sreepv43.soundhub.ui.components.formatSize
+import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 
 /** Settings, one row per area; each opens its own page. */
 @Composable
@@ -167,7 +172,7 @@ private enum class Editing { USERNAME, PASSWORD }
 
 /**
  * Username and password are only saved and used when Sign in is pressed, so a half-typed name
- * never triggers a sign-in attempt.
+ * never triggers a sign-in attempt. Once both are entered, the selection moves to Sign in.
  */
 @Composable
 private fun AccountSettings() {
@@ -178,57 +183,35 @@ private fun AccountSettings() {
     // Not saved with the page's state, which Android may write to disk.
     var password by remember { mutableStateOf(settings.password.value) }
     var editing by rememberSaveable { mutableStateOf<Editing?>(null) }
-    val changed = username.trim() != settings.username.value || password != settings.password.value
-    fun signIn() {
-        when {
-            username.isBlank() -> editing = Editing.USERNAME
-            password.isEmpty() -> editing = Editing.PASSWORD
-            else -> container.signIn(username, password)
+    val signInButton = remember { FocusRequester() }
+    var signInFocused by remember { mutableStateOf(false) }
+    var focusSignIn by remember { mutableIntStateOf(0) }
+    LaunchedEffect(focusSignIn) {
+        if (focusSignIn == 0) return@LaunchedEffect
+        // The dialog's window is still closing: try each frame until Sign in has the selection.
+        repeat(FOCUS_TRIES) {
+            withFrameNanos { }
+            if (signInFocused) return@LaunchedEffect
+            runCatching { signInButton.requestFocus() }
         }
     }
-    SettingsList {
-        item(key = "title") { ScreenTitle("Soulseek account") }
-        item(key = "status") {
-            val (text, color) = when (val s = state) {
-                is ConnectionState.Connected -> "Signed in as ${s.username}" to LosslessColor
-                ConnectionState.Connecting -> "Connecting…" to MaterialTheme.colorScheme.onSurface
-                ConnectionState.Disconnected -> "Not signed in" to MaterialTheme.colorScheme.onSurface
-                is ConnectionState.Failed -> "Couldn't sign in: ${s.message}" to WarningColor
+    AccountLayout(
+        state = state,
+        username = username,
+        passwordSet = password.isNotEmpty(),
+        changed = username.trim() != settings.username.value || password != settings.password.value,
+        signInButton = Modifier.focusRequester(signInButton).onFocusChanged { signInFocused = it.hasFocus },
+        onEditUsername = { editing = Editing.USERNAME },
+        onEditPassword = { editing = Editing.PASSWORD },
+        onSignIn = {
+            when {
+                username.isBlank() -> editing = Editing.USERNAME
+                password.isEmpty() -> editing = Editing.PASSWORD
+                else -> container.signIn(username, password)
             }
-            Text(text, color = color, style = MaterialTheme.typography.titleMedium)
-        }
-        item(key = "username") {
-            ListRow(onClick = { editing = Editing.USERNAME }, key = "username", modifier = Modifier.testTag("username")) {
-                TwoLines("Username", username.ifEmpty { "Not set: press OK to enter" }, Modifier.weight(1f))
-            }
-        }
-        item(key = "password") {
-            ListRow(onClick = { editing = Editing.PASSWORD }, key = "password", modifier = Modifier.testTag("password")) {
-                TwoLines("Password", if (password.isEmpty()) "Not set: press OK to enter" else "••••••••", Modifier.weight(1f))
-            }
-        }
-        item(key = "buttons") {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                val connected = state is ConnectionState.Connected
-                ActionButton(
-                    if (connected && !changed) "Sign in again" else "Sign in",
-                    Icons.AutoMirrored.Filled.Login,
-                    pageDefault = !connected || changed,
-                    onClick = ::signIn,
-                )
-                if (connected || state is ConnectionState.Connecting) {
-                    ActionButton("Sign out", Icons.AutoMirrored.Filled.Logout, primary = false) { container.signOut() }
-                }
-            }
-        }
-        if (changed) item(key = "unsaved") { Note("Press Sign in to use the new details.", WarningColor) }
-        item(key = "note") {
-            ReadableText(
-                "New to Soulseek? Choose any unused username and a password: the account is created the first time " +
-                    "you sign in. The password is kept on this device only.",
-            )
-        }
-    }
+        },
+        onSignOut = { container.signOut() },
+    )
     when (editing) {
         Editing.USERNAME -> TextEntryDialog(
             title = "Soulseek username",
@@ -237,6 +220,7 @@ private fun AccountSettings() {
             onDone = {
                 username = it.trim()
                 editing = if (password.isEmpty()) Editing.PASSWORD else null
+                if (editing == null && username.isNotEmpty()) focusSignIn++
             },
         )
         Editing.PASSWORD -> TextEntryDialog(
@@ -247,9 +231,71 @@ private fun AccountSettings() {
             onDone = {
                 if (it.isNotEmpty()) password = it
                 editing = null
+                if (username.isNotBlank() && password.isNotEmpty()) focusSignIn++
             },
         )
         null -> Unit
+    }
+}
+
+private const val FOCUS_TRIES = 30
+
+/** The account page (no app state here, so the remote tests can drive it). */
+@Composable
+fun AccountLayout(
+    state: ConnectionState,
+    username: String,
+    passwordSet: Boolean,
+    changed: Boolean,
+    signInButton: Modifier,
+    onEditUsername: () -> Unit,
+    onEditPassword: () -> Unit,
+    onSignIn: () -> Unit,
+    onSignOut: () -> Unit,
+) {
+    SettingsList {
+        item(key = "title") { ScreenTitle("Soulseek account") }
+        item(key = "status") {
+            val (text, color) = when (state) {
+                is ConnectionState.Connected -> "Signed in as ${state.username}" to LosslessColor
+                ConnectionState.Connecting -> "Connecting…" to MaterialTheme.colorScheme.onSurface
+                ConnectionState.Disconnected -> "Not signed in" to MaterialTheme.colorScheme.onSurface
+                is ConnectionState.Failed -> "Couldn't sign in: ${state.message}" to WarningColor
+            }
+            Text(text, color = color, style = MaterialTheme.typography.titleMedium)
+        }
+        item(key = "username") {
+            ListRow(onClick = onEditUsername, key = "username", modifier = Modifier.testTag("username")) {
+                TwoLines("Username", username.ifEmpty { "Not set: press OK to enter" }, Modifier.weight(1f))
+            }
+        }
+        item(key = "password") {
+            ListRow(onClick = onEditPassword, key = "password", modifier = Modifier.testTag("password")) {
+                TwoLines("Password", if (passwordSet) "••••••••" else "Not set: press OK to enter", Modifier.weight(1f))
+            }
+        }
+        item(key = "buttons") {
+            Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                val connected = state is ConnectionState.Connected
+                ActionButton(
+                    if (connected && !changed) "Sign in again" else "Sign in",
+                    Icons.AutoMirrored.Filled.Login,
+                    modifier = signInButton,
+                    pageDefault = !connected || changed,
+                    onClick = onSignIn,
+                )
+                if (connected || state is ConnectionState.Connecting) {
+                    ActionButton("Sign out", Icons.AutoMirrored.Filled.Logout, primary = false, onClick = onSignOut)
+                }
+            }
+        }
+        if (changed) item(key = "unsaved") { Note("Press Sign in to use the new details.", WarningColor) }
+        item(key = "note") {
+            ReadableText(
+                "New to Soulseek? Choose any unused username and a password: the account is created the first time " +
+                    "you sign in. The password is kept on this device only.",
+            )
+        }
     }
 }
 
@@ -281,7 +327,9 @@ private fun StorageSettings() {
             }
         }
         item(key = "rescan") {
-            ActionButton("Look for drives again", Icons.Default.Refresh, primary = false) { refresh++ }
+            Row(Modifier.tvButtonGroup()) {
+                ActionButton("Look for drives again", Icons.Default.Refresh, primary = false) { refresh++ }
+            }
         }
         if (missing.isNotEmpty()) {
             item(key = "missing") {
@@ -292,7 +340,9 @@ private fun StorageSettings() {
                 )
             }
             item(key = "remove-missing") {
-                ActionButton("Remove missing songs from the library…", primary = false) { confirm = true }
+                Row(Modifier.tvButtonGroup()) {
+                    ActionButton("Remove missing songs from the library…", primary = false) { confirm = true }
+                }
             }
         }
     }
@@ -341,7 +391,9 @@ private fun NetworkSettings() {
         }
         if (upnp && state is ConnectionState.Connected) {
             item(key = "upnp-again") {
-                ActionButton("Ask the router again", Icons.Default.Refresh, primary = false) { container.openPort() }
+                Row(Modifier.tvButtonGroup()) {
+                    ActionButton("Ask the router again", Icons.Default.Refresh, primary = false) { container.openPort() }
+                }
             }
         }
         item(key = "explain") {

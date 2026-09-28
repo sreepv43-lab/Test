@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -50,6 +51,7 @@ import io.github.sreepv43.soundhub.ui.components.TvDialog
 import io.github.sreepv43.soundhub.ui.components.TwoLines
 import io.github.sreepv43.soundhub.ui.components.tvEnterAt
 import io.github.sreepv43.soundhub.ui.components.tvRow
+import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 
 private enum class SoundTab(val label: String) { ATMOS("Atmos music"), OUTPUT("Audio output") }
 
@@ -150,7 +152,9 @@ fun SoundScreen(onOpenRelease: (Release) -> Unit, onOpenAlbum: (String) -> Unit,
                 item(key = "device-title") { SectionHeader("What this device reports") }
                 item(key = "device") { DeviceReport(report) }
                 item(key = "device-refresh") {
-                    ActionButton("Check again", Icons.Default.Refresh, primary = false, pageDefault = true) { refresh++ }
+                    Row(Modifier.tvButtonGroup()) {
+                        ActionButton("Check again", Icons.Default.Refresh, primary = false, pageDefault = true) { refresh++ }
+                    }
                 }
                 item(key = "mode-title") { SectionHeader("Output mode") }
                 MODES.forEach { (value, title, subtitle) ->

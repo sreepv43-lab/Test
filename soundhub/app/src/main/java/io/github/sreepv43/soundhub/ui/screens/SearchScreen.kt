@@ -65,6 +65,7 @@ import io.github.sreepv43.soundhub.ui.components.formatSize
 import io.github.sreepv43.soundhub.ui.components.formatSpeed
 import io.github.sreepv43.soundhub.ui.components.toast
 import io.github.sreepv43.soundhub.ui.components.transferText
+import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 
 /** A status line under the search box, with a button when there is something to do about it. */
 data class SearchStatus(val text: String?, val action: DialogButton? = null)
@@ -145,7 +146,7 @@ fun LazyListScope.searchItems(
     if (recent.isNotEmpty()) item(key = "recent") { RecentSearches(recent, onSearch) }
     if (status.text != null) {
         item(key = "status") {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Note(status.text, modifier = Modifier.weight(1f))
                 status.action?.let { ActionButton(it.text, primary = it.primary, onClick = it.onClick) }
             }
@@ -157,7 +158,7 @@ fun LazyListScope.searchItems(
     releaseItems(shown, filter ?: MusicFilter(), onOpen)
     if (filter != null && releases.isNotEmpty() && shown.isEmpty()) {
         item(key = "none") {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Note("No albums here match ${filter.label}.", modifier = Modifier.weight(1f))
                 ActionButton("Show all results") { onFilter(MusicFilter()) }
             }
@@ -304,7 +305,7 @@ fun ReleaseLayout(
             }
         }
         item(key = "actions") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (playable.isNotEmpty()) {
                     ActionButton("Play", Icons.Default.PlayArrow, pageDefault = true) { onPlay(playable.first(), false) }
                     ActionButton("Shuffle", Icons.Default.Shuffle, primary = false) { onPlay(playable.random(), true) }

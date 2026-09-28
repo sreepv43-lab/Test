@@ -84,6 +84,7 @@ import io.github.sreepv43.soundhub.ui.components.TwoLines
 import io.github.sreepv43.soundhub.ui.components.toast
 import io.github.sreepv43.soundhub.ui.components.transferText
 import io.github.sreepv43.soundhub.ui.components.tvFocus
+import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 import kotlinx.coroutines.delay
 
 /**
@@ -134,7 +135,7 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
             item { ScreenTitle("Now playing") }
             item { Note("Nothing is playing.") }
             item {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     if (session != null) {
                         ActionButton("Resume", Icons.Default.PlayArrow, pageDefault = true) {
                             if (!container.resume()) toast(context, "Those songs aren't available (is their drive connected?)")
@@ -209,7 +210,7 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
             )
         }
         item(key = "more") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 ActionButton(
                     if (favourite) "Favourite" else "Add to favourites",
                     if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -222,7 +223,7 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
         }
         error?.let { message ->
             item(key = "error") {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Text(message, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
                     ActionButton("Try again", Icons.Default.Refresh, primary = false) { playback.retry() }
                     if (queue.size > index + 1) ActionButton("Skip", Icons.Default.SkipNext, primary = false) { playback.next() }
@@ -438,7 +439,7 @@ fun QueueLayout(
             item(key = "empty") { Note("The queue is empty. Play an album, or choose More → Add to queue on any song.") }
         } else {
             item(key = "actions") {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                     ActionButton("Save as playlist", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false, onClick = onSave)
                     if (upcoming > 0) ActionButton("Clear upcoming", Icons.Default.ClearAll, primary = false, onClick = onClearUpcoming)
                 }

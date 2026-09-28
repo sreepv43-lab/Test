@@ -37,11 +37,13 @@ import io.github.sreepv43.soundhub.library.PathNames
 import io.github.sreepv43.soundhub.library.Releases
 import io.github.sreepv43.soundhub.library.SearchFolder
 import io.github.sreepv43.soundhub.library.SearchTrack
+import io.github.sreepv43.soundhub.slsk.ConnectionState
 import io.github.sreepv43.soundhub.slsk.SharedFile
 import io.github.sreepv43.soundhub.slsk.TransferInfo
 import io.github.sreepv43.soundhub.slsk.TransferStatus
 import io.github.sreepv43.soundhub.ui.components.ActionButton
 import io.github.sreepv43.soundhub.ui.components.SeekBar
+import io.github.sreepv43.soundhub.ui.screens.AccountLayout
 import io.github.sreepv43.soundhub.ui.screens.PlayerControls
 import io.github.sreepv43.soundhub.ui.screens.ReleaseLayout
 import io.github.sreepv43.soundhub.ui.screens.SearchLayout
@@ -76,6 +78,7 @@ class RemoteNavigationTest {
     private val folders = mutableStateOf((0 until 12).map(::folder))
     private val seeks = mutableListOf<Long>()
     private val actions = mutableListOf<TransferAction>()
+    private var signIns = 0
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Before
@@ -86,7 +89,13 @@ class RemoteNavigationTest {
             val inputModes = LocalInputModeManager.current
             LaunchedEffect(Unit) { inputModes.requestInputMode(InputMode.Keyboard) }
             SoundHubTheme {
-                FakeApp(folders.value, onNavigator = { navigator = it }, onSeek = { seeks += it }, onTransferAction = { actions += it })
+                FakeApp(
+                    folders.value,
+                    onNavigator = { navigator = it },
+                    onSeek = { seeks += it },
+                    onTransferAction = { actions += it },
+                    onSignIn = { signIns++ },
+                )
             }
         }
         rule.runOnUiThread { composeView().requestFocus() }
@@ -244,6 +253,35 @@ class RemoteNavigationTest {
         rule.onNodeWithTag("option-Cancel").performClick()
         settle()
         assertTrue(actions.toString(), actions.isEmpty())
+    }
+
+    @Test
+    fun signInCanBeReachedFromThePasswordAndPressed() {
+        openSection(Section.SETTINGS)
+        assertEquals("the page starts on Sign in", "Sign in", focused())
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("password", focused())
+        // A small button under a full-width row used to be skipped for the wide text below it.
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("Sign in", focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertTrue(focused(), focused().startsWith("New to Soulseek"))
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("Sign in", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(1, signIns)
+    }
+
+    @Test
+    fun upFromTheSongsReturnsToTheAlbumsFirstButton() {
+        downTo("release-Album 5")
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Shuffle", focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertTrue(focused(), focused().startsWith("track-"))
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("Play", focused())
     }
 
     @Test
@@ -412,6 +450,7 @@ private fun FakeApp(
     onNavigator: (Navigator) -> Unit,
     onSeek: (Long) -> Unit,
     onTransferAction: (TransferAction) -> Unit,
+    onSignIn: () -> Unit,
 ) {
     val navigator = remember { Navigator(Section.SEARCH) }
     SideEffect { onNavigator(navigator) }
@@ -469,6 +508,17 @@ private fun FakeApp(
                         onRepeat = {},
                     )
                 }
+                Section.SETTINGS -> AccountLayout(
+                    state = ConnectionState.Disconnected,
+                    username = "listener",
+                    passwordSet = true,
+                    changed = true,
+                    signInButton = Modifier,
+                    onEditUsername = {},
+                    onEditPassword = {},
+                    onSignIn = onSignIn,
+                    onSignOut = {},
+                )
                 else -> Column(Modifier.padding(24.dp)) {
                     Text(page.section.label)
                     ActionButton("${page.section.label} button") {}

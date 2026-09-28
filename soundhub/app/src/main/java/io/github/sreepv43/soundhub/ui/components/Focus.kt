@@ -1,6 +1,7 @@
 package io.github.sreepv43.soundhub.ui.components
 
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.currentCompositeKeyHash
 import androidx.compose.runtime.getValue
@@ -150,4 +151,22 @@ fun Modifier.tvRow(): Modifier = focusProperties {
     exit = { direction ->
         if (direction == FocusDirection.Left || direction == FocusDirection.Right) FocusRequester.Cancel else FocusRequester.Default
     }
+}
+
+/**
+ * For a row of buttons between full-width rows (Sign in under the password, Play above the songs):
+ * the row counts as full width when moving Up or Down, so it is never skipped for a wide row
+ * further away, and the selection enters it at its first button (not whichever is nearest the
+ * middle). Left/Right inside the row are unchanged. Place on the Row/FlowRow holding the buttons.
+ */
+@OptIn(ExperimentalComposeUiApi::class)
+fun Modifier.tvButtonGroup(): Modifier = composed {
+    val self = remember { FocusRequester() }
+    fillMaxWidth()
+        .focusRequester(self)
+        .focusProperties {
+            // Requesting focus on the group itself lands on its first (top-left) button.
+            enter = { direction -> if (direction == FocusDirection.Up || direction == FocusDirection.Down) self else FocusRequester.Default }
+        }
+        .focusGroup()
 }

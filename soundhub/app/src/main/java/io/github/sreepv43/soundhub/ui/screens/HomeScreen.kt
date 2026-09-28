@@ -41,6 +41,7 @@ import io.github.sreepv43.soundhub.ui.components.ScreenTitle
 import io.github.sreepv43.soundhub.ui.components.SectionHeader
 import io.github.sreepv43.soundhub.ui.components.toast
 import io.github.sreepv43.soundhub.ui.components.tvRow
+import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 
 /**
  * Where listening starts: carry on with what was playing (or resume the last session; nothing
@@ -84,7 +85,7 @@ fun HomeScreen(onOpenAlbum: (String) -> Unit, onGo: (Section) -> Unit, onSignIn:
         }
         if (!signedIn && state !is ConnectionState.Connecting) {
             item(key = "sign-in") {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Note(
                         (state as? ConnectionState.Failed)?.let { "Not connected to Soulseek: ${it.message}" }
                             ?: "Sign in to Soulseek to search and stream music. Your library plays without it.",
@@ -95,7 +96,7 @@ fun HomeScreen(onOpenAlbum: (String) -> Unit, onGo: (Section) -> Unit, onSignIn:
             }
         }
         item(key = "actions") {
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FlowRow(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 when {
                     playing != null -> ActionButton("Now playing: ${playing.title}", Icons.Default.GraphicEq, pageDefault = true, onClick = onPlaying)
                     resumeTrack != null -> ActionButton("Resume: ${resumeTrack.title}", Icons.Default.PlayArrow, pageDefault = true) {

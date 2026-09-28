@@ -48,6 +48,7 @@ import io.github.sreepv43.soundhub.ui.components.SectionHeader
 import io.github.sreepv43.soundhub.ui.components.TvDialog
 import io.github.sreepv43.soundhub.ui.components.formatSize
 import io.github.sreepv43.soundhub.ui.components.transferText
+import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 
 enum class TransferAction {
     STOP,
@@ -134,7 +135,7 @@ fun TransfersLayout(
         }
         if (songs.isEmpty()) {
             item(key = "empty") {
-                Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Note(
                         "Nothing is downloading. Songs you play or download from Search show here until they arrive; " +
                             "a song starts once its owner has a free upload slot.",
@@ -148,7 +149,7 @@ fun TransfersLayout(
             val list = groups[group].orEmpty()
             if (list.isNotEmpty()) {
                 item(key = "group-${group.name}") {
-                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Row(Modifier.tvButtonGroup(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                         SectionHeader("${group.title} (${list.size})", Modifier.weight(1f))
                         if (group == Group.COMPLETED) {
                             ActionButton("Clear completed", Icons.Default.ClearAll, primary = false, onClick = onClearCompleted)
