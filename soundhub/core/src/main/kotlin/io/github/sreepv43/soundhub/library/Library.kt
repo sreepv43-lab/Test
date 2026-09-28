@@ -2,6 +2,7 @@ package io.github.sreepv43.soundhub.library
 
 import io.github.sreepv43.soundhub.audio.AudioInfo
 import io.github.sreepv43.soundhub.audio.FormatFilter
+import io.github.sreepv43.soundhub.audio.MusicFilter
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -24,10 +25,14 @@ data class LibraryTrack(
     val artist: String? = null,
     val info: AudioInfo,
     val addedAt: Long,
+    /** Title/artist/album/cover were read from the file's own tags (not just its path). */
+    val tagged: Boolean = false,
 )
 
 data class Album(val key: String, val title: String, val artist: String?, val tracks: List<LibraryTrack>) {
     fun matches(filter: FormatFilter) = tracks.any { filter.matches(it.info) }
+
+    fun matches(filter: MusicFilter) = filter.isDefault || tracks.any { filter.matches(it.info) }
 }
 
 /** The library index, kept as JSON next to the app's data. */
@@ -66,9 +71,15 @@ class LibraryStore(private val file: File) {
         save(kept)
     }
 
-    /** Drops entries whose files were deleted outside the app (or whose drive is gone). */
+    /** Songs whose file can't be found now (deleted, or on a drive that is unplugged). */
+    fun missing(): List<LibraryTrack> = _tracks.value.filterNot { File(it.path).isFile }
+
+    /**
+     * Drops entries whose files are gone. Only when the listener asks for it: run automatically, an
+     * unplugged USB drive would wipe its songs from the library until they were downloaded again.
+     */
     @Synchronized
-    fun pruneMissing() {
+    fun removeMissing() {
         val present = _tracks.value.filter { File(it.path).isFile }
         if (present.size != _tracks.value.size) save(present)
     }
@@ -76,6 +87,8 @@ class LibraryStore(private val file: File) {
     private fun load(): List<LibraryTrack> = try {
         if (file.isFile) json.decodeFromString(serializer, file.readText()) else emptyList()
     } catch (e: Exception) {
+        // Keep the unreadable index for recovery instead of overwriting it with an empty one.
+        file.renameTo(File(file.path + ".unreadable"))
         emptyList()
     }
 

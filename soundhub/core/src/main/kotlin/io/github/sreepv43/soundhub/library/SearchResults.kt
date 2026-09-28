@@ -3,6 +3,7 @@ package io.github.sreepv43.soundhub.library
 import io.github.sreepv43.soundhub.audio.AudioFormats
 import io.github.sreepv43.soundhub.audio.AudioInfo
 import io.github.sreepv43.soundhub.audio.FormatFilter
+import io.github.sreepv43.soundhub.audio.MusicFilter
 import io.github.sreepv43.soundhub.slsk.SearchResponse
 import io.github.sreepv43.soundhub.slsk.SharedFile
 import io.github.sreepv43.soundhub.slsk.SoulseekClient
@@ -34,6 +35,8 @@ data class SearchFolder(
     /** Bytes per second, as the user's client reports it. */
     val avgSpeed: Int,
     val queueLength: Long,
+    /** The folder's cover image, when the user shares one (cover.jpg, folder.jpg, …). */
+    val cover: SharedFile? = null,
 ) {
     val key: String get() = "$username\u0000$directory"
     val album: String get() = tracks.first().name.album
@@ -42,15 +45,22 @@ data class SearchFolder(
 
     fun matches(filter: FormatFilter): Boolean = tracks.any { filter.matches(it.info) }
 
+    fun matches(filter: MusicFilter): Boolean = (!filter.freeSlotOnly || slotFree) && tracks.any { filter.matches(it.info) }
+
     /** The most common format among the tracks [filter] lets through, for the folder's badge. */
     fun summary(filter: FormatFilter): AudioInfo? =
         tracks.map { it.info }.filter(filter::matches).groupBy { it.label }.maxByOrNull { it.value.size }?.value?.first()
+
+    fun summary(filter: MusicFilter): AudioInfo? =
+        tracks.map { it.info }.filter(filter::matches).groupBy { it.label }.maxByOrNull { it.value.size }?.value?.first()
+            ?: tracks.map { it.info }.groupBy { it.label }.maxByOrNull { it.value.size }?.value?.first()
 }
 
 object SearchResults {
     /** Groups responses into folders of audio files, most available (free slot, short queue, fast) first. */
     fun group(responses: List<SearchResponse>): List<SearchFolder> =
         responses.flatMap { response ->
+            val covers = response.files.filter { isImage(it.filename) }.groupBy { PathNames.folderOf(it.filename) }
             response.files
                 .filter { AudioFormats.isAudio(it.filename) }
                 .groupBy { PathNames.folderOf(it.filename) }
@@ -63,13 +73,34 @@ object SearchResults {
                             PathNames.describe(file.filename),
                         )
                     }.sortedWith(compareBy({ it.name.trackNumber ?: Int.MAX_VALUE }, { it.file.filename.lowercase() }))
-                    SearchFolder(response.username, directory, tracks, response.slotFree, response.avgSpeed, response.queueLength)
+                    SearchFolder(
+                        response.username,
+                        directory,
+                        tracks,
+                        response.slotFree,
+                        response.avgSpeed,
+                        response.queueLength,
+                        pickCover(covers[directory].orEmpty()),
+                    )
                 }
         }.sortedWith(
             compareByDescending<SearchFolder> { it.slotFree }
                 .thenBy { it.queueLength }
                 .thenByDescending { it.avgSpeed },
         )
+
+    private val COVER_NAMES = listOf("cover", "folder", "front")
+
+    private fun isImage(filename: String) = AudioFormats.extensionOf(filename) in setOf("jpg", "jpeg", "png")
+
+    /** cover/folder/front first; otherwise the largest image under 5 MB (skipping scans of booklets). */
+    private fun pickCover(images: List<SharedFile>): SharedFile? {
+        val small = images.filter { it.size in 1..5_000_000 }
+        val named = COVER_NAMES.firstNotNullOfOrNull { name ->
+            small.firstOrNull { it.filename.substringAfterLast('\\').lowercase().startsWith(name) }
+        }
+        return named ?: small.maxByOrNull { it.size }.takeIf { small.size == 1 }
+    }
 
     /**
      * Keeps folders that are already listed where they are (updated in place) and adds new ones

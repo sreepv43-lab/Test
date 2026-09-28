@@ -119,8 +119,18 @@ class LibraryTest {
         assertEquals(listOf("Song 2"), reloaded.tracks.value.map { it.title })
         assertTrue(!music.resolve("01.flac").exists())
 
+        // An unplugged drive: the entry stays (shown as unavailable) until the listener removes it.
         music.resolve("02.flac").delete()
-        reloaded.pruneMissing()
+        assertEquals(listOf("Song 2"), LibraryStore(index).tracks.value.map { it.title })
+        assertEquals(listOf("Song 2"), reloaded.missing().map { it.title })
+        reloaded.removeMissing()
         assertTrue(reloaded.tracks.value.isEmpty())
+    }
+
+    @Test
+    fun anUnreadableIndexIsKeptAsideNotOverwritten() {
+        val index = temp.root.resolve("library.json").apply { writeText("{ not json") }
+        assertTrue(LibraryStore(index).tracks.value.isEmpty())
+        assertTrue(temp.root.resolve("library.json.unreadable").exists())
     }
 }
