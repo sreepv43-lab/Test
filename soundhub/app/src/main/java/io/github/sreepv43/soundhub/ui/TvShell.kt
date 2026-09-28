@@ -353,6 +353,7 @@ fun TvShell(
 }
 
 /** Page and player bar are left only with Up/Down. */
+@OptIn(ExperimentalComposeUiApi::class)
 private fun verticalExitOnly(direction: FocusDirection): FocusRequester =
     if (direction == FocusDirection.Left || direction == FocusDirection.Right) FocusRequester.Cancel else FocusRequester.Default
 
