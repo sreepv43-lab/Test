@@ -76,8 +76,8 @@ import io.github.sreepv43.soundhub.ui.components.tvRow
 import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 
 enum class LibraryTab(val label: String) {
-    ALBUMS("Albums"),
     SONGS("Songs"),
+    ALBUMS("Albums"),
     ARTISTS("Artists"),
     PLAYLISTS("Playlists"),
     FAVOURITES("Favourites"),
@@ -104,7 +104,7 @@ fun LibraryScreen(
     val collection by container.collection.data.collectAsStateWithLifecycle()
     val missing by container.missing.collectAsStateWithLifecycle()
     val filter by container.libraryFilter.collectAsStateWithLifecycle()
-    var tab by rememberSaveable { mutableStateOf(LibraryTab.ALBUMS) }
+    var tab by rememberSaveable { mutableStateOf(LibraryTab.SONGS) }
     var query by rememberSaveable { mutableStateOf("") }
     var sort by rememberSaveable { mutableStateOf(LibrarySort.RECENT) }
     var dialog by rememberSaveable { mutableStateOf<LibraryDialog?>(null) }
@@ -122,7 +122,7 @@ fun LibraryScreen(
     ) {
         item(key = "title") {
             ScreenTitle(
-                "Library",
+                "Your Library",
                 if (tracks.isEmpty()) null else "${tracks.size} songs · ${formatSize(tracks.sumOf { it.size })} · saved in $folder",
             )
         }
@@ -158,7 +158,7 @@ fun LibraryScreen(
                     }
                 }
                 if (query.isNotEmpty()) item(key = "clear") { Chip("Clear search", false, key = "clear-find") { query = "" } }
-                item(key = "sort") { Chip("Sort: ${sort.label}", false, key = "sort") { dialog = LibraryDialog.SORT } }
+                item(key = "sort") { Chip("${sort.label}  ▾", false, key = "sort") { dialog = LibraryDialog.SORT } }
                 item(key = "filter") {
                     Chip(if (filter.isDefault) "Filters" else "Filters: ${filter.label}", !filter.isDefault, key = "filter") {
                         dialog = LibraryDialog.FILTER

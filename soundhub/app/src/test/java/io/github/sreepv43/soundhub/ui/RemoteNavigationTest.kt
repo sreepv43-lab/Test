@@ -25,7 +25,6 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
-import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -33,6 +32,8 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import io.github.sreepv43.soundhub.audio.AudioFormats
+import io.github.sreepv43.soundhub.audio.Channels
+import io.github.sreepv43.soundhub.audio.Quality
 import io.github.sreepv43.soundhub.data.UpdateState
 import io.github.sreepv43.soundhub.audio.MusicFilter
 import io.github.sreepv43.soundhub.library.FamousArtists
@@ -47,11 +48,14 @@ import io.github.sreepv43.soundhub.slsk.SharedFile
 import io.github.sreepv43.soundhub.slsk.TransferInfo
 import io.github.sreepv43.soundhub.slsk.TransferStatus
 import io.github.sreepv43.soundhub.ui.components.ActionButton
+import io.github.sreepv43.soundhub.ui.components.AlbumArt
 import io.github.sreepv43.soundhub.ui.components.SeekBar
 import io.github.sreepv43.soundhub.ui.screens.AccountLayout
 import io.github.sreepv43.soundhub.ui.screens.ArtistSearch
 import io.github.sreepv43.soundhub.ui.screens.ArtistsLayout
+import io.github.sreepv43.soundhub.ui.screens.PanelSong
 import io.github.sreepv43.soundhub.ui.screens.PlayerControls
+import io.github.sreepv43.soundhub.ui.screens.PlayerPanelLayout
 import io.github.sreepv43.soundhub.ui.screens.ReleaseLayout
 import io.github.sreepv43.soundhub.ui.screens.SearchLayout
 import io.github.sreepv43.soundhub.ui.screens.SearchStatus
@@ -92,6 +96,9 @@ class RemoteNavigationTest {
     private var signIns = 0
     private val picked = mutableListOf<String>()
     private val installs = mutableListOf<Int>()
+    private val panelSeeks = mutableListOf<Long>()
+    private val jumps = mutableListOf<Int>()
+    private val atmosSwitches = mutableListOf<Boolean>()
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Before
@@ -110,6 +117,9 @@ class RemoteNavigationTest {
                     onSignIn = { signIns++ },
                     onArtist = { picked += it },
                     onInstall = { installs += it },
+                    onPanelSeek = { panelSeeks += it },
+                    onJump = { jumps += it },
+                    onAtmos = { atmosSwitches += it },
                 )
             }
         }
@@ -120,20 +130,41 @@ class RemoteNavigationTest {
     @Test
     fun startsOnTheSearchBoxWithTheMenuClosed() {
         assertEquals("search-bar", focused())
-        assertFalse(menuExpanded())
+        assertFalse(menuOpen())
     }
 
     @Test
-    fun downGoesThroughRecentSearchesAndChipsToTheAlbums() {
+    fun downGoesThroughTheAtmosSwitchRecentSearchesAndChipsToTheAlbums() {
         val seen = mutableListOf<String>()
-        repeat(4) {
+        repeat(6) {
             press(KeyEvent.KEYCODE_DPAD_DOWN)
             seen += focused()
         }
-        assertEquals("recent searches, then the filter chips, then the first album: $seen", "rock", seen[0])
-        assertTrue(seen.toString(), seen[1].startsWith("All"))
-        assertEquals(seen.toString(), "release-Album 0", seen[2])
-        assertEquals(seen.toString(), "release-Album 1", seen[3])
+        assertEquals("the Atmos switch, recent searches, file types, quality, then the albums: $seen", "atmos-switch", seen[0])
+        assertEquals(seen.toString(), "rock", seen[1])
+        assertTrue(seen.toString(), seen[2].startsWith("All types"))
+        assertTrue(seen.toString(), seen[3].startsWith("Any quality"))
+        assertEquals(seen.toString(), "release-Album 0", seen[4])
+        assertEquals(seen.toString(), "release-Album 1", seen[5])
+    }
+
+    @Test
+    fun theAtmosSwitchTurnsOnWithOkAndShowsOnlyAtmosAlbums() {
+        rule.runOnUiThread { folders.value = manyResults(30) }
+        settle()
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("atmos-switch", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf(true), atmosSwitches)
+        assertEquals("atmos-switch", focused())
+        rule.onNodeWithText("Searching with \"atmos\" added", substring = true).assertExists()
+        val atmos = Releases.group(manyResults(30)).filter { it.matches(MusicFilter(channels = Channels.ATMOS)) }
+        assertTrue("the test data has Atmos albums", atmos.isNotEmpty())
+        moveUntil(KeyEvent.KEYCODE_DPAD_DOWN) { it.startsWith("release-") }
+        assertEquals("release-${atmos.first().album}", focused())
+        moveTo("atmos-switch", KeyEvent.KEYCODE_DPAD_UP)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf(true, false), atmosSwitches)
     }
 
     @Test
@@ -141,7 +172,7 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals("search-field", focused())
         press(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertEquals("rock", focused())
+        assertEquals("atmos-switch", focused())
         rule.onNodeWithTag("search-bar").assertExists()
     }
 
@@ -149,12 +180,12 @@ class RemoteNavigationTest {
     fun leftOpensTheMenuOnTheCurrentSectionAndOkOpensAnother() {
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertEquals("menu-SEARCH", focused())
-        assertTrue(menuExpanded())
+        assertTrue(menuOpen())
         moveTo("menu-TRANSFERS", KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         settle(1_000)
         assertEquals(SectionPage(Section.TRANSFERS), navigator.current)
-        assertFalse(menuExpanded())
+        assertFalse(menuOpen())
         assertEquals("the page gets the selection, not the menu", "transfer-12", focused())
     }
 
@@ -162,13 +193,13 @@ class RemoteNavigationTest {
     fun rightAndBackCloseTheMenuWithoutMoving() {
         downTo("release-Album 2")
         press(KeyEvent.KEYCODE_DPAD_LEFT)
-        assertTrue(menuExpanded())
+        assertTrue(menuOpen())
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
-        assertFalse(menuExpanded())
+        assertFalse(menuOpen())
         assertEquals("release-Album 2", focused())
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         press(KeyEvent.KEYCODE_BACK)
-        assertFalse(menuExpanded())
+        assertFalse(menuOpen())
         assertEquals(SectionPage(Section.SEARCH), navigator.current)
         assertEquals("release-Album 2", focused())
     }
@@ -280,9 +311,21 @@ class RemoteNavigationTest {
         assertTrue(focused(), focused().startsWith("release-"))
         // Holding Down sends repeated presses.
         hold(KeyEvent.KEYCODE_DPAD_DOWN, 30)
-        assertTrue(focused(), focused().startsWith("release-") || focused() == "player-bar")
-        moveUntil(KeyEvent.KEYCODE_DPAD_UP) { it.startsWith("All ") }
-        for (label in listOf("Lossless", "Hi-Res", "Dolby Atmos", "MP3")) {
+        assertTrue(focused(), focused().startsWith("release-"))
+        moveUntil(KeyEvent.KEYCODE_DPAD_UP) { it.startsWith("Any quality") }
+        for (label in listOf("Lossless", "Hi-Res", "Lossy")) {
+            press(KeyEvent.KEYCODE_DPAD_RIGHT)
+            assertTrue(focused(), focused().startsWith(label))
+            press(KeyEvent.KEYCODE_DPAD_CENTER)
+            settle()
+            assertTrue("still on the chip after choosing it: ${focused()}", focused().startsWith(label))
+            press(KeyEvent.KEYCODE_DPAD_DOWN)
+            press(KeyEvent.KEYCODE_DPAD_UP)
+        }
+        // Up from the quality chips: the file types, entered at the one chosen.
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertTrue(focused(), focused().startsWith("All types"))
+        for (label in listOf("MP3", "AAC / MP4", "FLAC")) {
             press(KeyEvent.KEYCODE_DPAD_RIGHT)
             assertTrue(focused(), focused().startsWith(label))
             press(KeyEvent.KEYCODE_DPAD_CENTER)
@@ -292,7 +335,10 @@ class RemoteNavigationTest {
             press(KeyEvent.KEYCODE_DPAD_UP)
         }
         rule.runOnUiThread { folders.value = manyResults(200) }
-        moveUntil(KeyEvent.KEYCODE_DPAD_LEFT) { it.startsWith("All ") }
+        moveUntil(KeyEvent.KEYCODE_DPAD_LEFT) { it.startsWith("All types") }
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        moveUntil(KeyEvent.KEYCODE_DPAD_LEFT) { it.startsWith("Any quality") }
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         repeat(20) { press(KeyEvent.KEYCODE_DPAD_DOWN) }
         assertTrue(focused(), focused().startsWith("release-"))
@@ -329,11 +375,11 @@ class RemoteNavigationTest {
     fun choosingAThemeRecoloursAtOnceAndKeepsTheSelection() {
         rule.runOnUiThread { navigator.open(SettingsPage(SettingsKind.APPEARANCE)) }
         settle(1_000)
-        assertEquals("the page starts on the theme in use", "theme-teal", focused())
+        assertEquals("the page starts on the theme in use", "theme-sky", focused())
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        assertEquals("ocean", currentPalette.id)
-        assertEquals("theme-ocean", focused())
+        assertEquals("teal", currentPalette.id)
+        assertEquals("theme-teal", focused())
         moveTo("theme-light", KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals("light", currentPalette.id)
@@ -344,7 +390,7 @@ class RemoteNavigationTest {
 
     @After
     fun backToTheDefaultTheme() {
-        currentPalette = Palettes.TEAL
+        currentPalette = Palettes.SKY
     }
 
     @Test
@@ -389,18 +435,18 @@ class RemoteNavigationTest {
 
     @Test
     fun chipsKeepTheirPlaceAndLeftFromTheFirstOpensTheMenu() {
-        downTo("All  12")
+        downTo("All types  12")
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
-        assertEquals("Lossless  12", focused())
+        assertEquals("MP3  0", focused())
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         press(KeyEvent.KEYCODE_DPAD_LEFT)
-        assertTrue(menuExpanded())
+        assertTrue(menuOpen())
     }
 
     @Test
     fun theFilterPanelAppliesEachChoiceAndOffersAWayBack() {
-        downTo("All  12")
-        repeat(MusicFilter.SHORTCUTS.size) { press(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        downTo("Any quality  12")
+        repeat(Quality.entries.size) { press(KeyEvent.KEYCODE_DPAD_RIGHT) }
         assertEquals("More filters…", focused())
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.onNodeWithText("Any quality").assertExists()
@@ -424,24 +470,43 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertEquals("seek-bar", focused())
-        assertFalse("Left seeks instead of opening the menu", menuExpanded())
+        assertFalse("Left seeks instead of opening the menu", menuOpen())
         assertEquals(listOf(10_000L, -10_000L, -10_000L), seeks)
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         assertEquals("play-pause", focused())
     }
 
     @Test
-    fun thePlayerBarIsBelowEveryPageAndUpGoesBack() {
-        downTo("player-bar")
+    fun rightFromThePageEntersThePlayerPanelAndLeftComesBack() {
+        downTo("release-Album 2")
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
-        assertEquals("bar-play", focused())
+        assertEquals("the panel starts on Play/Pause", "panel-play", focused())
         press(KeyEvent.KEYCODE_DPAD_LEFT)
-        press(KeyEvent.KEYCODE_DPAD_UP)
-        assertTrue(focused(), focused().startsWith("release-"))
-        downTo("player-bar")
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals("panel-shuffle", focused())
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals("Left from the panel's edge returns to the same album", "release-Album 2", focused())
+        assertFalse(menuOpen())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Right returns to where the panel was left", "panel-shuffle", focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("seek-bar", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals("seek-bar", focused())
+        assertEquals("the panel's seek bar uses Left/Right", listOf(10_000L, -10_000L), panelSeeks)
+        moveTo("upnext-0", KeyEvent.KEYCODE_DPAD_UP)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf(0), jumps)
+        assertEquals("upnext-0", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("more-upnext:0", focused())
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        moveTo("player-card", KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals(SectionPage(Section.NOW_PLAYING), navigator.current)
-        rule.onNodeWithTag("player-bar").assertDoesNotExist()
+        assertEquals("play-pause", focused())
+        rule.onNodeWithTag("player-card").assertDoesNotExist()
     }
 
     // ---- helpers ----
@@ -507,7 +572,7 @@ class RemoteNavigationTest {
         assertEquals(target, focused())
     }
 
-    private fun menuExpanded(): Boolean = rule.onNodeWithTag("menu").getBoundsInRoot().let { it.right - it.left } > 150.dp
+    private fun menuOpen(): Boolean = focused().startsWith("menu-")
 
     private fun focused(): String {
         val nodes = rule.onAllNodes(isFocused()).fetchSemanticsNodes()
@@ -611,39 +676,61 @@ private fun FakeApp(
     onSignIn: () -> Unit,
     onArtist: (String) -> Unit,
     onInstall: (Int) -> Unit,
+    onPanelSeek: (Long) -> Unit,
+    onJump: (Int) -> Unit,
+    onAtmos: (Boolean) -> Unit,
 ) {
     val navigator = remember { Navigator(Section.SEARCH) }
     SideEffect { onNavigator(navigator) }
     val releases = remember(folders) { Releases.group(folders) }
+    // As on a TV while something is loaded: the player panel beside every page but Now playing.
+    val panel: @Composable () -> Unit = {
+        PlayerPanelLayout(
+            song = PanelSong("Song 1", "Artist 0", 200, "Album 0", null),
+            upNext = (2..6).map { PanelSong("Song $it", "Artist 0", 200, "Album 0", null) },
+            favourite = false,
+            playing = true,
+            shuffle = false,
+            repeatMode = 0,
+            positionMs = 60_000,
+            durationMs = 200_000,
+            downloaded = null,
+            seekable = true,
+            onOpen = { navigator.open(SectionPage(Section.NOW_PLAYING)) },
+            onFavourite = {},
+            onShuffle = {},
+            onPrevious = {},
+            onPlayPause = {},
+            onNext = {},
+            onRepeat = {},
+            onSeekBy = onPanelSeek,
+            onJump = onJump,
+            onMenu = {},
+            onClear = {},
+            art = { song, size -> AlbumArt(null, song.title, size) },
+        )
+    }
     SoundHubShell(
         navigator,
-        bottomBar = {
-            if (navigator.current != SectionPage(Section.NOW_PLAYING)) {
-                PlayerBarLayout(
-                    title = "Song 1",
-                    subtitle = "Artist 0 · Album 0",
-                    playing = true,
-                    progress = 0.3f,
-                    onOpen = { navigator.open(SectionPage(Section.NOW_PLAYING)) },
-                    onPlayPause = {},
-                    onNext = {},
-                    onQueue = {},
-                ) {}
-            }
-        },
+        sidePanel = if (navigator.current != SectionPage(Section.NOW_PLAYING)) panel else null,
     ) { page ->
         when (page) {
             is SectionPage -> when (page.section) {
                 Section.SEARCH -> {
                     var filter by remember { mutableStateOf(MusicFilter()) }
+                    var atmos by remember { mutableStateOf(false) }
                     SearchLayout(
-                        title = "Search",
-                        hint = "Artist, album or song",
+                        hint = "Search songs, artists, albums…",
                         query = "rock",
                         status = SearchStatus("${releases.size} albums"),
                         releases = releases,
                         filter = filter,
                         onFilter = { filter = it },
+                        atmos = atmos,
+                        onAtmos = {
+                            atmos = it
+                            onAtmos(it)
+                        },
                         recent = listOf("rock", "jazz"),
                         onSearch = {},
                         onOpen = { navigator.open(ReleasePage(it, Section.SEARCH)) },

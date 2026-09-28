@@ -6,6 +6,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
@@ -48,6 +49,7 @@ import io.github.sreepv43.soundhub.ui.screens.ArtistScreen
 import io.github.sreepv43.soundhub.ui.screens.HomeScreen
 import io.github.sreepv43.soundhub.ui.screens.LibraryScreen
 import io.github.sreepv43.soundhub.ui.screens.NowPlayingScreen
+import io.github.sreepv43.soundhub.ui.screens.PlayerPanel
 import io.github.sreepv43.soundhub.ui.screens.PlaylistScreen
 import io.github.sreepv43.soundhub.ui.screens.QueueScreen
 import io.github.sreepv43.soundhub.ui.screens.ReleaseScreen
@@ -59,12 +61,14 @@ import io.github.sreepv43.soundhub.ui.screens.TransfersScreen
 import kotlinx.coroutines.delay
 
 /**
- * The app: the TV shell (side menu on Left, Back to the previous page) around the page on top,
- * with the player bar under every page while something is loaded. Playing something opens Now
+ * The app: the TV shell (side menu on Left, Back to the previous page) around the page on top.
+ * While something is loaded, the player panel (Up Next and the song playing) is beside every page
+ * on wide screens, and the player bar under it on narrow ones. Playing something opens Now
  * playing; Back returns to where it was started from.
  */
 @Composable
 fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
+    val container = LocalContext.current.container
     val navigator = remember { Navigator(Section.HOME) }
     LaunchedEffect(sectionRequest) {
         if (sectionRequest != null) {
@@ -78,15 +82,19 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
     val openAlbum = { key: String -> navigator.open(AlbumPage(key)) }
     val openArtist = { name: String -> navigator.open(ArtistPage(name)) }
 
+    val loaded by container.playback.current.collectAsStateWithLifecycle()
+    val panel: @Composable () -> Unit = { PlayerPanel(onOpen = showPlayer) }
+
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+        BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            val wide = maxWidth >= WIDE_LAYOUT
+            val onNowPlaying = navigator.current == SectionPage(Section.NOW_PLAYING)
             SoundHubShell(
                 navigator,
                 bottomBar = {
-                    if (navigator.current != SectionPage(Section.NOW_PLAYING)) {
-                        PlayerBar(onOpen = showPlayer, onQueue = { navigator.open(QueuePage) })
-                    }
+                    if (!wide && !onNowPlaying) PlayerBar(onOpen = showPlayer, onQueue = { navigator.open(QueuePage) })
                 },
+                sidePanel = if (wide && !onNowPlaying && loaded != null) panel else null,
             ) { page ->
                 when (page) {
                     is SectionPage -> when (page.section) {
@@ -108,9 +116,11 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
                         )
                         Section.TRANSFERS -> TransfersScreen(onSearch = { go(Section.SEARCH) })
                         Section.SOUND -> SoundScreen(
-                            onOpenRelease = { navigator.open(ReleasePage(it, Section.SOUND)) },
                             onOpenAlbum = openAlbum,
-                            onSignIn = signIn,
+                            onFindAtmos = {
+                                container.setSearchAtmos(true)
+                                navigator.select(Section.SEARCH)
+                            },
                         )
                         Section.NOW_PLAYING -> NowPlayingScreen(onQueue = { navigator.open(QueuePage) }, onGo = go)
                         Section.SETTINGS -> SettingsScreen(
@@ -118,7 +128,7 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
                             onSound = { go(Section.SOUND) },
                         )
                     }
-                    is ReleasePage -> ReleaseScreen(page.release, page.section, onPlaying = showPlayer)
+                    is ReleasePage -> ReleaseScreen(page.release, onPlaying = showPlayer)
                     is AlbumPage -> AlbumScreen(page.albumKey, onPlaying = showPlayer, onGone = { navigator.back() }, onOpenArtist = openArtist)
                     is ArtistPage -> ArtistScreen(page.name, onOpenAlbum = openAlbum, onPlaying = showPlayer)
                     is PlaylistPage -> PlaylistScreen(page.id, onPlaying = showPlayer, onGone = { navigator.back() })
@@ -131,9 +141,13 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
     }
 }
 
+/** From this width the player panel sits beside the page (TVs, tablets held sideways). */
+private val WIDE_LAYOUT = 840.dp
+
 /**
- * What is loaded, under every page: OK on the song opens Now playing; play/pause, next and the
- * queue are one press away. Down from the end of a page reaches it; Up goes back into the page.
+ * What is loaded, under every page on narrow screens: OK on the song opens Now playing;
+ * play/pause, next and the queue are one press away. Down from the end of a page reaches it; Up
+ * goes back into the page.
  */
 @Composable
 private fun PlayerBar(onOpen: () -> Unit, onQueue: () -> Unit) {
@@ -173,7 +187,7 @@ fun PlayerBarLayout(
     onQueue: () -> Unit,
     art: @Composable () -> Unit,
 ) {
-    Column(Modifier.fillMaxWidth().background(AppColors.panel)) {
+    Column(Modifier.fillMaxWidth().padding(top = ShellGap).card()) {
         Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
             Box(Modifier.fillMaxWidth(progress).height(3.dp).background(Accent))
         }

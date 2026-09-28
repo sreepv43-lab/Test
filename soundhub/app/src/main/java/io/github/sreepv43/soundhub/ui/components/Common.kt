@@ -69,6 +69,7 @@ import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import io.github.sreepv43.soundhub.audio.Atmos
 import io.github.sreepv43.soundhub.audio.AudioInfo
@@ -172,10 +173,11 @@ fun ListRow(
     modifier: Modifier = Modifier,
     key: Any? = null,
     pageDefault: Boolean = false,
+    padding: PaddingValues = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
     content: @Composable RowScope.() -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(16.dp)
     Row(
         modifier
             .fillMaxWidth()
@@ -184,7 +186,7 @@ fun ListRow(
             .clip(shape)
             .background(if (focused) AppColors.rowFocused else AppColors.row)
             .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(padding),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(12.dp),
         content = content,
@@ -286,7 +288,7 @@ fun SearchBar(query: String, hint: String, onSearch: (String) -> Unit) {
     }
 
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        val shape = RoundedCornerShape(10.dp)
+        val shape = RoundedCornerShape(50)
         if (editing) {
             OutlinedTextField(
                 value = text,
@@ -317,22 +319,22 @@ fun SearchBar(query: String, hint: String, onSearch: (String) -> Unit) {
             Row(
                 Modifier
                     .weight(1f)
-                    .height(56.dp)
+                    .height(54.dp)
                     .focusRequester(bar)
                     .onFocusChanged { focused = it.hasFocus }
                     .tvFocus(shape)
                     .clip(shape)
-                    .background(if (focused) AppColors.rowFocused else AppColors.row)
+                    .background(if (focused) AppColors.rowFocused else AppColors.surfaceVariant)
                     .clickable { editing = true }
-                    .padding(horizontal = 16.dp)
+                    .padding(horizontal = 20.dp)
                     .testTag("search-bar"),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.Default.Search, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.width(12.dp))
+                Spacer(Modifier.width(14.dp))
                 Text(
                     query.ifEmpty { hint },
-                    style = MaterialTheme.typography.titleMedium,
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 17.sp),
                     color = if (query.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -401,7 +403,7 @@ fun TvDialog(
     Dialog(onDismissRequest = onDismiss) {
         CompositionLocalProvider(LocalTvShell provides null) {
             Surface(
-                shape = RoundedCornerShape(16.dp),
+                shape = RoundedCornerShape(24.dp),
                 color = AppColors.panel,
                 modifier = Modifier.widthIn(max = 600.dp).onFocusChanged { hasFocus = it.hasFocus },
             ) {

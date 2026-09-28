@@ -9,7 +9,6 @@ import android.os.Environment
 import android.os.StatFs
 import android.util.Log
 import androidx.core.content.ContextCompat
-import io.github.sreepv43.soundhub.audio.FormatFilter
 import io.github.sreepv43.soundhub.audio.MusicFilter
 import io.github.sreepv43.soundhub.data.AppUpdater
 import io.github.sreepv43.soundhub.data.CoverCache
@@ -88,17 +87,18 @@ class AppContainer(private val context: Context) {
     val covers = CoverCache()
     val downloads = MusicDownloads(client, library, ::musicFolder, ioScope)
     val search = SearchSession(client, appScope)
-    val atmosSearch = SearchSession(client, appScope)
     val playback = PlaybackController(context, this)
     val updater = AppUpdater(context, settings, appScope)
 
     /** Search results as albums (each with every user's copy), grouped off the main thread. */
     val releases: StateFlow<List<Release>> = search.folders.map(Releases::group).flowOn(Dispatchers.Default)
         .stateIn(appScope, SharingStarted.Eagerly, emptyList())
-    val atmosReleases: StateFlow<List<Release>> = atmosSearch.folders
-        .map { folders -> Releases.group(folders.filter { it.matches(FormatFilter.ATMOS) }) }
-        .flowOn(Dispatchers.Default)
-        .stateIn(appScope, SharingStarted.Eagerly, emptyList())
+
+    /** The search's "Dolby Atmos only" switch: adds "atmos" to the search and shows only Atmos files. */
+    val searchAtmos = MutableStateFlow(false)
+
+    /** The words searched for last (without the "atmos" the switch adds). */
+    val searchText = MutableStateFlow("")
 
     private val _missing = MutableStateFlow<Set<String>>(emptySet())
 
@@ -152,17 +152,25 @@ class AppContainer(private val context: Context) {
 
     val signedIn: Boolean get() = client.state.value is ConnectionState.Connected
 
-    /** Runs a search (remembered for one-press repeats); the Sound page's Atmos search adds "atmos". */
-    fun startSearch(text: String, atmos: Boolean = false) {
+    /**
+     * Runs the search (remembered for one-press repeats). With [atmos] (the Dolby Atmos only switch,
+     * which it sets) "atmos" is added to the words and only Atmos files are shown.
+     */
+    fun startSearch(text: String, atmos: Boolean = searchAtmos.value) {
         val query = text.trim()
         if (query.isEmpty()) return
-        if (atmos) {
-            atmosSearch.start(if (query.contains("atmos", ignoreCase = true)) query else "$query atmos")
-        } else {
-            settings.addRecentSearch(query)
-            search.start(query)
-        }
+        searchAtmos.value = atmos
+        searchText.value = query
+        settings.addRecentSearch(query)
+        search.start(if (atmos && !query.contains("atmos", ignoreCase = true)) "$query atmos" else query)
         if (!signedIn) toast(context, "Not connected to Soulseek: sign in under Settings → Account.")
+    }
+
+    /** Flips the Dolby Atmos only switch, and searches again for the same words. */
+    fun setSearchAtmos(on: Boolean) {
+        if (searchAtmos.value == on) return
+        searchAtmos.value = on
+        searchText.value.takeIf { it.isNotEmpty() }?.let { startSearch(it, on) }
     }
 
     /** True when signed in; otherwise says how to sign in. */

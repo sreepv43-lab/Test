@@ -58,7 +58,7 @@ class Settings(context: Context) {
     val notificationsAsked = bool("notifications_asked", false)
 
     /** The colour theme (see Palettes). */
-    val theme = string("theme", "teal")
+    val theme = string("theme", "sky")
 
     /** When GitHub was last asked for a newer SoundHub build. */
     val updateCheckedAt = long("update_checked_at", 0L)

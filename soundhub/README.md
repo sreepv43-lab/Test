@@ -7,6 +7,10 @@ the receiver does the decoding.
 
 It is a separate app from StreamHub. It has its own launcher icon and its own APK.
 
+It looks like a light-blue music player: a blue side menu with labelled icons, each page on a white
+card, and (on TVs and tablets held sideways) **Up Next** and the song playing in a panel beside the
+page, with a big round play button.
+
 ## Features
 
 - **Soulseek client built in.** Sign in with a Soulseek username and password. A new username is
@@ -18,6 +22,8 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
   storage, an SD card or a USB drive.
 - **Home** carries on where you were: what is playing, or **Resume** for the last session (nothing
   plays by itself at startup), then recently played, favourite and recently added albums.
+- **One search** for everything. Its **Dolby Atmos only** switch adds "atmos" to your words and
+  shows only Atmos files (turning it on or off searches again).
 - **Search by album.** Each album shows once, however many users have it. The album page plays from
   the best copy (playable, slot reported free, most songs, best quality, shortest queue); **Sources**
   lists every user's copy to pick another. Playing an album keeps the whole album in the queue and
@@ -25,10 +31,11 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
 - **Artists:** well-known artists by genre (pop, rock, hip-hop, jazz, classical, film scores, Indian
   film and classical, and "Dolby Atmos picks"). OK on one searches Soulseek for their music, for all
   music, lossless, Hi-Res or Dolby Atmos; Back returns to the list.
-- **Filters** as separate choices instead of one row of overlapping chips: quality (lossless,
-  Hi-Res, lossy), channels (stereo, surround, Dolby Atmos), format (MP3, AAC / MP4, FLAC, ALAC,
-  WAV / AIFF, DSD, Dolby / DTS) and availability. The shortcuts All, Lossless, Hi-Res, Dolby Atmos
-  and MP3 are one press away.
+- **Filters** as separate choices instead of one row of overlapping chips: a **File type** row (MP3,
+  AAC / MP4, FLAC, ALAC, WAV / AIFF, DSD, Dolby / DTS, other) and a **Quality** row (lossless,
+  Hi-Res, lossy) under the search, each chip with how many albums it finds; **More filters…** has
+  channels (stereo, surround, Dolby Atmos) and availability. An album opened with filters on lists
+  only the files that match (say, just the FLAC or just the Atmos ones).
   - Labels come from file names and the attributes users' clients report (bitrate, sample rate,
     bit depth). Examples: "FLAC 24/96", "MP3 320", "DD+ Atmos".
   - The app then reads each file's header as soon as the first bytes arrive. This fixes labels
@@ -37,11 +44,14 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
 - **Library** with artwork (the folder's cover, or the one embedded in the songs), real names from
   the files' tags, its own search, sorting, and Albums, Songs, Artists, Playlists and Favourites.
   Songs on an unplugged USB drive stay listed as **Drive disconnected** until you remove them.
-- **Playing:** a player bar under every page (Down from the end of a page reaches it), seek ±10 s
-  with Left/Right on the seek bar, shuffle, repeat, a queue you can reorder, playlists, favourites
-  and a sleep timer. A song the device can't play is never swapped for another one.
-- **Atmos & sound page.**
-  - Atmos music: its own search for Atmos releases, and the Atmos albums you already have.
+- **Playing:** the player panel beside every page (Up Next with Clear and a … menu per song, then
+  the song with its heart, shuffle, previous, play/pause, next, repeat and the seek bar); on narrow
+  screens a player bar under the page instead. Seek ±10 s with Left/Right on the seek bar, a queue
+  you can reorder, playlists, favourites and a sleep timer. A song the device can't play is never
+  swapped for another one.
+- **Atmos & sound page** (Atmos in the menu).
+  - Atmos music: **Find Dolby Atmos music** (opens Search with the Dolby Atmos only switch on), and
+    the Atmos albums you already have.
   - Audio output: what the playing file is, what this device *reports* its HDMI output takes, the
     output mode you chose (Automatic, or forced HDMI / ARC), and what the player actually sends.
   - A ✓ on a format badge means the file itself confirmed Atmos: the JOC flag in a Dolby Digital
@@ -54,21 +64,25 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
     time something plays or downloads, with the reason.
   - Transfers are grouped: downloading, waiting in queues, needs attention, completed.
   - UPnP opens the listening port on your router.
-  - Colour themes under **Settings → Appearance**: Teal, Ocean, Violet, Amber, Crimson, Pure black
-    (for OLED TVs) and Light (for tablets in daylight). A theme applies at once.
+  - Colour themes under **Settings → Appearance**: Sky (the default: light blue with white cards),
+    Teal, Ocean, Violet, Amber, Crimson, Pure black (for OLED TVs) and Light. A theme applies at once.
   - If SoundHub ever closes because of an error, the details are kept under Settings → About (on the
     device only) so they can be reported.
 
 ## Using it with the remote
 
-- **Left** at the left edge of a page opens the menu (Home, Search, Artists, Library, Transfers,
-  Atmos & sound, Now playing, Settings). Use Up/Down to move and OK to choose. **Right** or **Back** closes
+- **Left** at the left edge of a page opens the menu (Home, Search, Artists, Library, Playing,
+  Transfers, Atmos, Settings). Use Up/Down to move and OK to choose. **Right** or **Back** closes
   the menu without changing page.
+- **Right** at the right edge of a page goes into the player panel (to Play/Pause the first time,
+  then wherever you were in it); **Left** from the panel comes back to the same place in the page.
+  OK on the song in the panel opens Now playing.
 - **Back** goes to the previous page (also after choosing another section in the menu) and puts the
   selection back where it was. Home is at the bottom, and Back there leaves the app; music keeps
   playing.
 - **Search box:** press OK on it to type, then press the keyboard's Search key. **Voice** appears
-  when the box has voice input. Recent searches sit under the box and run again with one press.
+  when the box has voice input. Under it: the Dolby Atmos only switch (OK flips it), then recent
+  searches, which run again with one press.
 - **Filter chips** always stay in the same places and show how many albums each one matches.
   Results that arrive later are added at the end, so the list doesn't move while you browse it.
 - **Songs:** OK plays from that song; Right then OK opens **More** (play next, add to queue, add to

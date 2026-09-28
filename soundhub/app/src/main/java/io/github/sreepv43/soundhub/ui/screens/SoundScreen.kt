@@ -13,6 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -30,7 +32,6 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.soundhub.audio.Atmos
 import io.github.sreepv43.soundhub.container
 import io.github.sreepv43.soundhub.library.LibraryStore
-import io.github.sreepv43.soundhub.library.Release
 import io.github.sreepv43.soundhub.player.AudioOutput
 import io.github.sreepv43.soundhub.player.OutputReport
 import io.github.sreepv43.soundhub.ui.AtmosColor
@@ -56,23 +57,16 @@ import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 private enum class SoundTab(val label: String) { ATMOS("Atmos music"), OUTPUT("Audio output") }
 
 /**
- * Dolby Atmos music (its own search, and the Atmos albums in the library) and where the sound
- * goes: what the playing file is, what this device says its output takes, the output mode chosen
- * here, and what the player actually sends. Reported facts and forced settings are kept apart.
+ * Dolby Atmos music (the Atmos albums in the library, and a way into the search with its Dolby
+ * Atmos only switch on) and where the sound goes: what the playing file is, what this device says
+ * its output takes, the output mode chosen here, and what the player actually sends. Reported
+ * facts and forced settings are kept apart.
  */
 @Composable
-fun SoundScreen(onOpenRelease: (Release) -> Unit, onOpenAlbum: (String) -> Unit, onSignIn: () -> Unit) {
+fun SoundScreen(onOpenAlbum: (String) -> Unit, onFindAtmos: () -> Unit) {
     val context = LocalContext.current
     val container = context.container
     var tab by rememberSaveable { mutableStateOf(SoundTab.ATMOS) }
-    val releases by container.atmosReleases.collectAsStateWithLifecycle()
-    val query by container.atmosSearch.query.collectAsStateWithLifecycle()
-    // A new Atmos search (e.g. an artist picked on the Artists page) shows its results.
-    var shownQuery by rememberSaveable { mutableStateOf(query) }
-    if (query != shownQuery) {
-        shownQuery = query
-        tab = SoundTab.ATMOS
-    }
     val library by container.library.tracks.collectAsStateWithLifecycle()
     val mode by container.settings.outputMode.flow.collectAsStateWithLifecycle()
     val output by container.playback.output.collectAsStateWithLifecycle()
@@ -80,7 +74,6 @@ fun SoundScreen(onOpenRelease: (Release) -> Unit, onOpenAlbum: (String) -> Unit,
     val report = remember(refresh) { AudioOutput.report(context, AudioOutput.MODE_AUTO) }
     var showHelp by rememberSaveable { mutableStateOf(false) }
     val atmosAlbums = remember(library) { LibraryStore.albums(library.filter { it.info.atmos != Atmos.NONE }) }
-    val status = searchStatus(container.atmosSearch, releases.size, onSignIn)
 
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
@@ -112,21 +105,21 @@ fun SoundScreen(onOpenRelease: (Release) -> Unit, onOpenAlbum: (String) -> Unit,
                         )
                     }
                 }
-                searchItems(
-                    hint = "Artist or album (\"atmos\" is added for you)",
-                    query = query.removeSuffix(" atmos"),
-                    status = status,
-                    releases = releases,
-                    shown = releases,
-                    filter = null,
-                    count = { 0 },
-                    onFilter = {},
-                    onMoreFilters = {},
-                    recent = emptyList(),
-                    onSearch = { container.startSearch(it, atmos = true) },
-                    onOpen = onOpenRelease,
-                )
-                if (atmosAlbums.isNotEmpty()) {
+                item(key = "find") {
+                    ListRow(onClick = onFindAtmos, key = "find-atmos", pageDefault = true, modifier = Modifier.testTag("find-atmos")) {
+                        Icon(Icons.Default.Search, contentDescription = null, tint = AtmosColor)
+                        TwoLines(
+                            "Find Dolby Atmos music",
+                            "Opens Search with Dolby Atmos only switched on",
+                            Modifier.weight(1f),
+                        )
+                    }
+                }
+                if (atmosAlbums.isEmpty()) {
+                    item(key = "library-empty") {
+                        Note("Atmos albums you play or download are listed here.")
+                    }
+                } else {
                     item(key = "library-title") { SectionHeader("Atmos in your library") }
                     items(atmosAlbums, key = { "library:" + it.key }) { album ->
                         ListRow(onClick = { onOpenAlbum(album.key) }, key = "library:" + album.key) {

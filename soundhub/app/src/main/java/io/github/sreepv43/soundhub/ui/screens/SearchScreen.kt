@@ -17,6 +17,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.SurroundSound
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -42,23 +43,23 @@ import io.github.sreepv43.soundhub.library.SearchSession
 import io.github.sreepv43.soundhub.library.SearchTrack
 import io.github.sreepv43.soundhub.slsk.ConnectionState
 import io.github.sreepv43.soundhub.ui.LosslessColor
-import io.github.sreepv43.soundhub.ui.Section
 import io.github.sreepv43.soundhub.ui.WarningColor
 import io.github.sreepv43.soundhub.ui.components.ActionButton
 import io.github.sreepv43.soundhub.ui.components.AlbumArt
 import io.github.sreepv43.soundhub.ui.components.Badge
 import io.github.sreepv43.soundhub.ui.components.DialogButton
+import io.github.sreepv43.soundhub.ui.components.FileTypeFilter
 import io.github.sreepv43.soundhub.ui.components.FilterDialog
-import io.github.sreepv43.soundhub.ui.components.FilterShortcuts
 import io.github.sreepv43.soundhub.ui.components.FormatBadge
 import io.github.sreepv43.soundhub.ui.components.ListRow
 import io.github.sreepv43.soundhub.ui.components.Note
 import io.github.sreepv43.soundhub.ui.components.Option
 import io.github.sreepv43.soundhub.ui.components.OptionsDialog
+import io.github.sreepv43.soundhub.ui.components.QualityFilter
 import io.github.sreepv43.soundhub.ui.components.RecentSearches
 import io.github.sreepv43.soundhub.ui.components.RowWithMore
-import io.github.sreepv43.soundhub.ui.components.ScreenTitle
 import io.github.sreepv43.soundhub.ui.components.SearchBar
+import io.github.sreepv43.soundhub.ui.components.ToggleRow
 import io.github.sreepv43.soundhub.ui.components.TwoLines
 import io.github.sreepv43.soundhub.ui.components.formatDuration
 import io.github.sreepv43.soundhub.ui.components.formatSize
@@ -74,17 +75,19 @@ data class SearchStatus(val text: String?, val action: DialogButton? = null)
 fun SearchScreen(onOpen: (Release) -> Unit, onSignIn: () -> Unit) {
     val container = LocalContext.current.container
     val releases by container.releases.collectAsStateWithLifecycle()
-    val query by container.search.query.collectAsStateWithLifecycle()
+    val text by container.searchText.collectAsStateWithLifecycle()
+    val atmos by container.searchAtmos.collectAsStateWithLifecycle()
     val recent by container.settings.recentSearches.flow.collectAsStateWithLifecycle()
     val filter by container.searchFilter.collectAsStateWithLifecycle()
     SearchLayout(
-        title = "Search",
-        hint = "Artist, album or song",
-        query = query,
+        hint = "Search songs, artists, albums…",
+        query = text,
         status = searchStatus(container.search, releases.size, onSignIn),
         releases = releases,
         filter = filter,
         onFilter = { container.searchFilter.value = it },
+        atmos = atmos,
+        onAtmos = container::setSearchAtmos,
         recent = remember(recent) { recent.lines().filter { it.isNotBlank() } },
         onSearch = { container.startSearch(it) },
         onOpen = onOpen,
@@ -92,77 +95,84 @@ fun SearchScreen(onOpen: (Release) -> Unit, onSignIn: () -> Unit) {
 }
 
 /**
- * A search page: the search box (a button until pressed, so passing over it never pops up the
- * keyboard), recent searches, filter shortcuts and the albums found, one row per album however
- * many users have it. [filter] null hides the filters (the Atmos search shows only Atmos).
+ * The search: the search box (a button until pressed, so passing over it never pops up the
+ * keyboard), the Dolby Atmos only switch (adds "atmos" to the search and shows only Atmos files),
+ * recent searches, file type and quality chips and the albums found, one row per album however
+ * many users have it.
  */
 @Composable
 fun SearchLayout(
-    title: String?,
     hint: String,
     query: String,
     status: SearchStatus,
     releases: List<Release>,
-    filter: MusicFilter?,
+    filter: MusicFilter,
     onFilter: (MusicFilter) -> Unit,
+    atmos: Boolean,
+    onAtmos: (Boolean) -> Unit,
     recent: List<String>,
     onSearch: (String) -> Unit,
     onOpen: (Release) -> Unit,
 ) {
     var showFilters by rememberSaveable { mutableStateOf(false) }
+    val active = if (atmos) filter.copy(channels = Channels.ATMOS) else filter
     val counts = remember(releases) { HashMap<MusicFilter, Int>() }
     val count = { f: MusicFilter -> counts.getOrPut(f) { releases.count { it.matches(f) } } }
-    val shown = remember(releases, filter) { if (filter == null) releases else releases.filter { it.matches(filter) } }
+    val shown = remember(releases, active) { releases.filter { it.matches(active) } }
+    // Channels (other than the switch's Atmos) and availability live under More filters.
+    val more = MusicFilter(channels = filter.channels, freeSlotOnly = filter.freeSlotOnly).takeUnless { it.isDefault }?.label
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
         state = rememberLazyListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (title != null) item(key = "title") { ScreenTitle(title) }
-        searchItems(hint, query, status, releases, shown, filter, count, onFilter, { showFilters = true }, recent, onSearch, onOpen)
+        item(key = "search") { SearchBar(query, hint, onSearch) }
+        item(key = "atmos") {
+            ToggleRow(
+                "Dolby Atmos only",
+                if (atmos) "Searching with \"atmos\" added, showing Atmos files only" else "Adds \"atmos\" to the search and shows only Atmos files",
+                checked = atmos,
+                key = "atmos-switch",
+                icon = Icons.Default.SurroundSound,
+                onToggle = onAtmos,
+            )
+        }
+        if (recent.isNotEmpty()) item(key = "recent") { RecentSearches(recent, onSearch) }
+        if (status.text != null) {
+            item(key = "status") {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Note(status.text, modifier = Modifier.weight(1f))
+                    status.action?.let { ActionButton(it.text, primary = it.primary, onClick = it.onClick) }
+                }
+            }
+        }
+        if (releases.isNotEmpty()) {
+            item(key = "types") {
+                FileTypeFilter(filter.codec, count = { count(active.copy(codec = it)) }) { onFilter(filter.copy(codec = it)) }
+            }
+            item(key = "qualities") {
+                QualityFilter(
+                    filter.quality,
+                    count = { count(active.copy(quality = it)) },
+                    more = more,
+                    onSelect = { onFilter(filter.copy(quality = it)) },
+                    onMore = { showFilters = true },
+                )
+            }
+        }
+        releaseItems(shown, active, onOpen)
+        if (releases.isNotEmpty() && shown.isEmpty()) {
+            item(key = "none") {
+                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Note("No albums here match ${active.label}.", modifier = Modifier.weight(1f))
+                    ActionButton("Show all results") { if (!filter.isDefault) onFilter(MusicFilter()) else onAtmos(false) }
+                }
+            }
+        }
     }
-    if (showFilters && filter != null) {
+    if (showFilters) {
         FilterDialog(filter, showAvailability = true, onChange = onFilter, onDismiss = { showFilters = false })
-    }
-}
-
-/** The search box, recent searches, status, filters and results, for a page's list. */
-fun LazyListScope.searchItems(
-    hint: String,
-    query: String,
-    status: SearchStatus,
-    releases: List<Release>,
-    shown: List<Release>,
-    filter: MusicFilter?,
-    count: (MusicFilter) -> Int,
-    onFilter: (MusicFilter) -> Unit,
-    onMoreFilters: () -> Unit,
-    recent: List<String>,
-    onSearch: (String) -> Unit,
-    onOpen: (Release) -> Unit,
-) {
-    item(key = "search") { SearchBar(query, hint, onSearch) }
-    if (recent.isNotEmpty()) item(key = "recent") { RecentSearches(recent, onSearch) }
-    if (status.text != null) {
-        item(key = "status") {
-            Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Note(status.text, modifier = Modifier.weight(1f))
-                status.action?.let { ActionButton(it.text, primary = it.primary, onClick = it.onClick) }
-            }
-        }
-    }
-    if (filter != null && releases.isNotEmpty()) {
-        item(key = "filters") { FilterShortcuts(filter, count, onFilter, onMoreFilters) }
-    }
-    releaseItems(shown, filter ?: MusicFilter(), onOpen)
-    if (filter != null && releases.isNotEmpty() && shown.isEmpty()) {
-        item(key = "none") {
-            Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                Note("No albums here match ${filter.label}.", modifier = Modifier.weight(1f))
-                ActionButton("Show all results") { onFilter(MusicFilter()) }
-            }
-        }
     }
 }
 
@@ -226,17 +236,23 @@ private fun Availability(folder: SearchFolder) {
  * picked under Sources). Playing streams while it downloads and keeps the songs in the library.
  */
 @Composable
-fun ReleaseScreen(release: Release, section: Section, onPlaying: () -> Unit) {
+fun ReleaseScreen(release: Release, onPlaying: () -> Unit) {
     val context = LocalContext.current
     val container = context.container
-    val live by (if (section == Section.SOUND) container.atmosReleases else container.releases).collectAsStateWithLifecycle()
+    val live by container.releases.collectAsStateWithLifecycle()
     val searchFilter by container.searchFilter.collectAsStateWithLifecycle()
-    val filter = if (section == Section.SOUND) MusicFilter(channels = Channels.ATMOS) else searchFilter
+    val atmos by container.searchAtmos.collectAsStateWithLifecycle()
+    val filter = if (atmos) searchFilter.copy(channels = Channels.ATMOS) else searchFilter
     // More users' copies keep arriving while the search runs.
     val current = live.firstOrNull { it.key == release.key } ?: release
     var sourceKey by rememberSaveable(release.key) { mutableStateOf<String?>(null) }
-    val source = current.sources.firstOrNull { it.key == sourceKey } ?: current.bestSource(filter)
-    SideEffect { if (sourceKey == null) sourceKey = source.key }
+    val chosen = current.sources.firstOrNull { it.key == sourceKey } ?: current.bestSource(filter)
+    SideEffect { if (sourceKey == null) sourceKey = chosen.key }
+    // Only the files the search's filters let through (e.g. just the Atmos ones), when there are any.
+    val source = remember(chosen, filter) {
+        val matching = chosen.tracks.filter { filter.matches(it.info) }
+        if (matching.isEmpty() || matching.size == chosen.tracks.size) chosen else chosen.copy(tracks = matching)
+    }
     val transfers by container.client.transfers.collectAsStateWithLifecycle()
     val library by container.library.tracks.collectAsStateWithLifecycle()
     val inLibrary = remember(library) { library.mapTo(HashSet()) { it.id } }
@@ -247,6 +263,7 @@ fun ReleaseScreen(release: Release, section: Section, onPlaying: () -> Unit) {
         release = current,
         source = source,
         filter = filter,
+        hidden = chosen.tracks.size - source.tracks.size,
         status = { track ->
             val transfer = transfers.lastOrNull { it.username == track.username && it.filename == track.file.filename }
             when {
@@ -279,6 +296,7 @@ fun ReleaseLayout(
     onEnqueue: (List<SearchTrack>, Boolean) -> Unit,
     onDownload: (List<SearchTrack>) -> Unit,
     onChooseSource: (SearchFolder) -> Unit,
+    hidden: Int = 0,
 ) {
     val playable = source.tracks.filter { it.info.playable }
     var options by remember { mutableStateOf<SearchTrack?>(null) }
@@ -321,8 +339,12 @@ fun ReleaseLayout(
         }
         item(key = "note") {
             Note(
-                if (playable.isEmpty()) "This device can't play these files; download them to keep them."
-                else "Playing starts while the songs download, and keeps them in your library.",
+                listOfNotNull(
+                    "Showing the ${source.tracks.size} ${filter.label} files; $hidden other${if (hidden == 1) " is" else "s are"} hidden by the search's filters."
+                        .takeIf { hidden > 0 },
+                    if (playable.isEmpty()) "This device can't play these files; download them to keep them."
+                    else "Playing starts while the songs download, and keeps them in your library.",
+                ).joinToString(" "),
             )
         }
         items(source.tracks, key = { it.file.filename }) { track ->

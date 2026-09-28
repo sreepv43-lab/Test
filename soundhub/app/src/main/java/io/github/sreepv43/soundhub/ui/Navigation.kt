@@ -20,14 +20,15 @@ import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.sreepv43.soundhub.library.Release
 
+/** The side menu, top to bottom (short labels: they sit under the icons). */
 enum class Section(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     SEARCH("Search", Icons.Default.Search),
     ARTISTS("Artists", Icons.Default.Star),
     LIBRARY("Library", Icons.Default.LibraryMusic),
+    NOW_PLAYING("Playing", Icons.Default.GraphicEq),
     TRANSFERS("Transfers", Icons.Default.Download),
-    SOUND("Atmos & sound", Icons.Default.SurroundSound),
-    NOW_PLAYING("Now playing", Icons.Default.GraphicEq),
+    SOUND("Atmos", Icons.Default.SurroundSound),
     SETTINGS("Settings", Icons.Default.Settings),
 }
 
@@ -134,11 +135,17 @@ class Navigator(start: Section, private val home: Section = Section.HOME) {
 private val menu = Section.entries.map { MenuEntry(it.name, it.label, it.icon) }
 
 /**
- * The TV shell around the page on top of [navigator]'s stack: side menu, Back, the player bar, and
- * each page keeping its scroll position, filters and open album while other pages are on top of it.
+ * The TV shell around the page on top of [navigator]'s stack: side menu, Back, the player bar or
+ * panel, and each page keeping its scroll position, filters and open album while other pages are
+ * on top of it.
  */
 @Composable
-fun SoundHubShell(navigator: Navigator, bottomBar: @Composable () -> Unit = {}, content: @Composable (Page) -> Unit) {
+fun SoundHubShell(
+    navigator: Navigator,
+    bottomBar: @Composable () -> Unit = {},
+    sidePanel: (@Composable () -> Unit)? = null,
+    content: @Composable (Page) -> Unit,
+) {
     val states = rememberSaveableStateHolder()
     DisposableEffect(navigator, states) {
         navigator.onDrop = { states.removeState(it.key) }
@@ -152,6 +159,7 @@ fun SoundHubShell(navigator: Navigator, bottomBar: @Composable () -> Unit = {}, 
         pageKey = page.key,
         onSelect = { navigator.select(Section.valueOf(it.key)) },
         bottomBar = bottomBar,
+        sidePanel = sidePanel,
     ) { modifier ->
         Box(modifier) {
             key(page.key) {

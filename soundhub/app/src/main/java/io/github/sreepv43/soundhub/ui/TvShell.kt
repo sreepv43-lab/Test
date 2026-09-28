@@ -14,11 +14,12 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -38,6 +39,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
@@ -57,14 +59,28 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
 data class MenuEntry(val key: String, val label: String, val icon: ImageVector)
 
-val RailCollapsed = 76.dp
-private val RailExpanded = 220.dp
+/** The side menu's width. */
+val RailWidth = 92.dp
+
+/** Space around and between the side menu, the page card and the player panel. */
+val ShellGap = 12.dp
+
+/** The rounded white card each page sits on (and the player panel's cards). */
+val CardShape = RoundedCornerShape(24.dp)
+
+/** A card: rounded, lifted a little off the backdrop. */
+fun Modifier.card(): Modifier = shadow(4.dp, CardShape).clip(CardShape).background(AppColors.panel)
+
+/** Where the player panel's elements are remembered, like a page's. */
+internal const val PANEL_KEY = "player-panel"
 
 /**
  * Shared by [TvShell], its pages and every [io.github.sreepv43.soundhub.ui.components.tvFocus]
@@ -77,6 +93,16 @@ class TvShellState internal constructor() {
 
     /** The player bar under the page holds the selection. */
     internal var barHasFocus by mutableStateOf(false)
+
+    /** The player panel beside the page holds the selection. */
+    internal var panelHasFocus by mutableStateOf(false)
+
+    /** A player panel is beside the page: Right at the page's right edge goes into it. */
+    internal var panelShown: Boolean = false
+    internal val panelRequester = FocusRequester()
+
+    /** The selection is on the player bar or panel, outside the page. */
+    internal val outsidePage: Boolean get() = barHasFocus || panelHasFocus
 
     /** A focused control uses Left/Right itself (the seek bar); the shell then doesn't move focus on them. */
     internal var horizontalClaim: Boolean = false
@@ -180,9 +206,16 @@ fun TvPage(key: Any?, content: @Composable () -> Unit) {
                         else -> shell.remembered(key) ?: shell.defaultOf(key) ?: FocusRequester.Default
                     }
                 }
-                // Left/Right never jump diagonally out of the page (e.g. into the player bar):
-                // at the left edge Left opens the menu instead.
-                exit = ::verticalExitOnly
+                // Left never leaves the page (at its left edge it opens the menu instead); Right
+                // at its right edge goes into the player panel, where it last was.
+                exit = { direction ->
+                    when {
+                        direction == FocusDirection.Left -> FocusRequester.Cancel
+                        direction == FocusDirection.Right ->
+                            if (shell != null && shell.panelShown) shell.panelRequester else FocusRequester.Cancel
+                        else -> FocusRequester.Default
+                    }
+                }
             }
             .focusGroup(),
     ) {
@@ -191,11 +224,14 @@ fun TvPage(key: Any?, content: @Composable () -> Unit) {
 }
 
 /**
- * TV navigation: a slim side menu next to the page.
+ * TV navigation: a side menu, the page on a card next to it, and optionally the player panel
+ * beside the page ([sidePanel], wide screens) or the player bar under it ([bottomBar]).
  *
  * - While browsing, the menu can't take focus, so nothing ever pulls the selection into it.
  * - It opens only on a fresh press of Left at the left edge of the page, and closes on Right,
  *   Back or a selection.
+ * - Right at the page's right edge enters the player panel; Left from the panel returns to the
+ *   element selected in the page before.
  * - Arrow keys move the selection before the focused element sees them, so text fields can't
  *   trap it.
  * - Every new page gets the selection as soon as it has something focusable. Until then the
@@ -210,6 +246,7 @@ fun TvShell(
     onSelect: (MenuEntry) -> Unit,
     modifier: Modifier = Modifier,
     bottomBar: @Composable () -> Unit = {},
+    sidePanel: (@Composable () -> Unit)? = null,
     content: @Composable (Modifier) -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
@@ -222,7 +259,10 @@ fun TvShell(
     var menuHasFocus by remember { mutableStateOf(false) }
     var refocus by remember { mutableIntStateOf(0) }
 
-    SideEffect { shell.shownPage = pageKey }
+    SideEffect {
+        shell.shownPage = pageKey
+        shell.panelShown = sidePanel != null
+    }
     fun pageHasFocus() = shell.focusedPage == pageKey
 
     fun openMenu() {
@@ -251,8 +291,8 @@ fun TvShell(
         withFrameNanos { }
         var waited = 0L
         while (!pageHasFocus() && !expanded && waited < GIVE_UP_MS) {
-            // The listener moved down to the player bar meanwhile: leave the selection there.
-            if (shell.barHasFocus && waited >= RESTORE_WAIT_MS) break
+            // The listener moved to the player bar or panel meanwhile: leave the selection there.
+            if (shell.outsidePage && waited >= RESTORE_WAIT_MS) break
             val restored = waited < RESTORE_WAIT_MS && shell.restore(pageKey)
             if (!restored && (waited >= RESTORE_WAIT_MS || !shell.remembers(pageKey))) {
                 // The remembered element isn't coming back (e.g. the list changed): use the start.
@@ -262,7 +302,7 @@ fun TvShell(
             val step = if (waited < 1_000) 50L else 250L
             delay(step)
             waited += step
-            if (!pageHasFocus() && !menuHasFocus && !shell.barHasFocus && waited >= PARK_AFTER_MS) {
+            if (!pageHasFocus() && !menuHasFocus && !shell.outsidePage && waited >= PARK_AFTER_MS) {
                 menuActive = true
                 runCatching { menuFocus.requestFocus() }
             }
@@ -271,7 +311,7 @@ fun TvShell(
 
     // Focus can vanish when the focused element is removed (a list changes, a download is
     // removed); bring it back.
-    val anyFocus = pageHasFocus() || menuHasFocus || shell.barHasFocus
+    val anyFocus = pageHasFocus() || menuHasFocus || shell.outsidePage
     LaunchedEffect(anyFocus) {
         if (!anyFocus) {
             delay(200)
@@ -279,13 +319,58 @@ fun TvShell(
         }
     }
 
-    Box(modifier.fillMaxSize()) {
-        CompositionLocalProvider(LocalTvShell provides shell, LocalBringIntoViewSpec provides TvScrolling.Edge) {
-            // The page, with the player bar under it (Down from the end of a page reaches the bar).
+    Row(modifier.fillMaxSize().background(AppColors.backdrop).padding(ShellGap)) {
+        val selectedIndex = entries.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
+        Box(
+            Modifier
+                .width(RailWidth)
+                .fillMaxHeight()
+                .shadow(6.dp, RailShape)
+                .clip(RailShape)
+                .background(AppColors.railBrush)
+                // A focus group, so moving between items never reports the menu as unfocused.
+                .onFocusChanged {
+                    menuHasFocus = it.hasFocus
+                    if (!it.hasFocus) {
+                        menuActive = false
+                        expanded = false
+                    }
+                }
+                .focusGroup()
+                .onKeyEvent { event -> handleMenuKey(event, expanded, onExpand = { expanded = true }, onClose = ::closeMenu) }
+                .testTag("menu"),
+            contentAlignment = Alignment.Center,
+        ) {
             Column(
                 Modifier
-                    .fillMaxSize()
-                    .padding(start = RailCollapsed)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 8.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                entries.forEachIndexed { index, entry ->
+                    MenuItem(
+                        entry = entry,
+                        selected = entry.key == selectedKey,
+                        focusable = { menuActive },
+                        modifier = if (index == selectedIndex) Modifier.focusRequester(menuFocus) else Modifier,
+                        onClick = {
+                            expanded = false
+                            onSelect(entry)
+                            refocus++
+                        },
+                    )
+                }
+            }
+        }
+
+        CompositionLocalProvider(LocalTvShell provides shell, LocalBringIntoViewSpec provides TvScrolling.Edge) {
+            // The page card with the player bar under it, and the player panel beside them.
+            Row(
+                Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .padding(start = ShellGap)
                     .focusRequester(pageFocus)
                     .focusGroup()
                     .onPreviewKeyEvent { event ->
@@ -304,55 +389,54 @@ fun TvShell(
                         }
                     },
             ) {
-                Box(Modifier.weight(1f).fillMaxWidth()) { content(Modifier.fillMaxSize()) }
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .onFocusChanged { shell.barHasFocus = it.hasFocus }
-                        .focusProperties { exit = ::verticalExitOnly }
-                        .focusGroup(),
-                ) { bottomBar() }
-            }
-        }
-
-        val selectedIndex = entries.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
-        Column(
-            Modifier
-                .align(Alignment.CenterStart)
-                .fillMaxHeight()
-                .width(if (expanded) RailExpanded else RailCollapsed)
-                .background(if (expanded) AppColors.panel else AppColors.rail)
-                // A focus group, so moving between items never reports the menu as unfocused.
-                .onFocusChanged {
-                    menuHasFocus = it.hasFocus
-                    if (!it.hasFocus) {
-                        menuActive = false
-                        expanded = false
+                Column(Modifier.weight(1f).fillMaxHeight()) {
+                    Box(Modifier.weight(1f).fillMaxWidth().card()) { content(Modifier.fillMaxSize()) }
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged { shell.barHasFocus = it.hasFocus }
+                            .focusProperties { exit = ::verticalExitOnly }
+                            .focusGroup(),
+                    ) { bottomBar() }
+                }
+                if (sidePanel != null) {
+                    DisposableEffect(Unit) { onDispose { shell.panelHasFocus = false } }
+                    Box(
+                        Modifier
+                            .fillMaxHeight()
+                            .padding(start = ShellGap)
+                            .onFocusChanged { shell.panelHasFocus = it.hasFocus }
+                            .focusRequester(shell.panelRequester)
+                            .focusProperties {
+                                // Entered from the page (Right): where the selection was last time,
+                                // else the panel's start (Play/Pause).
+                                enter = { direction ->
+                                    if (direction == FocusDirection.Up || direction == FocusDirection.Down) {
+                                        FocusRequester.Cancel
+                                    } else {
+                                        shell.remembered(PANEL_KEY) ?: shell.defaultOf(PANEL_KEY) ?: FocusRequester.Default
+                                    }
+                                }
+                                // Left goes back to the page, to its element selected last.
+                                exit = { direction ->
+                                    if (direction == FocusDirection.Left) {
+                                        shell.pageRequester(shell.shownPage) ?: FocusRequester.Default
+                                    } else {
+                                        FocusRequester.Cancel
+                                    }
+                                }
+                            }
+                            .focusGroup(),
+                    ) {
+                        CompositionLocalProvider(LocalTvPage provides PANEL_KEY) { sidePanel() }
                     }
                 }
-                .focusGroup()
-                .onKeyEvent { event -> handleMenuKey(event, expanded, onExpand = { expanded = true }, onClose = ::closeMenu) }
-                .padding(horizontal = 12.dp, vertical = 24.dp)
-                .testTag("menu"),
-            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
-        ) {
-            entries.forEachIndexed { index, entry ->
-                MenuItem(
-                    entry = entry,
-                    selected = entry.key == selectedKey,
-                    expanded = expanded,
-                    focusable = { menuActive },
-                    modifier = if (index == selectedIndex) Modifier.focusRequester(menuFocus) else Modifier,
-                    onClick = {
-                        expanded = false
-                        onSelect(entry)
-                        refocus++
-                    },
-                )
             }
         }
     }
 }
+
+private val RailShape = RoundedCornerShape(28.dp)
 
 /**
  * Moves the selection; if Compose's focus search fails while a list is changing under it (rows
@@ -408,46 +492,52 @@ private fun handleMenuKey(event: KeyEvent, expanded: Boolean, onExpand: () -> Un
     }
 }
 
+/** An icon with its label under it; the section shown sits on a pill, the selected item is filled. */
 @Composable
 private fun MenuItem(
     entry: MenuEntry,
     selected: Boolean,
-    expanded: Boolean,
     focusable: () -> Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(12.dp)
+    val shape = RoundedCornerShape(18.dp)
     val tint = when {
-        focused -> AppColors.background
-        selected -> Accent
-        else -> AppColors.textDim
+        focused -> AppColors.onText
+        selected -> AppColors.onRailSelected
+        else -> AppColors.onRail
     }
-    Row(
+    Column(
         modifier
             .fillMaxWidth()
-            .height(48.dp)
             .testTag("menu-${entry.key}")
             // Unreachable with the remote while the menu is closed; taps still work on tablets.
             .focusProperties { canFocus = focusable() }
             .onFocusChanged { focused = it.isFocused }
             .clip(shape)
-            .background(if (focused) AppColors.text else Color.Transparent, shape)
+            .background(
+                when {
+                    focused -> AppColors.text
+                    selected -> AppColors.railSelected
+                    else -> Color.Transparent
+                },
+                shape,
+            )
             .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .padding(horizontal = 4.dp, vertical = 7.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
     ) {
         Icon(entry.icon, contentDescription = entry.label, tint = tint, modifier = Modifier.size(24.dp))
-        if (expanded) {
-            Text(
-                entry.label,
-                style = MaterialTheme.typography.titleMedium,
-                color = tint,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 16.dp),
-            )
-        }
+        Text(
+            entry.label,
+            style = MaterialTheme.typography.labelMedium,
+            fontSize = 12.sp,
+            color = tint,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 

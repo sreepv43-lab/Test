@@ -60,7 +60,7 @@ fun AlbumArt(file: File?, title: String, size: Dp, modifier: Modifier = Modifier
         if (file == null || cacheKey == null || value != null) return@produceState
         value = withContext(Dispatchers.IO) { decode(file, px) }?.also { bitmaps.put(cacheKey, it) }
     }
-    val shape = RoundedCornerShape(size / 12)
+    val shape = RoundedCornerShape((size / 6).coerceAtMost(20.dp))
     Box(modifier.size(size).clip(shape).background(placeholder(title)), contentAlignment = Alignment.Center) {
         val loaded = image
         if (loaded != null) {
@@ -110,7 +110,7 @@ private fun initials(title: String): String =
 @Composable
 fun AlbumCard(title: String, subtitle: String?, albumKey: String, key: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(14.dp)
+    val shape = RoundedCornerShape(18.dp)
     Column(
         Modifier
             .width(164.dp)

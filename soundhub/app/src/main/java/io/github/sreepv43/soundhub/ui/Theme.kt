@@ -9,17 +9,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.sp
 
-/** A colour theme: surfaces, text, the accent, the selection outline and the format badge colours. */
+/**
+ * A colour theme: the backdrop behind the cards (a gradient from [background] to [backgroundEnd]),
+ * the side menu ([rail] to [railEnd]), cards ([panel]), text, the accent, the selection outline and
+ * the format badge colours.
+ */
 data class Palette(
     val id: String,
     val name: String,
     val description: String,
     val dark: Boolean,
     val background: Color,
+    val backgroundEnd: Color,
     val rail: Color,
+    val railEnd: Color,
+    /** Icons and labels on the side menu. */
+    val onRail: Color,
+    /** The pill behind the section shown, and its icon and label. */
+    val railSelected: Color,
+    val onRailSelected: Color,
     val panel: Color,
     val row: Color,
     val rowFocused: Color,
@@ -36,6 +49,8 @@ data class Palette(
     val lossless: Color,
     val warning: Color,
     val error: Color,
+    /** The heart on favourite songs. */
+    val favourite: Color,
 )
 
 private fun darkPalette(
@@ -57,7 +72,12 @@ private fun darkPalette(
     description = description,
     dark = true,
     background = Color(background),
+    backgroundEnd = Color(background),
     rail = Color(rail),
+    railEnd = Color(rail),
+    onRail = Color(textDim),
+    railSelected = Color(rowFocused),
+    onRailSelected = Color(accent),
     panel = Color(panel),
     row = Color(row),
     rowFocused = Color(rowFocused),
@@ -73,9 +93,40 @@ private fun darkPalette(
     lossless = Color(0xFF5ED3B5),
     warning = Color(0xFFFFB86B),
     error = Color(0xFFFF6B6B),
+    favourite = Color(0xFF3DDC97),
 )
 
 object Palettes {
+    /** Light blue with white cards and a blue side menu (the default). */
+    val SKY = Palette(
+        id = "sky",
+        name = "Sky",
+        description = "Light blue with white cards (the default)",
+        dark = false,
+        background = Color(0xFFD3EAFD),
+        backgroundEnd = Color(0xFF8CC6F4),
+        rail = Color(0xFF64B7F6),
+        railEnd = Color(0xFF3B98EA),
+        onRail = Color.White,
+        railSelected = Color(0xFFEAF5FF),
+        onRailSelected = Color(0xFF1976D2),
+        panel = Color(0xFFFFFFFF),
+        row = Color(0xFFFFFFFF),
+        rowFocused = Color(0xFFE2F0FD),
+        surfaceVariant = Color(0xFFEEF2F7),
+        text = Color(0xFF0E1A2B),
+        textDim = Color(0xFF5A6A7C),
+        onText = Color.White,
+        accent = Color(0xFF1E88E5),
+        onAccent = Color.White,
+        focus = Color(0xFF0B2545),
+        atmos = Color(0xFF2F5BD3),
+        hiRes = Color(0xFF9A6400),
+        lossless = Color(0xFF00796B),
+        warning = Color(0xFFB45309),
+        error = Color(0xFFC62828),
+        favourite = Color(0xFF22C55E),
+    )
     val TEAL = darkPalette(
         "teal", "Teal", "The original: dark slate with teal",
         background = 0xFF0B0F14, rail = 0xFF0E1319, panel = 0xFF131A21, row = 0xFF151D25, rowFocused = 0xFF26323E,
@@ -112,7 +163,12 @@ object Palettes {
         description = "Bright, for tablets in daylight",
         dark = false,
         background = Color(0xFFF3F5F7),
+        backgroundEnd = Color(0xFFF3F5F7),
         rail = Color(0xFFE6EBEF),
+        railEnd = Color(0xFFE6EBEF),
+        onRail = Color(0xFF55636F),
+        railSelected = Color.White,
+        onRailSelected = Color(0xFF00897B),
         panel = Color(0xFFFFFFFF),
         row = Color(0xFFFFFFFF),
         rowFocused = Color(0xFFD5E2EA),
@@ -128,18 +184,19 @@ object Palettes {
         lossless = Color(0xFF00796B),
         warning = Color(0xFFB45309),
         error = Color(0xFFC62828),
+        favourite = Color(0xFF16A34A),
     )
 
-    val all = listOf(TEAL, OCEAN, VIOLET, AMBER, CRIMSON, BLACK, LIGHT)
+    val all = listOf(SKY, TEAL, OCEAN, VIOLET, AMBER, CRIMSON, BLACK, LIGHT)
 
-    fun byId(id: String): Palette = all.firstOrNull { it.id == id } ?: TEAL
+    fun byId(id: String): Palette = all.firstOrNull { it.id == id } ?: SKY
 }
 
 /**
  * The theme in use. Everything below reads it, so changing it (Settings → Appearance) recolours
  * every page at once, including what is already on screen.
  */
-var currentPalette: Palette by mutableStateOf(Palettes.TEAL)
+var currentPalette: Palette by mutableStateOf(Palettes.SKY)
 
 val Accent: Color get() = currentPalette.accent
 val FocusColor: Color get() = currentPalette.focus
@@ -147,16 +204,25 @@ val AtmosColor: Color get() = currentPalette.atmos
 val HiResColor: Color get() = currentPalette.hiRes
 val LosslessColor: Color get() = currentPalette.lossless
 val WarningColor: Color get() = currentPalette.warning
+val FavouriteColor: Color get() = currentPalette.favourite
 
 object AppColors {
     val background: Color get() = currentPalette.background
     val rail: Color get() = currentPalette.rail
+    val onRail: Color get() = currentPalette.onRail
+    val railSelected: Color get() = currentPalette.railSelected
+    val onRailSelected: Color get() = currentPalette.onRailSelected
     val panel: Color get() = currentPalette.panel
+    val surfaceVariant: Color get() = currentPalette.surfaceVariant
     val row: Color get() = currentPalette.row
     val rowFocused: Color get() = currentPalette.rowFocused
     val text: Color get() = currentPalette.text
     val textDim: Color get() = currentPalette.textDim
     val onText: Color get() = currentPalette.onText
+
+    /** Behind the side menu and the cards. */
+    val backdrop: Brush get() = Brush.linearGradient(listOf(currentPalette.background, currentPalette.backgroundEnd))
+    val railBrush: Brush get() = Brush.verticalGradient(listOf(currentPalette.rail, currentPalette.railEnd))
 }
 
 private fun Palette.colorScheme(): ColorScheme {
@@ -173,6 +239,11 @@ private fun Palette.colorScheme(): ColorScheme {
         onSurfaceVariant = textDim,
         secondaryContainer = rowFocused,
         onSecondaryContainer = text,
+        // Switches, outlined buttons and fields in the theme's own greys, not Material's.
+        surfaceContainerHigh = surfaceVariant,
+        surfaceContainerHighest = surfaceVariant,
+        outline = textDim,
+        outlineVariant = surfaceVariant,
         error = error,
     )
 }
@@ -184,7 +255,10 @@ private val typography = base.copy(
     bodyMedium = base.bodyMedium.copy(fontSize = 16.sp, lineHeight = 22.sp),
     labelMedium = base.labelMedium.copy(fontSize = 13.sp, lineHeight = 17.sp),
     labelLarge = base.labelLarge.copy(fontSize = 15.sp, lineHeight = 20.sp),
-    titleMedium = base.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp),
+    titleMedium = base.titleMedium.copy(fontSize = 18.sp, lineHeight = 24.sp, fontWeight = FontWeight.SemiBold),
+    titleLarge = base.titleLarge.copy(fontWeight = FontWeight.Bold),
+    headlineSmall = base.headlineSmall.copy(fontWeight = FontWeight.Bold),
+    headlineMedium = base.headlineMedium.copy(fontWeight = FontWeight.Bold),
 )
 
 @Composable

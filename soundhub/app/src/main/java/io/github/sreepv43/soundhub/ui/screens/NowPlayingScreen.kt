@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -52,11 +53,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.media3.common.Player
@@ -81,6 +85,7 @@ import io.github.sreepv43.soundhub.ui.components.SectionHeader
 import io.github.sreepv43.soundhub.ui.components.SeekBar
 import io.github.sreepv43.soundhub.ui.components.TextEntryDialog
 import io.github.sreepv43.soundhub.ui.components.TwoLines
+import io.github.sreepv43.soundhub.ui.components.formatDuration
 import io.github.sreepv43.soundhub.ui.components.toast
 import io.github.sreepv43.soundhub.ui.components.transferText
 import io.github.sreepv43.soundhub.ui.components.tvFocus
@@ -161,7 +166,7 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
     ) {
         item(key = "song") {
             BoxWithConstraints {
-                val art = if (maxWidth > 640.dp) 200.dp else 120.dp
+                val art = if (maxWidth > 640.dp) 220.dp else 140.dp
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     AlbumCover(current.albumKey, current.album, art)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -249,8 +254,14 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
             item(key = "next-title") { SectionHeader("Up next") }
             itemsIndexed(upNext, key = { i, it -> "next:${index + 1 + i}:${it.id}" }) { i, entry ->
                 ListRow(onClick = { playback.jumpTo(index + 1 + i) }, key = "next:${index + 1 + i}:${entry.id}") {
+                    AlbumCover(entry.albumKey, entry.album, 44.dp)
                     TwoLines(entry.title, listOfNotNull(entry.artist, entry.album).joinToString(" · "), Modifier.weight(1f))
                     FormatBadge(entry.info)
+                    Text(
+                        formatDuration(entry.info.durationSec?.toLong()),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
             }
         }
@@ -324,21 +335,23 @@ private fun repeatLabel(mode: Int): String? = when (mode) {
     else -> null
 }
 
+/** A round transport button: the large one (Play/Pause) is filled with the accent colour. */
 @Composable
-private fun ControlButton(
+internal fun ControlButton(
     icon: ImageVector,
     label: String,
     large: Boolean = false,
     active: Boolean = false,
     tag: String = label,
+    size: Dp = if (large) 72.dp else 52.dp,
+    pageDefault: Boolean = large,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val size = if (large) 72.dp else 56.dp
     val background = when {
         focused -> AppColors.text
         large -> Accent
-        else -> MaterialTheme.colorScheme.surfaceVariant
+        else -> Color.Transparent
     }
     Icon(
         icon,
@@ -352,11 +365,12 @@ private fun ControlButton(
         modifier = Modifier
             .size(size)
             .onFocusChanged { focused = it.hasFocus }
-            .tvFocus(CircleShape, scale = 1.1f, pageDefault = large)
+            .tvFocus(CircleShape, scale = 1.1f, pageDefault = pageDefault)
+            .shadow(if (large && !focused) 6.dp else 0.dp, CircleShape)
             .clip(CircleShape)
             .background(background)
             .clickable(onClick = onClick)
-            .padding(size / 4)
+            .padding(size * 0.24f)
             .testTag(tag),
     )
 }
@@ -383,24 +397,9 @@ fun QueueScreen() {
             playback.clearUpcoming()
             toast(context, "Cleared the songs after this one")
         },
+        art = { AlbumCover(it.albumKey, it.album, 44.dp) },
     )
-    menuAt?.let { at ->
-        val entry = queue.getOrNull(at)
-        if (entry != null) {
-            OptionsDialog(
-                title = entry.title,
-                subtitle = listOfNotNull(entry.artist, entry.album).joinToString(" · "),
-                onDismiss = { menuAt = null },
-                options = listOfNotNull(
-                    Option("Play now", Icons.Default.PlayArrow) { playback.jumpTo(at) }.takeIf { at != index },
-                    Option("Play next", Icons.Default.SkipNext) { playback.playNext(at) }.takeIf { at != index && at != index + 1 },
-                    Option("Move up", Icons.Default.ArrowUpward) { playback.move(at, -1) }.takeIf { at > 0 },
-                    Option("Move down", Icons.Default.ArrowDownward) { playback.move(at, +1) }.takeIf { at < queue.lastIndex },
-                    Option("Remove from queue", Icons.Default.RemoveCircleOutline) { playback.removeAt(at) },
-                ),
-            )
-        }
-    }
+    menuAt?.let { at -> QueueItemMenu(at) { menuAt = null } }
     if (naming) {
         TextEntryDialog(
             title = "Save the queue as a playlist",
@@ -415,6 +414,27 @@ fun QueueScreen() {
     }
 }
 
+/** What can be done with the queue's song at [at]: play it now or next, move it, remove it. */
+@Composable
+fun QueueItemMenu(at: Int, onDismiss: () -> Unit) {
+    val playback = LocalContext.current.container.playback
+    val queue by playback.queue.collectAsStateWithLifecycle()
+    val index by playback.currentIndex.collectAsStateWithLifecycle()
+    val entry = queue.getOrNull(at) ?: return
+    OptionsDialog(
+        title = entry.title,
+        subtitle = listOfNotNull(entry.artist, entry.album).joinToString(" · "),
+        onDismiss = onDismiss,
+        options = listOfNotNull(
+            Option("Play now", Icons.Default.PlayArrow) { playback.jumpTo(at) }.takeIf { at != index },
+            Option("Play next", Icons.Default.SkipNext) { playback.playNext(at) }.takeIf { at != index && at != index + 1 },
+            Option("Move up", Icons.Default.ArrowUpward) { playback.move(at, -1) }.takeIf { at > 0 },
+            Option("Move down", Icons.Default.ArrowDownward) { playback.move(at, +1) }.takeIf { at < queue.lastIndex },
+            Option("Remove from queue", Icons.Default.RemoveCircleOutline) { playback.removeAt(at) },
+        ),
+    )
+}
+
 @Composable
 fun QueueLayout(
     queue: List<QueueItem>,
@@ -424,6 +444,7 @@ fun QueueLayout(
     onMenu: (Int) -> Unit,
     onSave: () -> Unit,
     onClearUpcoming: () -> Unit,
+    art: @Composable (QueueItem) -> Unit = {},
 ) {
     val upcoming = (queue.size - currentIndex - 1).coerceAtLeast(0)
     LazyColumn(
@@ -459,14 +480,20 @@ fun QueueLayout(
                     if (isCurrent) "▶" else "${i + 1}",
                     style = MaterialTheme.typography.titleMedium,
                     color = if (isCurrent) Accent else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(end = 4.dp),
+                    modifier = Modifier.width(28.dp),
                 )
+                art(entry)
                 TwoLines(
                     entry.title,
                     listOfNotNull(entry.artist, entry.album, status(entry)).joinToString(" · "),
                     Modifier.weight(1f),
                 )
                 FormatBadge(entry.info)
+                Text(
+                    formatDuration(entry.info.durationSec?.toLong()),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
