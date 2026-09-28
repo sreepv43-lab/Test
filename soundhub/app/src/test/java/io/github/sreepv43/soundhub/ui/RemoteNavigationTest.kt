@@ -1,6 +1,7 @@
 package io.github.sreepv43.soundhub.ui
 
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.SystemClock
 import android.view.KeyEvent
 import android.view.View
@@ -19,16 +20,19 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import io.github.sreepv43.soundhub.audio.AudioFormats
@@ -76,6 +80,7 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import java.io.File
 
 /**
  * Drives SoundHub's shell and real page layouts (with made-up search results and downloads) with
@@ -507,6 +512,41 @@ class RemoteNavigationTest {
         assertEquals(SectionPage(Section.NOW_PLAYING), navigator.current)
         assertEquals("play-pause", focused())
         rule.onNodeWithTag("player-card").assertDoesNotExist()
+    }
+
+    /** Saves the main pages as pictures (build/screenshots, kept by CI) to review the design. */
+    @Test
+    @Config(qualifiers = "+xhdpi")
+    fun savesScreenshotsOfTheMainPages() {
+        rule.runOnUiThread { folders.value = manyResults(40) }
+        settle(1_000)
+        screenshot("1-search")
+        repeat(5) { press(KeyEvent.KEYCODE_DPAD_DOWN) }
+        screenshot("2-search-selected")
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        screenshot("3-player-panel")
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        settle(1_000)
+        screenshot("4-album")
+        press(KeyEvent.KEYCODE_BACK)
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        screenshot("5-menu")
+        press(KeyEvent.KEYCODE_BACK)
+        rule.runOnUiThread { navigator.select(Section.ARTISTS) }
+        settle(1_000)
+        screenshot("6-artists")
+        rule.runOnUiThread { navigator.open(SettingsPage(SettingsKind.APPEARANCE)) }
+        settle(1_000)
+        screenshot("7-appearance")
+    }
+
+    private fun screenshot(name: String) {
+        runCatching {
+            val bitmap = rule.onRoot().captureToImage().asAndroidBitmap()
+            val dir = File("build/screenshots").apply { mkdirs() }
+            File(dir, "$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        }.onFailure { println("Screenshot $name failed: $it") }
     }
 
     // ---- helpers ----

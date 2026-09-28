@@ -24,6 +24,14 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest :soundhub-core:test
 
+      # Pictures of SoundHub's main pages from the navigation tests, to review the design.
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: soundhub-screenshots
+          path: soundhub/app/build/screenshots/*.png
+          if-no-files-found: ignore
+
       # SoundHub's permanent signing key, from the repository secret SOUNDHUB_KEYSTORE (a base64
       # keystore). With it every SoundHub build installs over the previous one; without it (forks,
       # or before the secret is added) builds are signed with this machine's throwaway debug key.
