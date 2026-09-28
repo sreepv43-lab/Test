@@ -1,5 +1,9 @@
 package io.github.sreepv43.soundhub.slsk
 
+import io.github.sreepv43.soundhub.library.SearchSession
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
@@ -83,6 +87,37 @@ class SoulseekClientTest {
         assertEquals(96_000, file.sampleRate)
         assertEquals(24, file.bitDepth)
         assertTrue(responses.single().slotFree)
+    }
+
+    @Test
+    fun aSearchSessionMergesAnswersAsTheyArrive() = runBlocking {
+        signIn()
+        server.onSearch = { token, _ ->
+            thread {
+                fun answer(user: String, file: SharedFile) = FakePeer(user).connectTo(listenPort).use { peer ->
+                    peer.write(Messages.peerInit(user, ConnType.PEER, 0))
+                    peer.write(Messages.searchResponse(SearchResponse(user, token, listOf(file), true, 1_000_000, 0)))
+                    Thread.sleep(300)
+                }
+                answer("alice", SharedFile("@@a\\Artist - Album\\01 - One.mp3", 8_000_000, "", mapOf(0 to 320)))
+                Thread.sleep(1_500)
+                answer("bob", SharedFile("@@b\\Artist - Album\\01 - One.flac", 30_000_000, "", mapOf(1 to 200, 4 to 44_100, 5 to 16)))
+                // Alice answers again with more of the same folder.
+                answer("alice", SharedFile("@@a\\Artist - Album\\02 - Two.mp3", 8_000_000, "", mapOf(0 to 320)))
+            }
+        }
+        val scope = CoroutineScope(Dispatchers.Default)
+        try {
+            val session = SearchSession(client, scope)
+            session.start("album")
+            val folders = withTimeout(15_000) {
+                session.folders.first { list -> list.size == 2 && list.first().tracks.size == 2 }
+            }
+            assertEquals("the first answer stays first", listOf("alice", "bob"), folders.map { it.username })
+            assertEquals(listOf("One", "Two"), folders.first().tracks.map { it.name.title })
+        } finally {
+            scope.cancel()
+        }
     }
 
     @Test

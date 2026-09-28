@@ -89,11 +89,11 @@ object SearchResults {
                         pickCover(covers[directory].orEmpty()),
                     )
                 }
-        }.sortedWith(
-            compareByDescending<SearchFolder> { it.slotFree }
-                .thenBy { it.queueLength }
-                .thenByDescending { it.avgSpeed },
-        )
+        }.sortedWith(availability)
+
+    /** Free slot first, then shortest queue, then fastest. */
+    val availability: Comparator<SearchFolder> =
+        compareByDescending<SearchFolder> { it.slotFree }.thenBy { it.queueLength }.thenByDescending { it.avgSpeed }
 
     private val COVER_NAMES = listOf("cover", "folder", "front")
 
@@ -143,12 +143,20 @@ class SearchSession(private val client: SoulseekClient, private val scope: Corou
         job = scope.launch {
             try {
                 val started = System.currentTimeMillis()
-                var seen = -1
+                // Folders by user: each update regroups only the users who answered since the last.
+                val byUser = LinkedHashMap<String, List<SearchFolder>>()
+                var seen = 0
                 while (isActive && System.currentTimeMillis() - started < RESULTS_WINDOW_MS) {
                     val responses = search.responses.value
-                    if (responses.size != seen) {
+                    if (responses.size > seen) {
+                        val users = responses.subList(seen, responses.size).mapTo(HashSet()) { it.username }
                         seen = responses.size
-                        val fresh = withContext(Dispatchers.Default) { SearchResults.group(responses) }
+                        val fresh = withContext(Dispatchers.Default) {
+                            val regrouped = SearchResults.group(responses.filter { it.username in users })
+                            users.forEach(byUser::remove)
+                            regrouped.groupBy { it.username }.forEach { (user, folders) -> byUser[user] = folders }
+                            byUser.values.flatten().sortedWith(SearchResults.availability)
+                        }
                         _folders.value = SearchResults.merge(_folders.value, fresh)
                     }
                     delay(REFRESH_MS)
