@@ -8,7 +8,6 @@ import android.view.ViewGroup
 import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -17,7 +16,6 @@ import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
@@ -25,23 +23,31 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.assertIsFocused
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import io.github.sreepv43.soundhub.audio.AudioFormats
-import io.github.sreepv43.soundhub.audio.FormatFilter
+import io.github.sreepv43.soundhub.audio.MusicFilter
 import io.github.sreepv43.soundhub.library.PathNames
+import io.github.sreepv43.soundhub.library.Releases
 import io.github.sreepv43.soundhub.library.SearchFolder
 import io.github.sreepv43.soundhub.library.SearchTrack
 import io.github.sreepv43.soundhub.slsk.SharedFile
 import io.github.sreepv43.soundhub.slsk.TransferInfo
 import io.github.sreepv43.soundhub.slsk.TransferStatus
 import io.github.sreepv43.soundhub.ui.components.ActionButton
-import io.github.sreepv43.soundhub.ui.screens.DownloadsLayout
-import io.github.sreepv43.soundhub.ui.screens.FolderLayout
+import io.github.sreepv43.soundhub.ui.components.SeekBar
+import io.github.sreepv43.soundhub.ui.screens.PlayerControls
+import io.github.sreepv43.soundhub.ui.screens.ReleaseLayout
 import io.github.sreepv43.soundhub.ui.screens.SearchLayout
+import io.github.sreepv43.soundhub.ui.screens.SearchStatus
+import io.github.sreepv43.soundhub.ui.screens.TransferAction
+import io.github.sreepv43.soundhub.ui.screens.TransfersLayout
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -68,6 +74,8 @@ class RemoteNavigationTest {
 
     private lateinit var navigator: Navigator
     private val folders = mutableStateOf((0 until 12).map(::folder))
+    private val seeks = mutableListOf<Long>()
+    private val actions = mutableListOf<TransferAction>()
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Before
@@ -77,7 +85,9 @@ class RemoteNavigationTest {
         rule.setContent {
             val inputModes = LocalInputModeManager.current
             LaunchedEffect(Unit) { inputModes.requestInputMode(InputMode.Keyboard) }
-            SoundHubTheme { FakeApp(folders.value, onNavigator = { navigator = it }) }
+            SoundHubTheme {
+                FakeApp(folders.value, onNavigator = { navigator = it }, onSeek = { seeks += it }, onTransferAction = { actions += it })
+            }
         }
         rule.runOnUiThread { composeView().requestFocus() }
         settle(1_000)
@@ -96,10 +106,10 @@ class RemoteNavigationTest {
             press(KeyEvent.KEYCODE_DPAD_DOWN)
             seen += focused()
         }
-        assertEquals("recent searches, then the format chips, then the first album: $seen", "rock", seen[0])
+        assertEquals("recent searches, then the filter chips, then the first album: $seen", "rock", seen[0])
         assertTrue(seen.toString(), seen[1].startsWith("All"))
-        assertEquals(seen.toString(), "folder-Album 0", seen[2])
-        assertEquals(seen.toString(), "folder-Album 1", seen[3])
+        assertEquals(seen.toString(), "release-Album 0", seen[2])
+        assertEquals(seen.toString(), "release-Album 1", seen[3])
     }
 
     @Test
@@ -116,114 +126,199 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertEquals("menu-SEARCH", focused())
         assertTrue(menuExpanded())
-        press(KeyEvent.KEYCODE_DPAD_DOWN, times = 3)
-        assertEquals("menu-DOWNLOADS", focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN, times = 2)
+        assertEquals("menu-TRANSFERS", focused())
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         settle(1_000)
-        assertEquals(SectionPage(Section.DOWNLOADS), navigator.current)
+        assertEquals(SectionPage(Section.TRANSFERS), navigator.current)
         assertFalse(menuExpanded())
-        assertEquals("the page gets the selection, not the menu", "Clear finished", focused())
+        assertEquals("the page gets the selection, not the menu", "transfer-12", focused())
     }
 
     @Test
     fun rightAndBackCloseTheMenuWithoutMoving() {
-        downTo("folder-Album 2")
+        downTo("release-Album 2")
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertTrue(menuExpanded())
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         assertFalse(menuExpanded())
-        assertEquals("folder-Album 2", focused())
+        assertEquals("release-Album 2", focused())
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         press(KeyEvent.KEYCODE_BACK)
         assertFalse(menuExpanded())
         assertEquals(SectionPage(Section.SEARCH), navigator.current)
-        assertEquals("folder-Album 2", focused())
+        assertEquals("release-Album 2", focused())
     }
 
     @Test
     fun openingAnAlbumStartsOnPlayAndBackReturnsToTheSameAlbum() {
-        downTo("folder-Album 5")
+        downTo("release-Album 5")
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        assertTrue(navigator.current is FolderPage)
-        assertEquals("Play album", focused())
+        assertTrue(navigator.current is ReleasePage)
+        assertEquals("Play", focused())
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         assertTrue(focused(), focused().startsWith("track-"))
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertTrue("Right on a song reaches its More button: ${focused()}", focused().startsWith("more-"))
         press(KeyEvent.KEYCODE_BACK)
         assertEquals(SectionPage(Section.SEARCH), navigator.current)
-        assertEquals("folder-Album 5", focused())
+        assertEquals("release-Album 5", focused())
     }
 
     @Test
-    fun playingOpensNowPlayingOnPlayPauseAndBackReturnsToTheAlbum() {
-        downTo("folder-Album 1")
+    fun playingOpensNowPlayingOnPlayPauseAndBackReturnsToTheAlbumThenHome() {
+        downTo("release-Album 1")
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         val track = focused()
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals(SectionPage(Section.NOW_PLAYING), navigator.current)
-        assertEquals("Play/Pause", focused())
+        assertEquals("play-pause", focused())
         press(KeyEvent.KEYCODE_BACK)
-        assertTrue(navigator.current is FolderPage)
+        assertTrue(navigator.current is ReleasePage)
         assertEquals(track, focused())
         press(KeyEvent.KEYCODE_BACK)
-        assertEquals("folder-Album 1", focused())
-        assertFalse("Search is home: Back there leaves the app", navigator.canGoBack)
+        assertEquals("release-Album 1", focused())
+        press(KeyEvent.KEYCODE_BACK)
+        assertEquals(SectionPage(Section.HOME), navigator.current)
+        assertFalse("Home is at the bottom: Back there leaves the app", navigator.canGoBack)
     }
 
     @Test
     fun anotherSectionFromTheMenuComesBackToTheSameAlbumWithBack() {
-        downTo("folder-Album 3")
+        downTo("release-Album 3")
         press(KeyEvent.KEYCODE_DPAD_LEFT)
-        press(KeyEvent.KEYCODE_DPAD_DOWN, times = 2)
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
         assertEquals("menu-LIBRARY", focused())
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals(SectionPage(Section.LIBRARY), navigator.current)
         press(KeyEvent.KEYCODE_BACK)
         assertEquals(SectionPage(Section.SEARCH), navigator.current)
-        assertEquals("folder-Album 3", focused())
+        assertEquals("release-Album 3", focused())
     }
 
     @Test
     fun newResultsDoNotMoveTheSelection() {
-        downTo("folder-Album 4")
+        downTo("release-Album 4")
         rule.runOnUiThread { folders.value = (0 until 12).map(::folder) + (12 until 30).map(::folder) }
         settle(1_000)
-        assertEquals("folder-Album 4", focused())
+        assertEquals("release-Album 4", focused())
         press(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertEquals("folder-Album 5", focused())
+        assertEquals("release-Album 5", focused())
     }
 
     @Test
-    fun everyDownloadCanBeReachedIncludingFinishedOnes() {
-        press(KeyEvent.KEYCODE_DPAD_LEFT)
-        press(KeyEvent.KEYCODE_DPAD_DOWN, times = 3)
-        press(KeyEvent.KEYCODE_DPAD_CENTER)
-        settle(1_000)
+    fun everyTransferCanBeReachedIncludingCompletedOnes() {
+        openSection(Section.TRANSFERS)
         val seen = mutableSetOf(focused())
-        repeat(20) {
+        repeat(24) {
             press(KeyEvent.KEYCODE_DPAD_DOWN)
             seen += focused()
         }
         val rows = (1L..12L).map { "transfer-$it" }
         assertTrue("unreachable: ${rows - seen}", seen.containsAll(rows))
+        assertTrue(seen.toString(), "Clear completed" in seen)
+    }
+
+    @Test
+    fun transferOptionsStartOnTheSafeChoice() {
+        openSection(Section.TRANSFERS)
+        downTo("transfer-8")
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithTag("option-Try again").assertIsFocused()
+        rule.onNodeWithTag("option-Remove…").performClick()
+        settle()
+        // Removing a part-downloaded song asks first, on Keep.
+        rule.onNodeWithTag("Keep").assertIsFocused()
+        rule.onNodeWithTag("Keep").performClick()
+        settle()
+        assertTrue(actions.toString(), actions.isEmpty())
+
+        upTo("transfer-12")
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        // Stopping is the only action for a waiting song: the dialog starts on Cancel.
+        rule.onNodeWithTag("option-Cancel").assertIsFocused()
+        rule.onNodeWithTag("option-Cancel").performClick()
+        settle()
+        assertTrue(actions.toString(), actions.isEmpty())
     }
 
     @Test
     fun chipsKeepTheirPlaceAndLeftFromTheFirstOpensTheMenu() {
         downTo("All  12")
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
-        assertEquals("MP3  0", focused())
+        assertEquals("Lossless  12", focused())
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertTrue(menuExpanded())
     }
 
+    @Test
+    fun theFilterPanelAppliesEachChoiceAndOffersAWayBack() {
+        downTo("All  12")
+        repeat(MusicFilter.SHORTCUTS.size) { press(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        assertEquals("More filters…", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("Any quality").assertIsFocused()
+        rule.onNodeWithText("MP3").performClick()
+        rule.onNodeWithTag("Done").performClick()
+        settle()
+        rule.onNodeWithText("No albums here match MP3.").assertExists()
+        rule.onNodeWithTag("Show all results").performClick()
+        settle()
+        rule.onNodeWithTag("release-Album 0").assertExists()
+    }
+
+    @Test
+    fun theSeekBarUsesLeftAndRightWhileUpAndDownLeaveIt() {
+        rule.runOnUiThread { navigator.open(SectionPage(Section.NOW_PLAYING)) }
+        settle(1_000)
+        assertEquals("play-pause", focused())
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("seek-bar", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals("seek-bar", focused())
+        assertFalse("Left seeks instead of opening the menu", menuExpanded())
+        assertEquals(listOf(10_000L, -10_000L, -10_000L), seeks)
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("play-pause", focused())
+    }
+
+    @Test
+    fun thePlayerBarIsBelowEveryPageAndUpGoesBack() {
+        downTo("player-bar")
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("bar-play", focused())
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertTrue(focused(), focused().startsWith("release-"))
+        downTo("player-bar")
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(SectionPage(Section.NOW_PLAYING), navigator.current)
+        rule.onNodeWithTag("player-bar").assertDoesNotExist()
+    }
+
     // ---- helpers ----
 
-    private fun downTo(target: String) {
+    private fun openSection(section: Section) {
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        val step = if (section.ordinal > Section.SEARCH.ordinal) KeyEvent.KEYCODE_DPAD_DOWN else KeyEvent.KEYCODE_DPAD_UP
+        moveTo("menu-${section.name}", step)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        settle(1_000)
+        assertEquals(SectionPage(section), navigator.current)
+    }
+
+    private fun downTo(target: String) = moveTo(target, KeyEvent.KEYCODE_DPAD_DOWN)
+
+    private fun upTo(target: String) = moveTo(target, KeyEvent.KEYCODE_DPAD_UP)
+
+    private fun moveTo(target: String, keyCode: Int) {
         repeat(40) {
             if (focused() == target) return
-            press(KeyEvent.KEYCODE_DPAD_DOWN)
+            press(keyCode)
         }
         assertEquals(target, focused())
     }
@@ -290,50 +385,94 @@ private fun transfers(): List<TransferInfo> = (1L..12L).map { id ->
         id <= 8 -> TransferStatus.FAILED
         else -> TransferStatus.QUEUED
     }
-    TransferInfo(id, "user$id", "@@user$id\\Album\\0$id Song.flac", 1_000_000, if (status == TransferStatus.COMPLETED) 1_000_000 else 0, status, 3, 0, null)
+    val bytes = when (status) {
+        TransferStatus.COMPLETED -> 1_000_000L
+        TransferStatus.FAILED -> 400_000L
+        else -> 0L
+    }
+    TransferInfo(id, "user$id", "@@user$id\\Album\\0$id Song.flac", 1_000_000, bytes, status, 3, 0, null)
 }
 
 /** The real shell and page layouts, with made-up data instead of Soulseek. */
 @Composable
-private fun FakeApp(folders: List<SearchFolder>, onNavigator: (Navigator) -> Unit) {
+private fun FakeApp(
+    folders: List<SearchFolder>,
+    onNavigator: (Navigator) -> Unit,
+    onSeek: (Long) -> Unit,
+    onTransferAction: (TransferAction) -> Unit,
+) {
     val navigator = remember { Navigator(Section.SEARCH) }
     SideEffect { onNavigator(navigator) }
-    SoundHubShell(navigator) { page ->
+    val releases = remember(folders) { Releases.group(folders) }
+    SoundHubShell(
+        navigator,
+        bottomBar = {
+            if (navigator.current != SectionPage(Section.NOW_PLAYING)) {
+                PlayerBarLayout(
+                    title = "Song 1",
+                    subtitle = "Artist 0 · Album 0",
+                    playing = true,
+                    progress = 0.3f,
+                    onOpen = { navigator.open(SectionPage(Section.NOW_PLAYING)) },
+                    onPlayPause = {},
+                    onNext = {},
+                    onQueue = {},
+                ) {}
+            }
+        },
+    ) { page ->
         when (page) {
             is SectionPage -> when (page.section) {
                 Section.SEARCH -> {
-                    var filter by rememberSaveable { mutableStateOf(FormatFilter.ALL) }
+                    var filter by remember { mutableStateOf(MusicFilter()) }
                     SearchLayout(
                         title = "Search",
                         hint = "Artist, album or song",
                         query = "rock",
-                        status = "${folders.size} albums",
-                        folders = folders,
+                        status = SearchStatus("${releases.size} albums"),
+                        releases = releases,
                         filter = filter,
                         onFilter = { filter = it },
                         recent = listOf("rock", "jazz"),
                         onSearch = {},
-                        onOpen = { navigator.open(FolderPage(it, Section.SEARCH)) },
+                        onOpen = { navigator.open(ReleasePage(it, Section.SEARCH)) },
                     )
                 }
-                Section.DOWNLOADS -> DownloadsLayout(transfers(), onAction = { _, _ -> }, onClearFinished = {})
-                Section.NOW_PLAYING -> Row(Modifier.padding(24.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                    ActionButton("Previous") {}
-                    ActionButton("Play/Pause", pageDefault = true) {}
-                    ActionButton("Next") {}
+                Section.TRANSFERS -> TransfersLayout(
+                    transfers(),
+                    onAction = { _, action -> onTransferAction(action) },
+                    onClearCompleted = {},
+                    onSearch = {},
+                )
+                Section.NOW_PLAYING -> Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SeekBar(positionMs = 60_000, durationMs = 200_000, downloaded = 0.5f, seekable = true, onSeekBy = onSeek, onClick = {})
+                    PlayerControls(
+                        playing = true,
+                        shuffle = false,
+                        repeatMode = 0,
+                        onShuffle = {},
+                        onPrevious = {},
+                        onPlayPause = {},
+                        onNext = {},
+                        onRepeat = {},
+                    )
                 }
                 else -> Column(Modifier.padding(24.dp)) {
                     Text(page.section.label)
                     ActionButton("${page.section.label} button") {}
                 }
             }
-            is FolderPage -> FolderLayout(
-                folder = page.folder,
+            is ReleasePage -> ReleaseLayout(
+                release = page.release,
+                source = page.release.sources.first(),
+                filter = MusicFilter(),
                 status = { null },
-                onPlay = { navigator.open(SectionPage(Section.NOW_PLAYING)) },
+                onPlay = { _, _ -> navigator.open(SectionPage(Section.NOW_PLAYING)) },
+                onEnqueue = { _, _ -> },
                 onDownload = {},
+                onChooseSource = {},
             )
-            is AlbumPage -> Text("album")
+            else -> Text("other page")
         }
     }
 }

@@ -16,41 +16,59 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
 - **Plays while it downloads.** Pick a song or an album and playback starts as soon as the first
   bytes arrive. Finished songs go to the library in `Music/<Artist>/<Album>/`, on internal
   storage, an SD card or a USB drive.
-- **Sorted by format.** Search results and the library are grouped by album folder and filtered
-  with chips: MP3, AAC / MP4, FLAC, ALAC, WAV / AIFF, Hi-Res, DSD, Surround, Atmos, Other.
+- **Home** carries on where you were: what is playing, or **Resume** for the last session (nothing
+  plays by itself at startup), then recently played, favourite and recently added albums.
+- **Search by album.** Each album shows once, however many users have it. The album page plays from
+  the best copy (playable, slot reported free, most songs, best quality, shortest queue); **Sources**
+  lists every user's copy to pick another. Playing an album keeps the whole album in the queue and
+  downloads the chosen song first.
+- **Filters** as separate choices instead of one row of overlapping chips: quality (lossless,
+  Hi-Res, lossy), channels (stereo, surround, Dolby Atmos), format (MP3, AAC / MP4, FLAC, ALAC,
+  WAV / AIFF, DSD, Dolby / DTS) and availability. The shortcuts All, Lossless, Hi-Res, Dolby Atmos
+  and MP3 are one press away.
   - Labels come from file names and the attributes users' clients report (bitrate, sample rate,
     bit depth). Examples: "FLAC 24/96", "MP3 320", "DD+ Atmos".
   - The app then reads each file's header as soon as the first bytes arrive. This fixes labels
     that are wrong, for example "24-bit" files that are really 16-bit, or `.m4a` files that are
     AAC, ALAC or Dolby.
-- **Atmos page.**
-  - Shows what your HDMI output accepts.
-  - Searches for Atmos releases.
-  - Lists the Atmos albums you already have.
-  - A ✓ means the file itself confirmed Atmos: the JOC flag in a Dolby Digital Plus stream, or the
-    16-channel substream in TrueHD.
+- **Library** with artwork (the folder's cover, or the one embedded in the songs), real names from
+  the files' tags, its own search, sorting, and Albums, Songs, Artists, Playlists and Favourites.
+  Songs on an unplugged USB drive stay listed as **Drive disconnected** until you remove them.
+- **Playing:** a player bar under every page (Down from the end of a page reaches it), seek ±10 s
+  with Left/Right on the seek bar, shuffle, repeat, a queue you can reorder, playlists, favourites
+  and a sleep timer. A song the device can't play is never swapped for another one.
+- **Atmos & sound page.**
+  - Atmos music: its own search for Atmos releases, and the Atmos albums you already have.
+  - Audio output: what the playing file is, what this device *reports* its HDMI output takes, the
+    output mode you chose (Automatic, or forced HDMI / ARC), and what the player actually sends.
+  - A ✓ on a format badge means the file itself confirmed Atmos: the JOC flag in a Dolby Digital
+    Plus stream, or the 16-channel substream in TrueHD.
 - **Now playing** shows whether audio goes to the receiver as a bitstream ("Bitstream to the
   receiver: Dolby Atmos (DD+)") or is decoded on the device. If Atmos gets lost on the way, it
   says why.
 - **Other features:**
-  - Background playback with system media controls.
-  - Downloads keep running in a foreground service.
+  - Background playback with system media controls. Notification permission is asked the first
+    time something plays or downloads, with the reason.
+  - Transfers are grouped: downloading, waiting in queues, needs attention, completed.
   - UPnP opens the listening port on your router.
 
 ## Using it with the remote
 
-- **Left** at the left edge of a page opens the menu (Search, Dolby Atmos, Library, Downloads, Now
-  playing, Settings). Use Up/Down to move and OK to choose. **Right** or **Back** closes the menu
-  without changing page.
-- **Back** goes to the previous page and puts the selection back where it was. Search is home, and
-  Back there leaves the app; music keeps playing.
+- **Left** at the left edge of a page opens the menu (Home, Search, Library, Transfers, Atmos &
+  sound, Now playing, Settings). Use Up/Down to move and OK to choose. **Right** or **Back** closes
+  the menu without changing page.
+- **Back** goes to the previous page and puts the selection back where it was. Home is at the
+  bottom, and Back there leaves the app; music keeps playing.
 - **Search box:** press OK on it to type, then press the keyboard's Search key. **Voice** appears
   when the box has voice input. Recent searches sit under the box and run again with one press.
-- **Format chips** always stay in the same places and show how many albums each one matches.
+- **Filter chips** always stay in the same places and show how many albums each one matches.
   Results that arrive later are added at the end, so the list doesn't move while you browse it.
-- Pressing play opens **Now playing** with Play/Pause selected. Back returns to the album. The
-  remote's play/pause key works everywhere.
-- On **Downloads**, press OK on a song to stop it, retry it or remove it.
+- **Songs:** OK plays from that song; Right then OK opens **More** (play next, add to queue, add to
+  playlist, favourite, download, delete).
+- Pressing play opens **Now playing** with Play/Pause selected. Up reaches the seek bar, where
+  Left/Right jump 10 seconds. Back returns to the album. The remote's play/pause key works
+  everywhere.
+- Menus open on a safe choice: removing or deleting anything asks again, with Keep selected.
 
 ## Getting Atmos to the receiver
 
@@ -64,14 +82,14 @@ A TV with eARC connected to a receiver with only ARC works as plain ARC. For Tru
 the Google TV box into the receiver's HDMI input. The receiver passes the picture on to the TV.
 
 On the box, go to Settings → Display & Sound → Advanced sound settings → Surround sound and pick
-**Auto**. If SoundHub's Atmos page still shows ✗, set SoundHub → Settings → Audio output to
-**HDMI to the receiver**.
+**Auto**. If SoundHub's Atmos & sound page still says DD+ is not reported, set its Audio output →
+Output mode to **HDMI to the receiver**.
 
 ## Limits
 
 - Soulseek is people sharing their own collections; it is not a streaming service. A song starts
-  when its owner has a free upload slot. Folders with **Free slot** start at once; others wait in
-  the user's queue. Seeking past what has arrived waits for the download.
+  when its owner has a free upload slot. **Slot free** is what the user's client reports, not a
+  promise; other copies wait in the user's queue. Seeking past what has arrived waits for the download.
 - Some MP4/M4A files keep their index at the end. Those start playing once fully downloaded.
 - SoundHub doesn't share files yet. Some users only send to people who share.
 - DSD, APE, WavPack, WMA and AIFF can be downloaded but not played in the app.

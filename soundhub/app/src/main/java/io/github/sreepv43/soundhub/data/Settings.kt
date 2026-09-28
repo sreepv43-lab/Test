@@ -52,6 +52,9 @@ class Settings(context: Context) {
     /** The last searches, newest first, one per line (typing on a TV is slow). */
     val recentSearches = string("recent_searches", "")
 
+    /** The notification permission was explained and asked for once (on the first play or download). */
+    val notificationsAsked = bool("notifications_asked", false)
+
     fun addRecentSearch(query: String) {
         val recent = listOf(query) + recentSearches.value.lines().filter { it.isNotBlank() && !it.equals(query, ignoreCase = true) }
         recentSearches.set(recent.take(MAX_RECENT).joinToString("\n"))

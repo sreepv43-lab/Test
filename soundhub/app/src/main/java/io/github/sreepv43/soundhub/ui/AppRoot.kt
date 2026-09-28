@@ -1,54 +1,70 @@
 package io.github.sreepv43.soundhub.ui
 
+import android.Manifest
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.automirrored.filled.QueueMusic
 import androidx.compose.material.icons.filled.Pause
-import androidx.compose.material3.Icon
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.SkipNext
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.soundhub.container
+import io.github.sreepv43.soundhub.ui.components.AlbumCover
+import io.github.sreepv43.soundhub.ui.components.DialogButton
+import io.github.sreepv43.soundhub.ui.components.IconAction
+import io.github.sreepv43.soundhub.ui.components.ListRow
+import io.github.sreepv43.soundhub.ui.components.Note
+import io.github.sreepv43.soundhub.ui.components.TvDialog
+import io.github.sreepv43.soundhub.ui.components.TwoLines
 import io.github.sreepv43.soundhub.ui.screens.AlbumScreen
-import io.github.sreepv43.soundhub.ui.screens.AtmosScreen
-import io.github.sreepv43.soundhub.ui.screens.DownloadsScreen
-import io.github.sreepv43.soundhub.ui.screens.FolderScreen
+import io.github.sreepv43.soundhub.ui.screens.ArtistScreen
+import io.github.sreepv43.soundhub.ui.screens.HomeScreen
 import io.github.sreepv43.soundhub.ui.screens.LibraryScreen
 import io.github.sreepv43.soundhub.ui.screens.NowPlayingScreen
+import io.github.sreepv43.soundhub.ui.screens.PlaylistScreen
+import io.github.sreepv43.soundhub.ui.screens.QueueScreen
+import io.github.sreepv43.soundhub.ui.screens.ReleaseScreen
 import io.github.sreepv43.soundhub.ui.screens.SearchScreen
+import io.github.sreepv43.soundhub.ui.screens.SettingsDetailScreen
 import io.github.sreepv43.soundhub.ui.screens.SettingsScreen
+import io.github.sreepv43.soundhub.ui.screens.SoundScreen
+import io.github.sreepv43.soundhub.ui.screens.TransfersScreen
+import kotlinx.coroutines.delay
 
 /**
- * The app: the TV shell (side menu on Left, Back to the previous page) around the page on top.
- * Playing something opens Now playing; Back returns to the album it was started from.
+ * The app: the TV shell (side menu on Left, Back to the previous page) around the page on top,
+ * with the player bar under every page while something is loaded. Playing something opens Now
+ * playing; Back returns to where it was started from.
  */
 @Composable
 fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
-    val container = LocalContext.current.container
-    val navigator = remember {
-        Navigator(if (container.settings.password.value.isEmpty()) Section.SETTINGS else Section.SEARCH)
-    }
+    val navigator = remember { Navigator(Section.HOME) }
     LaunchedEffect(sectionRequest) {
         if (sectionRequest != null) {
             if (sectionRequest == Section.NOW_PLAYING) navigator.open(SectionPage(sectionRequest)) else navigator.select(sectionRequest)
@@ -56,67 +72,154 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
         }
     }
     val showPlayer = { navigator.open(SectionPage(Section.NOW_PLAYING)) }
+    val go = { section: Section -> navigator.select(section) }
+    val signIn = { navigator.open(SettingsPage(SettingsKind.ACCOUNT)) }
+    val openAlbum = { key: String -> navigator.open(AlbumPage(key)) }
+    val openArtist = { name: String -> navigator.open(ArtistPage(name)) }
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
-        Box(Modifier.fillMaxSize()) {
-            SoundHubShell(navigator) { page ->
+        Box(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
+            SoundHubShell(
+                navigator,
+                bottomBar = {
+                    if (navigator.current != SectionPage(Section.NOW_PLAYING)) {
+                        PlayerBar(onOpen = showPlayer, onQueue = { navigator.open(QueuePage) })
+                    }
+                },
+            ) { page ->
                 when (page) {
                     is SectionPage -> when (page.section) {
-                        Section.SEARCH -> SearchScreen(onOpen = { navigator.open(FolderPage(it, Section.SEARCH)) })
-                        Section.ATMOS -> AtmosScreen(
-                            onOpenFolder = { navigator.open(FolderPage(it, Section.ATMOS)) },
-                            onOpenAlbum = { navigator.open(AlbumPage(it.key)) },
+                        Section.HOME -> HomeScreen(onOpenAlbum = openAlbum, onGo = go, onSignIn = signIn, onPlaying = showPlayer)
+                        Section.SEARCH -> SearchScreen(onOpen = { navigator.open(ReleasePage(it, Section.SEARCH)) }, onSignIn = signIn)
+                        Section.LIBRARY -> LibraryScreen(
+                            onOpenAlbum = openAlbum,
+                            onOpenArtist = openArtist,
+                            onOpenPlaylist = { navigator.open(PlaylistPage(it)) },
+                            onSearch = { go(Section.SEARCH) },
+                            onPlaying = showPlayer,
                         )
-                        Section.LIBRARY -> LibraryScreen(onOpenAlbum = { navigator.open(AlbumPage(it.key)) })
-                        Section.DOWNLOADS -> DownloadsScreen()
-                        Section.NOW_PLAYING -> NowPlayingScreen()
-                        Section.SETTINGS -> SettingsScreen()
+                        Section.TRANSFERS -> TransfersScreen(onSearch = { go(Section.SEARCH) })
+                        Section.SOUND -> SoundScreen(
+                            onOpenRelease = { navigator.open(ReleasePage(it, Section.SOUND)) },
+                            onOpenAlbum = openAlbum,
+                            onSignIn = signIn,
+                        )
+                        Section.NOW_PLAYING -> NowPlayingScreen(onQueue = { navigator.open(QueuePage) }, onGo = go)
+                        Section.SETTINGS -> SettingsScreen(
+                            onOpen = { navigator.open(SettingsPage(it)) },
+                            onSound = { go(Section.SOUND) },
+                        )
                     }
-                    is FolderPage -> FolderScreen(page.folder, onPlaying = showPlayer)
-                    is AlbumPage -> AlbumScreen(page.albumKey, onPlaying = showPlayer, onGone = { navigator.back() })
+                    is ReleasePage -> ReleaseScreen(page.release, page.section, onPlaying = showPlayer)
+                    is AlbumPage -> AlbumScreen(page.albumKey, onPlaying = showPlayer, onGone = { navigator.back() }, onOpenArtist = openArtist)
+                    is ArtistPage -> ArtistScreen(page.name, onOpenAlbum = openAlbum, onPlaying = showPlayer)
+                    is PlaylistPage -> PlaylistScreen(page.id, onPlaying = showPlayer, onGone = { navigator.back() })
+                    QueuePage -> QueueScreen()
+                    is SettingsPage -> SettingsDetailScreen(page.kind)
                 }
             }
-            if (navigator.current.section != Section.NOW_PLAYING) {
-                NowPlayingBadge(onOpen = showPlayer, modifier = Modifier.align(Alignment.BottomEnd))
+        }
+        NotificationPrompt()
+    }
+}
+
+/**
+ * What is loaded, under every page: OK on the song opens Now playing; play/pause, next and the
+ * queue are one press away. Down from the end of a page reaches it; Up goes back into the page.
+ */
+@Composable
+private fun PlayerBar(onOpen: () -> Unit, onQueue: () -> Unit) {
+    val playback = LocalContext.current.container.playback
+    val item by playback.current.collectAsStateWithLifecycle()
+    val playing by playback.isPlaying.collectAsStateWithLifecycle()
+    val current = item ?: return
+    var progress by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(current.id) {
+        while (true) {
+            val duration = playback.player.duration
+            progress = if (duration > 0) (playback.player.currentPosition.toFloat() / duration).coerceIn(0f, 1f) else 0f
+            delay(1_000)
+        }
+    }
+    PlayerBarLayout(
+        title = current.title,
+        subtitle = listOfNotNull(current.artist, current.album).joinToString(" · "),
+        playing = playing,
+        progress = progress,
+        onOpen = onOpen,
+        onPlayPause = playback::togglePlay,
+        onNext = playback::next,
+        onQueue = onQueue,
+    ) { AlbumCover(current.albumKey, current.album, 40.dp) }
+}
+
+@Composable
+fun PlayerBarLayout(
+    title: String,
+    subtitle: String,
+    playing: Boolean,
+    progress: Float,
+    onOpen: () -> Unit,
+    onPlayPause: () -> Unit,
+    onNext: () -> Unit,
+    onQueue: () -> Unit,
+    art: @Composable () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().background(AppColors.panel)) {
+        Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
+            Box(Modifier.fillMaxWidth(progress).height(3.dp).background(Accent))
+        }
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            ListRow(onClick = onOpen, key = "player-bar", modifier = Modifier.weight(1f).testTag("player-bar")) {
+                art()
+                TwoLines(title, subtitle, Modifier.weight(1f))
             }
+            IconAction(
+                if (playing) Icons.Default.Pause else Icons.Default.PlayArrow,
+                if (playing) "Pause" else "Play",
+                key = "bar-play",
+                tag = "bar-play",
+                onClick = onPlayPause,
+            )
+            IconAction(Icons.Default.SkipNext, "Next", key = "bar-next", tag = "bar-next", onClick = onNext)
+            IconAction(Icons.AutoMirrored.Filled.QueueMusic, "Queue", key = "bar-queue", tag = "bar-queue", onClick = onQueue)
         }
     }
 }
 
 /**
- * What is playing, in the corner of every page. Not selectable with the remote (the menu's Now
- * playing and the remote's play/pause keys are), but tappable on a tablet.
+ * Asked the first time something plays or downloads (not at startup), with the reason first:
+ * Android shows playback controls and download progress as notifications.
  */
 @Composable
-private fun NowPlayingBadge(onOpen: () -> Unit, modifier: Modifier) {
-    val playback = LocalContext.current.container.playback
-    val item by playback.current.collectAsStateWithLifecycle()
-    val playing by playback.isPlaying.collectAsStateWithLifecycle()
-    val current = item ?: return
-    val shape = RoundedCornerShape(50)
-    Row(
-        modifier
-            .padding(16.dp)
-            .widthIn(max = 360.dp)
-            .clip(shape)
-            .background(AppColors.panel)
-            .focusProperties { canFocus = false }
-            .clickable(onClick = onOpen)
-            .padding(horizontal = 14.dp, vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+private fun NotificationPrompt() {
+    val container = LocalContext.current.container
+    val request by container.notificationRequest.collectAsStateWithLifecycle()
+    val launcher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    if (!request) return
+    fun done() {
+        container.settings.notificationsAsked.set(true)
+        container.notificationRequest.value = false
+    }
+    TvDialog(
+        title = "Show playback and download notifications?",
+        onDismiss = ::done,
+        buttons = listOf(
+            DialogButton("Continue", primary = true) {
+                done()
+                launcher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            },
+            DialogButton("Not now", onClick = ::done),
+        ),
     ) {
-        Icon(
-            if (playing) Icons.Default.GraphicEq else Icons.Default.Pause,
-            contentDescription = null,
-            tint = Accent,
-            modifier = Modifier.size(18.dp),
-        )
-        Spacer(Modifier.size(8.dp))
-        Text(
-            listOfNotNull(current.title, current.artist).joinToString(" · "),
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+        Note(
+            "While music plays or songs download, SoundHub keeps a notification with play/pause and progress, " +
+                "so playback carries on when you leave the app. Android asks you to allow it next. You can change " +
+                "this later under Settings → Notifications.",
         )
     }
 }

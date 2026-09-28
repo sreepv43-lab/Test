@@ -30,11 +30,12 @@ soundhub/
 ├── core/src/main/kotlin/io/github/sreepv43/soundhub/
 │   ├── slsk/       # SoulseekClient (server, peers, transfers), Messages/Wire (protocol), GrowingFile, Upnp
 │   ├── audio/      # AudioFormats (classify by name/attributes, FormatFilter), AudioProbe (file headers, Atmos)
-│   └── library/    # LibraryStore, SearchResults/SearchSession, MusicDownloads, PathNames
+│   └── library/    # LibraryStore, SearchResults/SearchSession, Releases (album grouping), LibraryViews, CollectionStore (favourites, playlists, history, resume), MusicDownloads, PathNames
 └── app/src/main/java/io/github/sreepv43/soundhub/
     ├── player/     # PlaybackController (ExoPlayer), AudioOutput (passthrough), TransferDataSource, PlaybackService
     ├── service/    # TransferService (foreground while downloading)
-    └── ui/         # Compose screens: Search, Atmos, Library, Downloads, Now playing, Settings
+    ├── data/       # Settings, LibraryEnricher (tags + embedded covers), CoverCache
+    └── ui/         # Compose screens: Home, Search/Release, Library/Album/Artist/Playlist, Transfers, Atmos & sound, Now playing/Queue, Settings
 ```
 
 Conventions:
@@ -45,7 +46,8 @@ Conventions:
 - Dependencies are wired manually in `AppContainer` (`StreamHubApp.kt`); ViewModels are created with `appViewModel { container, savedState -> ... }`.
 - SoundHub: keep everything Android-free in `:soundhub-core` (tests use a fake Soulseek server/peer on localhost, `FakeNetwork.kt`). The app wires it in `AppContainer` (`SoundHubApp.kt`) and screens read its StateFlows directly. Songs being downloaded play through `slskstream://transfer/<id>/…` URIs (`TransferDataSource`), which block until the bytes arrive.
 - SoundHub passthrough: never put FFmpeg ahead of the platform renderers (`EXTENSION_RENDERER_MODE_ON`, not `PREFER`), or Dolby audio gets decoded and Atmos is lost.
-- SoundHub remote navigation (`ui/TvShell.kt`, `ui/Navigation.kt`): pages live in a `Navigator` stack (Search is home; Back pops) inside `SoundHubShell`, which wraps each page in `TvPage` + a `SaveableStateProvider`. The side menu only takes focus on Left at the page edge. Every focusable uses `tvFocus` (pass `key` for list rows so the selection is restored after Back; `pageDefault = true` for the element a page should start on). Use `ListRow`/`Chip`/`ActionButton`/`TvDialog`; never put a bare `TextField` on a page (it pops the keyboard when passed over) — use `SearchBar` or `TextEntryDialog`. Plain text after the last focusable element can't be scrolled to with a remote; use `ReadableText`. `RemoteNavigationTest` (Robolectric) drives the shell with key presses; extend it when navigation changes.
+- SoundHub remote navigation (`ui/TvShell.kt`, `ui/Navigation.kt`): pages live in a `Navigator` stack (Home is at the bottom; Back pops) inside `SoundHubShell`, which wraps each page in `TvPage` + a `SaveableStateProvider` and puts the player bar (`bottomBar`) under the page. The side menu only takes focus on Left at the page edge; a control that uses Left/Right itself (the seek bar) marks itself with `tvClaimHorizontalKeys()`. Every focusable uses `tvFocus` (pass `key` for list rows so the selection is restored after Back; `pageDefault = true` for the element a page should start on). Use `ListRow`/`RowWithMore`/`Chip`/`ActionButton`/`TvDialog`/`OptionsDialog` (it opens on the first non-destructive option; destructive actions ask again with Keep first); never put a bare `TextField` on a page (it pops the keyboard when passed over) — use `SearchBar` or `TextEntryDialog`. Plain text after the last focusable element can't be scrolled to with a remote; use `ReadableText`. `RemoteNavigationTest` (Robolectric) drives the shell and the real page layouts (`SearchLayout`, `ReleaseLayout`, `TransfersLayout`, `PlayerControls`, `SeekBar`, `PlayerBarLayout`; keep those free of `container` access) with key presses; extend it when navigation changes.
+- SoundHub playback: never play a different song than the one chosen (`AppContainer.playLibrary`/`playFolder` return false and the UI says why). Library entries whose files are missing (unplugged drive) are kept and shown as "Drive disconnected"; only `LibraryStore.removeMissing()`, on the listener's request, drops them.
 
 ## Development Workflow
 

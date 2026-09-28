@@ -2,20 +2,25 @@ package io.github.sreepv43.soundhub.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -27,22 +32,31 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import io.github.sreepv43.soundhub.audio.FormatFilter
+import io.github.sreepv43.soundhub.audio.Channels
+import io.github.sreepv43.soundhub.audio.MusicFilter
 import io.github.sreepv43.soundhub.container
 import io.github.sreepv43.soundhub.library.LibraryStore
+import io.github.sreepv43.soundhub.library.Release
 import io.github.sreepv43.soundhub.library.SearchFolder
 import io.github.sreepv43.soundhub.library.SearchSession
 import io.github.sreepv43.soundhub.library.SearchTrack
 import io.github.sreepv43.soundhub.slsk.ConnectionState
 import io.github.sreepv43.soundhub.ui.LosslessColor
+import io.github.sreepv43.soundhub.ui.Section
 import io.github.sreepv43.soundhub.ui.WarningColor
 import io.github.sreepv43.soundhub.ui.components.ActionButton
+import io.github.sreepv43.soundhub.ui.components.AlbumArt
 import io.github.sreepv43.soundhub.ui.components.Badge
-import io.github.sreepv43.soundhub.ui.components.FilterRow
+import io.github.sreepv43.soundhub.ui.components.DialogButton
+import io.github.sreepv43.soundhub.ui.components.FilterDialog
+import io.github.sreepv43.soundhub.ui.components.FilterShortcuts
 import io.github.sreepv43.soundhub.ui.components.FormatBadge
 import io.github.sreepv43.soundhub.ui.components.ListRow
 import io.github.sreepv43.soundhub.ui.components.Note
+import io.github.sreepv43.soundhub.ui.components.Option
+import io.github.sreepv43.soundhub.ui.components.OptionsDialog
 import io.github.sreepv43.soundhub.ui.components.RecentSearches
+import io.github.sreepv43.soundhub.ui.components.RowWithMore
 import io.github.sreepv43.soundhub.ui.components.ScreenTitle
 import io.github.sreepv43.soundhub.ui.components.SearchBar
 import io.github.sreepv43.soundhub.ui.components.TwoLines
@@ -52,22 +66,24 @@ import io.github.sreepv43.soundhub.ui.components.formatSpeed
 import io.github.sreepv43.soundhub.ui.components.toast
 import io.github.sreepv43.soundhub.ui.components.transferText
 
+/** A status line under the search box, with a button when there is something to do about it. */
+data class SearchStatus(val text: String?, val action: DialogButton? = null)
+
 @Composable
-fun SearchScreen(onOpen: (SearchFolder) -> Unit) {
+fun SearchScreen(onOpen: (Release) -> Unit, onSignIn: () -> Unit) {
     val container = LocalContext.current.container
-    val session = container.search
-    val folders by session.folders.collectAsStateWithLifecycle()
-    val query by session.query.collectAsStateWithLifecycle()
+    val releases by container.releases.collectAsStateWithLifecycle()
+    val query by container.search.query.collectAsStateWithLifecycle()
     val recent by container.settings.recentSearches.flow.collectAsStateWithLifecycle()
-    var filter by rememberSaveable { mutableStateOf(FormatFilter.ALL) }
+    val filter by container.searchFilter.collectAsStateWithLifecycle()
     SearchLayout(
-        title = "Search Soulseek",
+        title = "Search",
         hint = "Artist, album or song",
         query = query,
-        status = searchStatus(session, folders.size),
-        folders = folders,
+        status = searchStatus(container.search, releases.size, onSignIn),
+        releases = releases,
         filter = filter,
-        onFilter = { filter = it },
+        onFilter = { container.searchFilter.value = it },
         recent = remember(recent) { recent.lines().filter { it.isNotBlank() } },
         onSearch = { container.startSearch(it) },
         onOpen = onOpen,
@@ -75,79 +91,120 @@ fun SearchScreen(onOpen: (SearchFolder) -> Unit) {
 }
 
 /**
- * A search page: the search box (a button until pressed, so the remote never pops up the keyboard
- * by passing over it), recent searches, format chips and the albums found. [filter] null hides
- * the chips (the Atmos page shows only Atmos albums).
+ * A search page: the search box (a button until pressed, so passing over it never pops up the
+ * keyboard), recent searches, filter shortcuts and the albums found, one row per album however
+ * many users have it. [filter] null hides the filters (the Atmos search shows only Atmos).
  */
 @Composable
 fun SearchLayout(
-    title: String,
+    title: String?,
     hint: String,
     query: String,
-    status: String?,
-    folders: List<SearchFolder>,
-    filter: FormatFilter?,
-    onFilter: (FormatFilter) -> Unit,
+    status: SearchStatus,
+    releases: List<Release>,
+    filter: MusicFilter?,
+    onFilter: (MusicFilter) -> Unit,
     recent: List<String>,
     onSearch: (String) -> Unit,
-    onOpen: (SearchFolder) -> Unit,
-    top: LazyListScope.() -> Unit = {},
-    bottom: LazyListScope.() -> Unit = {},
+    onOpen: (Release) -> Unit,
 ) {
-    val counts = remember(folders) { FormatFilter.entries.associateWith { f -> folders.count { it.matches(f) } } }
-    val shown = remember(folders, filter) { if (filter == null) folders else folders.filter { it.matches(filter) } }
+    var showFilters by rememberSaveable { mutableStateOf(false) }
+    val counts = remember(releases) { HashMap<MusicFilter, Int>() }
+    val count = { f: MusicFilter -> counts.getOrPut(f) { releases.count { it.matches(f) } } }
+    val shown = remember(releases, filter) { if (filter == null) releases else releases.filter { it.matches(filter) } }
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
         state = rememberLazyListState(),
-        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 48.dp),
+        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "title") { ScreenTitle(title) }
-        top()
-        item(key = "search") { SearchBar(query, hint, onSearch) }
-        if (recent.isNotEmpty()) item(key = "recent") { RecentSearches(recent, onSearch) }
-        if (status != null) item(key = "status") { Note(status) }
-        if (filter != null && folders.isNotEmpty()) item(key = "filters") { FilterRow(filter, counts, onFilter) }
-        folderItems(shown, filter ?: FormatFilter.ALL, onOpen)
-        if (filter != null && folders.isNotEmpty() && shown.isEmpty()) {
-            item(key = "none") { Note("No ${filter.label} albums in these results. Choose All to see everything.") }
+        if (title != null) item(key = "title") { ScreenTitle(title) }
+        searchItems(hint, query, status, releases, shown, filter, count, onFilter, { showFilters = true }, recent, onSearch, onOpen)
+    }
+    if (showFilters && filter != null) {
+        FilterDialog(filter, showAvailability = true, onChange = onFilter, onDismiss = { showFilters = false })
+    }
+}
+
+/** The search box, recent searches, status, filters and results, for a page's list. */
+fun LazyListScope.searchItems(
+    hint: String,
+    query: String,
+    status: SearchStatus,
+    releases: List<Release>,
+    shown: List<Release>,
+    filter: MusicFilter?,
+    count: (MusicFilter) -> Int,
+    onFilter: (MusicFilter) -> Unit,
+    onMoreFilters: () -> Unit,
+    recent: List<String>,
+    onSearch: (String) -> Unit,
+    onOpen: (Release) -> Unit,
+) {
+    item(key = "search") { SearchBar(query, hint, onSearch) }
+    if (recent.isNotEmpty()) item(key = "recent") { RecentSearches(recent, onSearch) }
+    if (status.text != null) {
+        item(key = "status") {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Note(status.text, modifier = Modifier.weight(1f))
+                status.action?.let { ActionButton(it.text, primary = it.primary, onClick = it.onClick) }
+            }
         }
-        bottom()
+    }
+    if (filter != null && releases.isNotEmpty()) {
+        item(key = "filters") { FilterShortcuts(filter, count, onFilter, onMoreFilters) }
+    }
+    releaseItems(shown, filter ?: MusicFilter(), onOpen)
+    if (filter != null && releases.isNotEmpty() && shown.isEmpty()) {
+        item(key = "none") {
+            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Note("No albums here match ${filter.label}.", modifier = Modifier.weight(1f))
+                ActionButton("Show all results") { onFilter(MusicFilter()) }
+            }
+        }
     }
 }
 
 @Composable
-fun searchStatus(session: SearchSession, count: Int): String? {
+fun searchStatus(session: SearchSession, count: Int, onSignIn: () -> Unit): SearchStatus {
     val container = LocalContext.current.container
     val state by container.client.state.collectAsStateWithLifecycle()
     val searching by session.searching.collectAsStateWithLifecycle()
     val query by session.query.collectAsStateWithLifecycle()
+    val signIn = DialogButton("Sign in", primary = true, onClick = onSignIn)
     return when (val s = state) {
-        is ConnectionState.Failed -> "Not connected: ${s.message}. Open Settings from the menu (press Left)."
-        ConnectionState.Disconnected -> "Sign in to Soulseek first: press Left for the menu, then Settings."
-        ConnectionState.Connecting -> "Connecting to Soulseek…"
-        is ConnectionState.Connected -> when {
-            query.isEmpty() -> "Press OK on the search box to type, or pick a recent search."
-            searching && count == 0 -> "Searching for \"$query\"… answers arrive from other users over the next minute."
-            searching -> "$count albums so far for \"$query\", more arriving (new ones are added at the end)…"
-            count == 0 -> "Nothing found for \"$query\". Try fewer or different words."
-            else -> "$count albums for \"$query\"."
-        }
+        is ConnectionState.Failed -> SearchStatus("Not connected to Soulseek: ${s.message}", signIn)
+        ConnectionState.Disconnected -> SearchStatus("Sign in to Soulseek to search.", signIn)
+        ConnectionState.Connecting -> SearchStatus("Connecting to Soulseek…")
+        is ConnectionState.Connected -> SearchStatus(
+            when {
+                query.isEmpty() -> "Press OK on the search box to type, or pick a recent search."
+                searching && count == 0 -> "Searching for \"$query\"… answers arrive from other users over the next minute."
+                searching -> "$count albums so far for \"$query\", more arriving (new ones are added at the end)…"
+                count == 0 -> "Nothing found for \"$query\". Try fewer or different words."
+                else -> "$count albums for \"$query\"."
+            },
+        )
     }
 }
 
-/** One row per album: title, artist, size, the main format and how soon the user can send it. */
-fun LazyListScope.folderItems(folders: List<SearchFolder>, filter: FormatFilter, onOpen: (SearchFolder) -> Unit) {
-    items(folders, key = { it.key }) { folder ->
-        ListRow(onClick = { onOpen(folder) }, key = folder.key, modifier = Modifier.testTag("folder-${folder.album}")) {
+/** One row per album: artwork, title, artist, songs, how many users have it, best format and availability. */
+fun LazyListScope.releaseItems(releases: List<Release>, filter: MusicFilter, onOpen: (Release) -> Unit) {
+    items(releases, key = { it.key }) { release ->
+        val best = release.bestSource(filter)
+        ListRow(onClick = { onOpen(release) }, key = release.key, modifier = Modifier.testTag("release-${release.album}")) {
+            AlbumArt(null, release.album, 52.dp)
             TwoLines(
-                folder.album,
-                listOfNotNull(folder.artist, "${folder.tracks.size} songs", formatSize(folder.totalSize), "from ${folder.username}")
-                    .joinToString(" · "),
+                release.album,
+                listOfNotNull(
+                    release.artist,
+                    "${release.trackCount} songs",
+                    if (release.sources.size > 1) "${release.sources.size} sources" else "from ${best.username}",
+                ).joinToString(" · "),
                 Modifier.weight(1f),
             )
-            folder.summary(filter)?.let { FormatBadge(it) }
-            Availability(folder)
+            best.summary(filter)?.let { FormatBadge(it) }
+            Availability(best)
         }
     }
 }
@@ -155,7 +212,7 @@ fun LazyListScope.folderItems(folders: List<SearchFolder>, filter: FormatFilter,
 @Composable
 private fun Availability(folder: SearchFolder) {
     Column(horizontalAlignment = Alignment.End) {
-        if (folder.slotFree) Badge("Starts now", LosslessColor) else Badge("Queue ${folder.queueLength}", WarningColor)
+        if (folder.slotFree) Badge("Slot free", LosslessColor) else Badge("Queue ${folder.queueLength}", WarningColor)
         val speed = formatSpeed(folder.avgSpeed.toLong())
         if (speed.isNotEmpty()) {
             Text(speed, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -163,76 +220,114 @@ private fun Availability(folder: SearchFolder) {
     }
 }
 
-/** An album from the search results: play from any song (it streams while it downloads) or download it all. */
+/**
+ * An album found by a search: plays or downloads from one user's copy (the best one, or the one
+ * picked under Sources). Playing streams while it downloads and keeps the songs in the library.
+ */
 @Composable
-fun FolderScreen(folder: SearchFolder, onPlaying: () -> Unit) {
+fun ReleaseScreen(release: Release, section: Section, onPlaying: () -> Unit) {
     val context = LocalContext.current
     val container = context.container
+    val live by (if (section == Section.SOUND) container.atmosReleases else container.releases).collectAsStateWithLifecycle()
+    val searchFilter by container.searchFilter.collectAsStateWithLifecycle()
+    val filter = if (section == Section.SOUND) MusicFilter(channels = Channels.ATMOS) else searchFilter
+    // More users' copies keep arriving while the search runs.
+    val current = live.firstOrNull { it.key == release.key } ?: release
+    var sourceKey by rememberSaveable(release.key) { mutableStateOf<String?>(null) }
+    val source = current.sources.firstOrNull { it.key == sourceKey } ?: current.bestSource(filter)
+    SideEffect { if (sourceKey == null) sourceKey = source.key }
     val transfers by container.client.transfers.collectAsStateWithLifecycle()
     val library by container.library.tracks.collectAsStateWithLifecycle()
-    val inLibrary = remember(library) { library.map { it.id }.toSet() }
-    FolderLayout(
-        folder = folder,
+    val inLibrary = remember(library) { library.mapTo(HashSet()) { it.id } }
+    fun added(count: Int, next: Boolean) {
+        if (count > 0) toast(context, if (next) "Playing next" else "Added $count song${if (count == 1) "" else "s"} to the queue")
+    }
+    ReleaseLayout(
+        release = current,
+        source = source,
+        filter = filter,
         status = { track ->
             val transfer = transfers.lastOrNull { it.username == track.username && it.filename == track.file.filename }
             when {
                 LibraryStore.id(track.username, track.file.filename) in inLibrary -> "In your library"
                 transfer != null -> transferText(transfer)
-                !track.info.playable -> "Download only: this format can't be played here"
+                !track.info.playable -> "Download only: this device can't play ${track.info.label}"
                 else -> null
             }
         },
-        onPlay = { track ->
-            if (container.requireSignIn()) {
-                container.playFolder(folder, track)
-                onPlaying()
-            }
-        },
+        onPlay = { track, shuffle -> if (container.playFolder(source, track, shuffle)) onPlaying() },
+        onEnqueue = { tracks, next -> added(container.enqueue(source, tracks, next), next) },
         onDownload = { tracks ->
             if (container.requireSignIn()) {
-                container.download(tracks)
-                toast(context, "Downloading ${tracks.size} song${if (tracks.size == 1) "" else "s"}. Progress is under Downloads in the menu.")
+                container.download(source, tracks)
+                toast(context, "Downloading ${tracks.size} song${if (tracks.size == 1) "" else "s"}. Progress is under Transfers.")
             }
         },
+        onChooseSource = { sourceKey = it.key },
     )
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun FolderLayout(
-    folder: SearchFolder,
+fun ReleaseLayout(
+    release: Release,
+    source: SearchFolder,
+    filter: MusicFilter,
     status: (SearchTrack) -> String?,
-    onPlay: (SearchTrack) -> Unit,
+    onPlay: (SearchTrack, Boolean) -> Unit,
+    onEnqueue: (List<SearchTrack>, Boolean) -> Unit,
     onDownload: (List<SearchTrack>) -> Unit,
+    onChooseSource: (SearchFolder) -> Unit,
 ) {
-    val playable = folder.tracks.filter { it.info.playable }
+    val playable = source.tracks.filter { it.info.playable }
+    var options by remember { mutableStateOf<SearchTrack?>(null) }
+    var choosingSource by rememberSaveable { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
         state = rememberLazyListState(),
-        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 48.dp),
+        contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        item(key = "title") {
-            ScreenTitle(
-                folder.album,
-                listOfNotNull(
-                    folder.artist,
-                    "from ${folder.username}",
-                    if (folder.slotFree) "starts right away" else "${folder.queueLength} waiting in their queue",
-                    formatSpeed(folder.avgSpeed.toLong()).ifEmpty { null },
-                ).joinToString(" · "),
-            )
-        }
-        item(key = "actions") {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(vertical = 4.dp)) {
-                if (playable.isNotEmpty()) {
-                    ActionButton("Play album", Icons.Default.PlayArrow, pageDefault = true) { onPlay(playable.first()) }
+        item(key = "header") {
+            Row(horizontalArrangement = Arrangement.spacedBy(20.dp), verticalAlignment = Alignment.CenterVertically) {
+                AlbumArt(null, release.album, 132.dp)
+                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(release.album, style = MaterialTheme.typography.headlineSmall, maxLines = 2)
+                    release.artist?.let { Text(it, style = MaterialTheme.typography.titleMedium) }
+                    Note(sourceLine(source))
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        source.summary(filter)?.let { FormatBadge(it) }
+                        if (source.slotFree) Badge("Slot reported free", LosslessColor)
+                        else Badge("${source.queueLength} waiting in their queue", WarningColor)
+                    }
                 }
-                ActionButton("Download album", Icons.Default.Download, primary = playable.isEmpty()) { onDownload(folder.tracks) }
             }
         }
-        items(folder.tracks, key = { it.file.filename }) { track ->
-            ListRow(
-                onClick = { if (track.info.playable) onPlay(track) else onDownload(listOf(track)) },
+        item(key = "actions") {
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                if (playable.isNotEmpty()) {
+                    ActionButton("Play", Icons.Default.PlayArrow, pageDefault = true) { onPlay(playable.first(), false) }
+                    ActionButton("Shuffle", Icons.Default.Shuffle, primary = false) { onPlay(playable.random(), true) }
+                    ActionButton("Add to queue", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false) { onEnqueue(playable, false) }
+                }
+                ActionButton("Download", Icons.Default.Download, primary = playable.isEmpty(), pageDefault = playable.isEmpty()) {
+                    onDownload(source.tracks)
+                }
+                if (release.sources.size > 1) {
+                    ActionButton("Sources (${release.sources.size})", Icons.Default.People, primary = false) { choosingSource = true }
+                }
+            }
+        }
+        item(key = "note") {
+            Note(
+                if (playable.isEmpty()) "This device can't play these files; download them to keep them."
+                else "Playing starts while the songs download, and keeps them in your library.",
+            )
+        }
+        items(source.tracks, key = { it.file.filename }) { track ->
+            RowWithMore(
+                onClick = { if (track.info.playable) onPlay(track, false) else options = track },
+                onMore = { options = track },
                 key = track.file.filename,
                 modifier = Modifier.testTag("track-${track.name.title}"),
             ) {
@@ -250,4 +345,47 @@ fun FolderLayout(
             }
         }
     }
+    options?.let { track ->
+        OptionsDialog(
+            title = track.name.title,
+            subtitle = listOfNotNull(track.info.label, formatSize(track.file.size)).joinToString(" · "),
+            onDismiss = { options = null },
+            options = if (track.info.playable) {
+                listOf(
+                    Option("Play from here", Icons.Default.PlayArrow) { onPlay(track, false) },
+                    Option("Play next") { onEnqueue(listOf(track), true) },
+                    Option("Add to queue", Icons.AutoMirrored.Filled.PlaylistAdd) { onEnqueue(listOf(track), false) },
+                    Option("Download only", Icons.Default.Download) { onDownload(listOf(track)) },
+                )
+            } else {
+                listOf(Option("Download", Icons.Default.Download) { onDownload(listOf(track)) })
+            },
+        )
+    }
+    if (choosingSource) {
+        OptionsDialog(
+            title = "Choose whose copy to use",
+            subtitle = "Every user's copy of this album. Songs you already have stay in your library.",
+            onDismiss = { choosingSource = false },
+            options = release.sources.map { folder ->
+                Option(
+                    (if (folder.key == source.key) "✓ " else "") +
+                        listOfNotNull(
+                            folder.username,
+                            folder.summary(filter)?.label,
+                            "${folder.tracks.size} songs",
+                            if (folder.slotFree) "slot free" else "queue ${folder.queueLength}",
+                            formatSpeed(folder.avgSpeed.toLong()).ifEmpty { null },
+                        ).joinToString(" · "),
+                ) { onChooseSource(folder) }
+            },
+        )
+    }
 }
+
+private fun sourceLine(source: SearchFolder): String = listOfNotNull(
+    "From ${source.username}",
+    "${source.tracks.size} songs",
+    formatSize(source.totalSize),
+    formatSpeed(source.avgSpeed.toLong()).ifEmpty { null },
+).joinToString(" · ")

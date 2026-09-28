@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -16,16 +17,19 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.ui.graphics.vector.ImageVector
-import io.github.sreepv43.soundhub.library.SearchFolder
+import io.github.sreepv43.soundhub.library.Release
 
 enum class Section(val label: String, val icon: ImageVector) {
+    HOME("Home", Icons.Default.Home),
     SEARCH("Search", Icons.Default.Search),
-    ATMOS("Dolby Atmos", Icons.Default.SurroundSound),
     LIBRARY("Library", Icons.Default.LibraryMusic),
-    DOWNLOADS("Downloads", Icons.Default.Download),
+    TRANSFERS("Transfers", Icons.Default.Download),
+    SOUND("Atmos & sound", Icons.Default.SurroundSound),
     NOW_PLAYING("Now playing", Icons.Default.GraphicEq),
     SETTINGS("Settings", Icons.Default.Settings),
 }
+
+enum class SettingsKind(val label: String) { ACCOUNT("Account"), STORAGE("Storage"), NETWORK("Network (advanced)"), ABOUT("About") }
 
 /** What is on screen. [section] is the one highlighted in the side menu. */
 sealed interface Page {
@@ -37,9 +41,9 @@ data class SectionPage(override val section: Section) : Page {
     override val key: String get() = "section:${section.name}"
 }
 
-/** An album (a user's folder) from search results. */
-data class FolderPage(val folder: SearchFolder, override val section: Section) : Page {
-    override val key: String get() = "folder:${section.name}:${folder.key}"
+/** An album found by a search (one or more users' folders), from Search or the Sound page. */
+data class ReleasePage(val release: Release, override val section: Section) : Page {
+    override val key: String get() = "release:${section.name}:${release.key}"
 }
 
 /** An album in the library. */
@@ -48,18 +52,38 @@ data class AlbumPage(val albumKey: String) : Page {
     override val key: String get() = "album:$albumKey"
 }
 
+data class ArtistPage(val name: String) : Page {
+    override val section: Section get() = Section.LIBRARY
+    override val key: String get() = "artist:$name"
+}
+
+data class PlaylistPage(val id: String) : Page {
+    override val section: Section get() = Section.LIBRARY
+    override val key: String get() = "playlist:$id"
+}
+
+data object QueuePage : Page {
+    override val section: Section get() = Section.NOW_PLAYING
+    override val key: String get() = "queue"
+}
+
+data class SettingsPage(val kind: SettingsKind) : Page {
+    override val section: Section get() = Section.SETTINGS
+    override val key: String get() = "settings:${kind.name}"
+}
+
 /**
- * The pages the user went through, so Back goes to the previous one. Search is always at the
- * bottom (home); Back on it leaves the app. Choosing a section in the menu goes back to it if it is
- * already open underneath, otherwise opens it on top of Search.
+ * The pages the user went through, so Back goes to the previous one. [home] is always at the bottom;
+ * Back on it leaves the app. Choosing a section in the menu goes back to it if it is already open
+ * underneath, otherwise opens it on top of home.
  */
 @Stable
-class Navigator(start: Section) {
-    private val stack = mutableStateListOf<Page>(SectionPage(Section.SEARCH))
+class Navigator(start: Section, private val home: Section = Section.HOME) {
+    private val stack = mutableStateListOf<Page>(SectionPage(home))
     internal var onDrop: (Page) -> Unit = {}
 
     init {
-        if (start != Section.SEARCH) stack.add(SectionPage(start))
+        if (start != home) stack.add(SectionPage(start))
     }
 
     val current: Page get() = stack.last()
@@ -95,11 +119,11 @@ class Navigator(start: Section) {
 private val menu = Section.entries.map { MenuEntry(it.name, it.label, it.icon) }
 
 /**
- * The TV shell around the page on top of [navigator]'s stack: side menu, Back, and each page
- * keeping its scroll position, filters and open album while other pages are on top of it.
+ * The TV shell around the page on top of [navigator]'s stack: side menu, Back, the player bar, and
+ * each page keeping its scroll position, filters and open album while other pages are on top of it.
  */
 @Composable
-fun SoundHubShell(navigator: Navigator, content: @Composable (Page) -> Unit) {
+fun SoundHubShell(navigator: Navigator, bottomBar: @Composable () -> Unit = {}, content: @Composable (Page) -> Unit) {
     val states = rememberSaveableStateHolder()
     DisposableEffect(navigator, states) {
         navigator.onDrop = { states.removeState(it.key) }
@@ -112,6 +136,7 @@ fun SoundHubShell(navigator: Navigator, content: @Composable (Page) -> Unit) {
         selectedKey = page.section.name,
         pageKey = page.key,
         onSelect = { navigator.select(Section.valueOf(it.key)) },
+        bottomBar = bottomBar,
     ) { modifier ->
         Box(modifier) {
             key(page.key) {

@@ -14,6 +14,8 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -69,7 +71,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import io.github.sreepv43.soundhub.audio.Atmos
 import io.github.sreepv43.soundhub.audio.AudioInfo
-import io.github.sreepv43.soundhub.audio.FormatFilter
 import io.github.sreepv43.soundhub.slsk.TransferInfo
 import io.github.sreepv43.soundhub.slsk.TransferStatus
 import io.github.sreepv43.soundhub.ui.Accent
@@ -91,8 +92,8 @@ fun ScreenTitle(text: String, subtitle: String? = null) {
 }
 
 @Composable
-fun Note(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant) {
-    Text(text, style = MaterialTheme.typography.bodyMedium, color = color)
+fun Note(text: String, color: Color = MaterialTheme.colorScheme.onSurfaceVariant, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.bodyMedium, color = color, modifier = modifier)
 }
 
 @Composable
@@ -152,30 +153,22 @@ fun Chip(label: String, selected: Boolean, modifier: Modifier = Modifier, key: A
     }
 }
 
-/** All format chips, always in the same places, each with how many albums it matches. */
-@Composable
-fun FilterRow(selected: FormatFilter, counts: Map<FormatFilter, Int>, onSelect: (FormatFilter) -> Unit) {
-    LazyRow(
-        modifier = Modifier.tvRow().tvEnterAt { "filter-${selected.name}" }.testTag("filters"),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        contentPadding = PaddingValues(vertical = 6.dp),
-    ) {
-        items(FormatFilter.entries, key = { it.name }) { filter ->
-            Chip("${filter.label}  ${counts[filter] ?: 0}", filter == selected, key = "filter-${filter.name}") { onSelect(filter) }
-        }
-    }
-}
-
 /** A list row: lights up when selected with the remote. */
 @Composable
-fun ListRow(onClick: () -> Unit, modifier: Modifier = Modifier, key: Any? = null, content: @Composable RowScope.() -> Unit) {
+fun ListRow(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    key: Any? = null,
+    pageDefault: Boolean = false,
+    content: @Composable RowScope.() -> Unit,
+) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
     Row(
         modifier
             .fillMaxWidth()
             .onFocusChanged { focused = it.hasFocus }
-            .tvFocus(shape, key = key)
+            .tvFocus(shape, key = key, pageDefault = pageDefault)
             .clip(shape)
             .background(if (focused) AppColors.rowFocused else AppColors.row)
             .clickable(onClick = onClick)
@@ -231,13 +224,13 @@ fun ActionButton(
     pageDefault: Boolean = false,
     onClick: () -> Unit,
 ) {
-    val styled = modifier.tvFocus(RoundedCornerShape(50), scale = 1.05f, pageDefault = pageDefault).testTag(text)
+    val styled = modifier.widthIn(max = 460.dp).tvFocus(RoundedCornerShape(50), scale = 1.05f, pageDefault = pageDefault).testTag(text)
     val content: @Composable RowScope.() -> Unit = {
         if (icon != null) {
             Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, style = MaterialTheme.typography.labelLarge)
+        Text(text, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
     }
     if (primary) Button(onClick = onClick, modifier = styled, content = content)
     else OutlinedButton(onClick = onClick, modifier = styled, content = content)
@@ -377,33 +370,36 @@ fun RecentSearches(recent: List<String>, onSearch: (String) -> Unit) {
 class DialogButton(val text: String, val primary: Boolean = false, val onClick: () -> Unit)
 
 /**
- * A dialog for the remote: the first button is selected when it opens. Elements inside aren't
+ * A dialog for the remote: the first button (or the one at [focusIndex]) is selected when it opens. Elements inside aren't
  * remembered by the page behind it, so closing it leaves the page's selection alone.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TvDialog(
     title: String,
     onDismiss: () -> Unit,
     buttons: List<DialogButton>,
     focusFirstButton: Boolean = true,
+    focusIndex: Int = 0,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val first = remember { FocusRequester() }
     Dialog(onDismissRequest = onDismiss) {
         CompositionLocalProvider(LocalTvShell provides null) {
-            Surface(shape = RoundedCornerShape(16.dp), color = AppColors.panel, modifier = Modifier.widthIn(max = 560.dp)) {
+            Surface(shape = RoundedCornerShape(16.dp), color = AppColors.panel, modifier = Modifier.widthIn(max = 600.dp)) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(title, style = MaterialTheme.typography.titleLarge)
                     content()
-                    Row(
+                    FlowRow(
                         Modifier.fillMaxWidth().padding(top = 8.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         buttons.forEachIndexed { index, button ->
                             ActionButton(
                                 button.text,
                                 primary = button.primary,
-                                modifier = if (index == 0) Modifier.focusRequester(first) else Modifier,
+                                modifier = if (index == focusIndex) Modifier.focusRequester(first) else Modifier,
                                 onClick = button.onClick,
                             )
                         }

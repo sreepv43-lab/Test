@@ -72,6 +72,12 @@ private val RailExpanded = 220.dp
 class TvShellState internal constructor() {
     internal var shownPage: Any? = null
     internal var focusedPage by mutableStateOf<Any?>(null)
+
+    /** The player bar under the page holds the selection. */
+    internal var barHasFocus by mutableStateOf(false)
+
+    /** A focused control uses Left/Right itself (the seek bar); the shell then doesn't move focus on them. */
+    internal var horizontalClaim: Boolean = false
     private val lastByPage = object : LinkedHashMap<Any?, Int>() {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any?, Int>?) = size > MAX_PAGES
     }
@@ -198,6 +204,7 @@ fun TvShell(
     pageKey: Any?,
     onSelect: (MenuEntry) -> Unit,
     modifier: Modifier = Modifier,
+    bottomBar: @Composable () -> Unit = {},
     content: @Composable (Modifier) -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
@@ -239,6 +246,8 @@ fun TvShell(
         withFrameNanos { }
         var waited = 0L
         while (!pageHasFocus() && !expanded && waited < GIVE_UP_MS) {
+            // The listener moved down to the player bar meanwhile: leave the selection there.
+            if (shell.barHasFocus && waited >= RESTORE_WAIT_MS) break
             val restored = waited < RESTORE_WAIT_MS && shell.restore(pageKey)
             if (!restored && (waited >= RESTORE_WAIT_MS || !shell.remembers(pageKey))) {
                 // The remembered element isn't coming back (e.g. the list changed): use the start.
@@ -248,7 +257,7 @@ fun TvShell(
             val step = if (waited < 1_000) 50L else 250L
             delay(step)
             waited += step
-            if (!pageHasFocus() && !menuHasFocus && waited >= PARK_AFTER_MS) {
+            if (!pageHasFocus() && !menuHasFocus && !shell.barHasFocus && waited >= PARK_AFTER_MS) {
                 menuActive = true
                 runCatching { menuFocus.requestFocus() }
             }
@@ -257,7 +266,7 @@ fun TvShell(
 
     // Focus can vanish when the focused element is removed (a list changes, a download is
     // removed); bring it back.
-    val anyFocus = pageHasFocus() || menuHasFocus
+    val anyFocus = pageHasFocus() || menuHasFocus || shell.barHasFocus
     LaunchedEffect(anyFocus) {
         if (!anyFocus) {
             delay(200)
@@ -267,7 +276,8 @@ fun TvShell(
 
     Box(modifier.fillMaxSize()) {
         CompositionLocalProvider(LocalTvShell provides shell, LocalBringIntoViewSpec provides TvScrolling.Edge) {
-            content(
+            // The page, with the player bar under it (Down from the end of a page reaches the bar).
+            Column(
                 Modifier
                     .fillMaxSize()
                     .padding(start = RailCollapsed)
@@ -275,8 +285,11 @@ fun TvShell(
                     .focusGroup()
                     .onPreviewKeyEvent { event ->
                         val direction = arrowDirection(event)
+                        val horizontal = direction == FocusDirection.Left || direction == FocusDirection.Right
                         when {
                             direction == null -> false
+                            // The seek bar uses Left/Right to seek.
+                            horizontal && shell.horizontalClaim -> false
                             focusManager.moveFocus(direction) -> true
                             direction == FocusDirection.Left -> {
                                 if (event.nativeKeyEvent.repeatCount == 0) openMenu()
@@ -285,7 +298,10 @@ fun TvShell(
                             else -> false
                         }
                     },
-            )
+            ) {
+                Box(Modifier.weight(1f).fillMaxWidth()) { content(Modifier.fillMaxSize()) }
+                Box(Modifier.fillMaxWidth().onFocusChanged { shell.barHasFocus = it.hasFocus }) { bottomBar() }
+            }
         }
 
         val selectedIndex = entries.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)

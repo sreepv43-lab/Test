@@ -133,6 +133,15 @@ fun Modifier.tvEnterAt(key: () -> Any?): Modifier = composed {
 }
 
 /**
+ * For a control that uses Left/Right itself while selected (the seek bar): the shell stops moving
+ * the selection on those keys. Place before the focusable.
+ */
+fun Modifier.tvClaimHorizontalKeys(): Modifier = composed {
+    val shell = LocalTvShell.current
+    onFocusChanged { shell?.horizontalClaim = it.isFocused }
+}
+
+/**
  * For horizontal lists (filter chips): Left/Right never leave the row, so at the first chip Left
  * opens the side menu instead of jumping diagonally into the list below.
  */
