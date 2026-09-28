@@ -28,6 +28,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
@@ -97,6 +100,10 @@ fun ArtistsLayout(
     val width = LocalConfiguration.current.screenWidthDp.dp - RailCollapsed - 48.dp
     val columns = (width / CARD_WIDTH).toInt().coerceIn(2, 5)
     val rows = remember(shown, columns) { shown.artists.chunked(columns) }
+    // The remote's own search measures a wide row from its middle, so from the chips on the left
+    // Up/Down would skip the genre row for the artist straight above or below: point them at it.
+    val modeRow = remember { FocusRequester() }
+    val genreRow = remember { FocusRequester() }
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
         state = rememberLazyListState(),
@@ -108,31 +115,43 @@ fun ArtistsLayout(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Note("Search for", modifier = Modifier.padding(end = 12.dp))
                 LazyRow(
-                    Modifier.tvRow().tvEnterAt { "mode-${mode.name}" }.testTag("artist-mode"),
+                    Modifier.focusRequester(modeRow).tvRow().tvEnterAt { "mode-${mode.name}" }.testTag("artist-mode"),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(vertical = 4.dp),
                 ) {
                     items(ArtistSearch.entries, key = { it.name }) { entry ->
-                        Chip(entry.label, entry == mode, key = "mode-${entry.name}") { onMode(entry) }
+                        Chip(
+                            entry.label,
+                            entry == mode,
+                            modifier = Modifier.focusProperties { down = genreRow },
+                            key = "mode-${entry.name}",
+                        ) { onMode(entry) }
                     }
                 }
             }
         }
         item(key = "genres") {
             LazyRow(
-                Modifier.tvRow().tvEnterAt { "genre-$genre" }.testTag("genres"),
+                Modifier.focusRequester(genreRow).tvRow().tvEnterAt { "genre-$genre" }.testTag("genres"),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 contentPadding = PaddingValues(vertical = 4.dp),
             ) {
                 itemsIndexed(genres, key = { _, it -> it.name }) { index, entry ->
                     // The page starts here: one press down reaches the artists.
-                    Chip(entry.name, index == genre, key = "genre-$index", pageDefault = index == genre) { onGenre(index) }
+                    Chip(
+                        entry.name,
+                        index == genre,
+                        modifier = Modifier.focusProperties { up = modeRow },
+                        key = "genre-$index",
+                        pageDefault = index == genre,
+                    ) { onGenre(index) }
                 }
             }
         }
-        items(rows, key = { row -> "row:${shown.name}:${row.first().name}" }) { row ->
+        itemsIndexed(rows, key = { _, row -> "row:${shown.name}:${row.first().name}" }) { index, row ->
+            val toGenres = if (index == 0) Modifier.focusProperties { up = genreRow } else Modifier
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                row.forEach { artist -> ArtistCard(artist, Modifier.weight(1f)) { onPick(artist) } }
+                row.forEach { artist -> ArtistCard(artist, Modifier.weight(1f).then(toGenres)) { onPick(artist) } }
                 repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
             }
         }
