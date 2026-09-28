@@ -293,6 +293,9 @@ class RemoteNavigationTest {
     @Test
     fun anArtistStartsASearchAndBackReturnsToTheArtist() {
         openSection(Section.ARTISTS)
+        // Starts on the genres: one press down reaches the artists, one up what to search for.
+        assertEquals(FamousArtists.genres.first().name, focused())
+        press(KeyEvent.KEYCODE_DPAD_UP)
         assertEquals("All music", focused())
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         assertEquals(FamousArtists.genres.first().name, focused())
