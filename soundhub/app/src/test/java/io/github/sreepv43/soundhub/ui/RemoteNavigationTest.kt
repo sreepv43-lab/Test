@@ -21,6 +21,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
@@ -297,8 +298,9 @@ class RemoteNavigationTest {
         assertEquals(FamousArtists.genres.first().name, focused())
         press(KeyEvent.KEYCODE_DPAD_UP)
         assertEquals("All music", focused())
+        val layout = clickables()
         press(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertEquals(FamousArtists.genres.first().name, focused())
+        assertEquals("Down from what to search for reaches the genres. On screen: $layout", FamousArtists.genres.first().name, focused())
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         assertEquals("artist-${FamousArtists.genres.first().artists.first().name}", focused())
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
@@ -409,6 +411,15 @@ class RemoteNavigationTest {
         settle(1_000)
         assertEquals(SectionPage(section), navigator.current)
     }
+
+    /** What can be selected on screen, with where it is (for failure messages). */
+    private fun clickables(): String =
+        rule.onAllNodes(SemanticsMatcher.keyIsDefined(SemanticsActions.OnClick)).fetchSemanticsNodes().joinToString("; ") { node ->
+            val name = node.config.getOrNull(SemanticsProperties.TestTag)
+                ?: node.config.getOrNull(SemanticsProperties.Text)?.joinToString(" ") ?: "?"
+            val b = node.boundsInRoot
+            "$name[${b.left.toInt()},${b.top.toInt()}-${b.right.toInt()},${b.bottom.toInt()}]"
+        }
 
     /** The rows of the open options dialog, top to bottom. */
     private fun optionsInOrder(): List<String> =
