@@ -34,7 +34,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -86,9 +85,14 @@ fun OptionsDialog(title: String, onDismiss: () -> Unit, options: List<Option>, s
     val first = remember { FocusRequester() }
     // The first safe choice; Cancel when every choice removes something.
     val start = options.indexOfFirst { !it.destructive }
+    var hasFocus by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = onDismiss) {
         CompositionLocalProvider(LocalTvShell provides null) {
-            Surface(shape = RoundedCornerShape(16.dp), color = AppColors.panel, modifier = Modifier.widthIn(min = 320.dp, max = 560.dp)) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = AppColors.panel,
+                modifier = Modifier.widthIn(min = 320.dp, max = 560.dp).onFocusChanged { hasFocus = it.hasFocus },
+            ) {
                 Column(Modifier.padding(vertical = 20.dp)) {
                     Text(
                         title,
@@ -134,7 +138,7 @@ fun OptionsDialog(title: String, onDismiss: () -> Unit, options: List<Option>, s
                 }
             }
         }
-        LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        FocusWhenShown(first) { hasFocus }
     }
 }
 
@@ -242,7 +246,7 @@ fun FilterDialog(filter: MusicFilter, showAvailability: Boolean, onChange: (Musi
             DialogButton("Done", primary = true, onClick = onDismiss),
             DialogButton("Clear all") { onChange(MusicFilter()) },
         ),
-        focusFirstButton = false,
+        initialFocus = first,
     ) {
         FilterGroup("Quality", Quality.entries.map { it.label to (it == filter.quality) }, first) {
             onChange(filter.copy(quality = Quality.entries[it]))
@@ -258,7 +262,6 @@ fun FilterDialog(filter: MusicFilter, showAvailability: Boolean, onChange: (Musi
                 onChange(filter.copy(freeSlotOnly = it == 1))
             }
         }
-        LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
     }
 }
 

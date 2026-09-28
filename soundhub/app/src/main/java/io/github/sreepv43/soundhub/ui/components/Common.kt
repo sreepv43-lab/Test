@@ -51,6 +51,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -381,12 +382,18 @@ fun TvDialog(
     buttons: List<DialogButton>,
     focusFirstButton: Boolean = true,
     focusIndex: Int = 0,
+    initialFocus: FocusRequester? = null,
     content: @Composable ColumnScope.() -> Unit = {},
 ) {
     val first = remember { FocusRequester() }
+    var hasFocus by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = onDismiss) {
         CompositionLocalProvider(LocalTvShell provides null) {
-            Surface(shape = RoundedCornerShape(16.dp), color = AppColors.panel, modifier = Modifier.widthIn(max = 600.dp)) {
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = AppColors.panel,
+                modifier = Modifier.widthIn(max = 600.dp).onFocusChanged { hasFocus = it.hasFocus },
+            ) {
                 Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text(title, style = MaterialTheme.typography.titleLarge)
                     content()
@@ -407,11 +414,27 @@ fun TvDialog(
                 }
             }
         }
-        if (focusFirstButton && buttons.isNotEmpty()) {
-            LaunchedEffect(Unit) { runCatching { first.requestFocus() } }
+        val target = initialFocus ?: first.takeIf { focusFirstButton && buttons.isNotEmpty() }
+        if (target != null) FocusWhenShown(target) { hasFocus }
+    }
+}
+
+/**
+ * Moves the selection into a dialog as it opens. Its window can need a frame or two before it
+ * takes focus, so this tries again each frame until something in the dialog has it.
+ */
+@Composable
+fun FocusWhenShown(requester: FocusRequester, hasFocus: () -> Boolean) {
+    LaunchedEffect(requester) {
+        repeat(FOCUS_TRIES) {
+            withFrameNanos { }
+            if (hasFocus()) return@LaunchedEffect
+            runCatching { requester.requestFocus() }
         }
     }
 }
+
+private const val FOCUS_TRIES = 30
 
 /** Asks for one line of text with the on-screen keyboard already open. */
 @Composable
@@ -423,12 +446,13 @@ fun TextEntryDialog(
     onDone: (String) -> Unit,
 ) {
     var text by remember { mutableStateOf(initial) }
+    var fieldFocused by remember { mutableStateOf(false) }
     val field = remember { FocusRequester() }
     TvDialog(
         title = title,
         onDismiss = onDismiss,
         buttons = listOf(DialogButton("OK", primary = true) { onDone(text) }, DialogButton("Cancel", onClick = onDismiss)),
-        focusFirstButton = false,
+        initialFocus = field,
     ) {
         val keyboard = LocalSoftwareKeyboardController.current
         OutlinedTextField(
@@ -441,12 +465,9 @@ fun TextEntryDialog(
                 imeAction = ImeAction.Done,
             ),
             keyboardActions = KeyboardActions(onDone = { onDone(text) }),
-            modifier = Modifier.fillMaxWidth().focusRequester(field),
+            modifier = Modifier.fillMaxWidth().focusRequester(field).onFocusChanged { fieldFocused = it.isFocused },
         )
-        LaunchedEffect(Unit) {
-            runCatching { field.requestFocus() }
-            keyboard?.show()
-        }
+        LaunchedEffect(fieldFocused) { if (fieldFocused) keyboard?.show() }
     }
 }
 

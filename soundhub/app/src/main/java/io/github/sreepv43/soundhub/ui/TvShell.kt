@@ -178,6 +178,9 @@ fun TvPage(key: Any?, content: @Composable () -> Unit) {
                         else -> shell.remembered(key) ?: shell.defaultOf(key) ?: FocusRequester.Default
                     }
                 }
+                // Left/Right never jump diagonally out of the page (e.g. into the player bar):
+                // at the left edge Left opens the menu instead.
+                exit = ::verticalExitOnly
             }
             .focusGroup(),
     ) {
@@ -196,7 +199,7 @@ fun TvPage(key: Any?, content: @Composable () -> Unit) {
  * - Every new page gets the selection as soon as it has something focusable. Until then the
  *   selection waits on the collapsed menu, so the remote always has something to move.
  */
-@OptIn(ExperimentalFoundationApi::class)
+@OptIn(ExperimentalFoundationApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun TvShell(
     entries: List<MenuEntry>,
@@ -300,7 +303,13 @@ fun TvShell(
                     },
             ) {
                 Box(Modifier.weight(1f).fillMaxWidth()) { content(Modifier.fillMaxSize()) }
-                Box(Modifier.fillMaxWidth().onFocusChanged { shell.barHasFocus = it.hasFocus }) { bottomBar() }
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .onFocusChanged { shell.barHasFocus = it.hasFocus }
+                        .focusProperties { exit = ::verticalExitOnly }
+                        .focusGroup(),
+                ) { bottomBar() }
             }
         }
 
@@ -342,6 +351,10 @@ fun TvShell(
         }
     }
 }
+
+/** Page and player bar are left only with Up/Down. */
+private fun verticalExitOnly(direction: FocusDirection): FocusRequester =
+    if (direction == FocusDirection.Left || direction == FocusDirection.Right) FocusRequester.Cancel else FocusRequester.Default
 
 private fun arrowDirection(event: KeyEvent): FocusDirection? {
     if (event.type != KeyEventType.KeyDown) return null
