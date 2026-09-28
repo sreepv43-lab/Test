@@ -33,17 +33,22 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.dp
 import io.github.sreepv43.soundhub.audio.AudioFormats
 import io.github.sreepv43.soundhub.audio.MusicFilter
+import io.github.sreepv43.soundhub.library.FamousArtists
 import io.github.sreepv43.soundhub.library.PathNames
 import io.github.sreepv43.soundhub.library.Releases
 import io.github.sreepv43.soundhub.library.SearchFolder
+import io.github.sreepv43.soundhub.library.SearchResults
 import io.github.sreepv43.soundhub.library.SearchTrack
 import io.github.sreepv43.soundhub.slsk.ConnectionState
+import io.github.sreepv43.soundhub.slsk.SearchResponse
 import io.github.sreepv43.soundhub.slsk.SharedFile
 import io.github.sreepv43.soundhub.slsk.TransferInfo
 import io.github.sreepv43.soundhub.slsk.TransferStatus
 import io.github.sreepv43.soundhub.ui.components.ActionButton
 import io.github.sreepv43.soundhub.ui.components.SeekBar
 import io.github.sreepv43.soundhub.ui.screens.AccountLayout
+import io.github.sreepv43.soundhub.ui.screens.ArtistSearch
+import io.github.sreepv43.soundhub.ui.screens.ArtistsLayout
 import io.github.sreepv43.soundhub.ui.screens.PlayerControls
 import io.github.sreepv43.soundhub.ui.screens.ReleaseLayout
 import io.github.sreepv43.soundhub.ui.screens.SearchLayout
@@ -79,6 +84,7 @@ class RemoteNavigationTest {
     private val seeks = mutableListOf<Long>()
     private val actions = mutableListOf<TransferAction>()
     private var signIns = 0
+    private val picked = mutableListOf<String>()
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Before
@@ -95,6 +101,7 @@ class RemoteNavigationTest {
                     onSeek = { seeks += it },
                     onTransferAction = { actions += it },
                     onSignIn = { signIns++ },
+                    onArtist = { picked += it },
                 )
             }
         }
@@ -135,8 +142,7 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertEquals("menu-SEARCH", focused())
         assertTrue(menuExpanded())
-        press(KeyEvent.KEYCODE_DPAD_DOWN, times = 2)
-        assertEquals("menu-TRANSFERS", focused())
+        moveTo("menu-TRANSFERS", KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         settle(1_000)
         assertEquals(SectionPage(Section.TRANSFERS), navigator.current)
@@ -197,8 +203,7 @@ class RemoteNavigationTest {
     fun anotherSectionFromTheMenuComesBackToTheSameAlbumWithBack() {
         downTo("release-Album 3")
         press(KeyEvent.KEYCODE_DPAD_LEFT)
-        press(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertEquals("menu-LIBRARY", focused())
+        moveTo("menu-LIBRARY", KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals(SectionPage(Section.LIBRARY), navigator.current)
         press(KeyEvent.KEYCODE_BACK)
@@ -253,6 +258,56 @@ class RemoteNavigationTest {
         rule.onNodeWithTag("option-Cancel").performClick()
         settle()
         assertTrue(actions.toString(), actions.isEmpty())
+    }
+
+    @Test
+    fun scrollingThroughManyArrivingResultsAndTryingEveryFilterKeepsWorking() {
+        rule.runOnUiThread { folders.value = manyResults(60) }
+        settle(500)
+        // Scroll down while answers keep arriving, as during a real search.
+        repeat(50) { i ->
+            press(KeyEvent.KEYCODE_DPAD_DOWN)
+            if (i % 5 == 4) rule.runOnUiThread { folders.value = manyResults(60 + (i + 1) * 6) }
+        }
+        assertTrue(focused(), focused().startsWith("release-"))
+        // Holding Down sends repeated presses.
+        hold(KeyEvent.KEYCODE_DPAD_DOWN, 30)
+        assertTrue(focused(), focused().startsWith("release-") || focused() == "player-bar")
+        moveUntil(KeyEvent.KEYCODE_DPAD_UP) { it.startsWith("All ") }
+        for (label in listOf("Lossless", "Hi-Res", "Dolby Atmos", "MP3")) {
+            press(KeyEvent.KEYCODE_DPAD_RIGHT)
+            assertTrue(focused(), focused().startsWith(label))
+            press(KeyEvent.KEYCODE_DPAD_CENTER)
+            settle()
+            assertTrue("still on the chip after choosing it: ${focused()}", focused().startsWith(label))
+            press(KeyEvent.KEYCODE_DPAD_DOWN)
+            press(KeyEvent.KEYCODE_DPAD_UP)
+        }
+        rule.runOnUiThread { folders.value = manyResults(200) }
+        moveUntil(KeyEvent.KEYCODE_DPAD_LEFT) { it.startsWith("All ") }
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        repeat(20) { press(KeyEvent.KEYCODE_DPAD_DOWN) }
+        assertTrue(focused(), focused().startsWith("release-"))
+    }
+
+    @Test
+    fun anArtistStartsASearchAndBackReturnsToTheArtist() {
+        openSection(Section.ARTISTS)
+        assertEquals("All music", focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals(FamousArtists.genres.first().name, focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("artist-${FamousArtists.genres.first().artists.first().name}", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        val artist = focused()
+        assertTrue(artist, artist.startsWith("artist-"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf(artist.removePrefix("artist-")), picked)
+        assertEquals(SectionPage(Section.SEARCH), navigator.current)
+        press(KeyEvent.KEYCODE_BACK)
+        assertEquals(SectionPage(Section.ARTISTS), navigator.current)
+        assertEquals(artist, focused())
     }
 
     @Test
@@ -365,6 +420,28 @@ class RemoteNavigationTest {
 
     private fun upTo(target: String) = moveTo(target, KeyEvent.KEYCODE_DPAD_UP)
 
+    private fun moveUntil(keyCode: Int, found: (String) -> Boolean) {
+        repeat(200) {
+            if (found(focused())) return
+            press(keyCode)
+        }
+        assertTrue(focused(), found(focused()))
+    }
+
+    /** Holds a key down: the remote sends the press again and again until it is let go. */
+    private fun hold(keyCode: Int, repeats: Int) {
+        val down = SystemClock.uptimeMillis()
+        repeat(repeats) { count ->
+            rule.runOnUiThread {
+                rule.activity.dispatchKeyEvent(KeyEvent(down, SystemClock.uptimeMillis(), KeyEvent.ACTION_DOWN, keyCode, count))
+            }
+            rule.waitForIdle()
+            rule.mainClock.advanceTimeBy(50)
+        }
+        key(keyCode, KeyEvent.ACTION_UP)
+        settle()
+    }
+
     private fun moveTo(target: String, keyCode: Int) {
         repeat(40) {
             if (focused() == target) return
@@ -429,6 +506,30 @@ private fun folder(i: Int): SearchFolder {
     return SearchFolder("user$i", directory, tracks, slotFree = true, avgSpeed = 1_000_000, queueLength = 0)
 }
 
+/** Answers from [count] users in a mix of formats, three users per album (so albums have several sources). */
+private fun manyResults(count: Int): List<SearchFolder> = SearchResults.group(
+    (0 until count).map { i ->
+        val user = "peer$i"
+        val (extension, attributes) = when (i % 5) {
+            0 -> "flac" to mapOf(1 to 240, 4 to 96_000, 5 to 24)
+            1 -> "mp3" to mapOf(0 to 320, 1 to 240)
+            2 -> "flac" to mapOf(1 to 240, 4 to 44_100, 5 to 16)
+            3 -> "m4a" to mapOf(0 to 768, 1 to 240)
+            else -> "mp3" to mapOf(0 to 192, 1 to 240)
+        }
+        val album = if (i % 5 == 3) "Record ${i / 3} [Dolby Atmos]" else "Record ${i / 3}"
+        val directory = "@@$user\\Music\\Band ${i / 9} - $album"
+        SearchResponse(
+            user,
+            1,
+            (1..(3 + i % 4)).map { n -> SharedFile("$directory\\0$n - Track $n.$extension", 10_000_000L * (n + 1), "", attributes) },
+            slotFree = i % 3 != 0,
+            avgSpeed = 50_000 * (i % 7 + 1),
+            queueLength = (i % 4).toLong(),
+        )
+    },
+)
+
 private fun transfers(): List<TransferInfo> = (1L..12L).map { id ->
     val status = when {
         id <= 6 -> TransferStatus.COMPLETED
@@ -451,6 +552,7 @@ private fun FakeApp(
     onSeek: (Long) -> Unit,
     onTransferAction: (TransferAction) -> Unit,
     onSignIn: () -> Unit,
+    onArtist: (String) -> Unit,
 ) {
     val navigator = remember { Navigator(Section.SEARCH) }
     SideEffect { onNavigator(navigator) }
@@ -507,6 +609,14 @@ private fun FakeApp(
                         onNext = {},
                         onRepeat = {},
                     )
+                }
+                Section.ARTISTS -> {
+                    var genre by remember { mutableStateOf(0) }
+                    var mode by remember { mutableStateOf(ArtistSearch.ALL) }
+                    ArtistsLayout(FamousArtists.genres, genre, { genre = it }, mode, { mode = it }) { artist ->
+                        onArtist(artist.name)
+                        navigator.bringToTop(Section.SEARCH)
+                    }
                 }
                 Section.SETTINGS -> AccountLayout(
                     state = ConnectionState.Disconnected,

@@ -38,6 +38,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.soundhub.container
+import io.github.sreepv43.soundhub.data.CrashLog
 import io.github.sreepv43.soundhub.slsk.ConnectionState
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.SettingsKind
@@ -239,6 +240,7 @@ private fun AccountSettings() {
 }
 
 private const val FOCUS_TRIES = 30
+private const val CRASH_LINES_PER_BLOCK = 8
 
 /** The account page (no app state here, so the remote tests can drive it). */
 @Composable
@@ -412,8 +414,27 @@ private fun AboutSettings() {
     val version = remember {
         runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
     }
+    val crashLog = remember { CrashLog(context) }
+    var crash by remember { mutableStateOf(crashLog.read()) }
     SettingsList {
         item(key = "title") { ScreenTitle("About SoundHub", "Version $version") }
+        crash?.let { report ->
+            item(key = "crash-title") {
+                Note("SoundHub closed because of an error. A photo of this text helps fix it:", WarningColor)
+            }
+            // One focusable block per line group, so the remote can scroll through the whole report.
+            report.lines().chunked(CRASH_LINES_PER_BLOCK).forEachIndexed { index, lines ->
+                item(key = "crash-$index") { ReadableText(lines.joinToString("\n")) }
+            }
+            item(key = "crash-clear") {
+                Row(Modifier.tvButtonGroup()) {
+                    ActionButton("Clear this report", primary = false) {
+                        crashLog.clear()
+                        crash = null
+                    }
+                }
+            }
+        }
         item(key = "about") {
             ReadableText(
                 "SoundHub is a Soulseek client for listening on a TV or tablet, with Dolby Atmos sent untouched to " +

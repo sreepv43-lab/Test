@@ -87,6 +87,16 @@ class LibraryTest {
     }
 
     @Test
+    fun aUserWhoAnswersTwiceGivesOneFolderWithEachFileOnce() {
+        fun file(n: Int) = SharedFile("@@d\\A - B\\0$n Song.mp3", 8_000_000, "", mapOf(0 to 320))
+        val first = SearchResponse("dup", 1, listOf(file(1), file(2), file(1)), slotFree = false, avgSpeed = 10, queueLength = 3)
+        val again = SearchResponse("dup", 1, listOf(file(2), file(3)), slotFree = true, avgSpeed = 20, queueLength = 0)
+        val folder = SearchResults.group(listOf(first, again)).single()
+        assertEquals(listOf("01 Song.mp3", "02 Song.mp3", "03 Song.mp3"), folder.tracks.map { it.file.filename.substringAfterLast('\\') })
+        assertTrue("the latest answer's availability counts", folder.slotFree)
+    }
+
+    @Test
     fun libraryPersistsAndGroupsAlbums() {
         val index = temp.root.resolve("library.json")
         val store = LibraryStore(index)

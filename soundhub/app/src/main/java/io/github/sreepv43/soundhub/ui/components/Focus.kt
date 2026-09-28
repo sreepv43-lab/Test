@@ -99,6 +99,10 @@ private class TvFocusRegistrationNode(
 
     override fun onDetach() = unregister()
 
+    // A lazy list keeps rows scrolled out of view for reuse: they stay attached but can't take
+    // focus, so they must not be handed out as where to put the selection.
+    override fun onReset() = unregister()
+
     fun update(shell: TvShellState, page: Any?, id: Int, requester: FocusRequester, pageDefault: Boolean) {
         if (isAttached) unregister()
         this.shell = shell

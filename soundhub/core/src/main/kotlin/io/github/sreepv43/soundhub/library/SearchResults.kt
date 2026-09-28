@@ -57,29 +57,35 @@ data class SearchFolder(
 }
 
 object SearchResults {
-    /** Groups responses into folders of audio files, most available (free slot, short queue, fast) first. */
+    /**
+     * Groups responses into folders of audio files, most available (free slot, short queue, fast)
+     * first. A user who answers more than once, or shares a folder twice, gives one folder with each
+     * file once (lists key their rows by folder and file).
+     */
     fun group(responses: List<SearchResponse>): List<SearchFolder> =
-        responses.flatMap { response ->
-            val covers = response.files.filter { isImage(it.filename) }.groupBy { PathNames.folderOf(it.filename) }
-            response.files
+        responses.groupBy { it.username }.flatMap { (username, answers) ->
+            val latest = answers.last()
+            val files = answers.flatMap { it.files }.distinctBy { it.filename }
+            val covers = files.filter { isImage(it.filename) }.groupBy { PathNames.folderOf(it.filename) }
+            files
                 .filter { AudioFormats.isAudio(it.filename) }
                 .groupBy { PathNames.folderOf(it.filename) }
-                .map { (directory, files) ->
-                    val tracks = files.map { file ->
+                .map { (directory, folderFiles) ->
+                    val tracks = folderFiles.map { file ->
                         SearchTrack(
-                            response.username,
+                            username,
                             file,
                             AudioFormats.classify(file.filename, file.size, file.bitrate, file.durationSec, file.sampleRate, file.bitDepth, file.vbr),
                             PathNames.describe(file.filename),
                         )
                     }.sortedWith(compareBy({ it.name.trackNumber ?: Int.MAX_VALUE }, { it.file.filename.lowercase() }))
                     SearchFolder(
-                        response.username,
+                        username,
                         directory,
                         tracks,
-                        response.slotFree,
-                        response.avgSpeed,
-                        response.queueLength,
+                        latest.slotFree,
+                        latest.avgSpeed,
+                        latest.queueLength,
                         pickCover(covers[directory].orEmpty()),
                     )
                 }

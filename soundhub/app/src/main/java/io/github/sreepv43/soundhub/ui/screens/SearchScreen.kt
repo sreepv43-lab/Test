@@ -179,7 +179,7 @@ fun searchStatus(session: SearchSession, count: Int, onSignIn: () -> Unit): Sear
         ConnectionState.Connecting -> SearchStatus("Connecting to Soulseek…")
         is ConnectionState.Connected -> SearchStatus(
             when {
-                query.isEmpty() -> "Press OK on the search box to type, or pick a recent search."
+                query.isEmpty() -> "Press OK on the search box to type, pick a recent search, or choose Artists in the menu."
                 searching && count == 0 -> "Searching for \"$query\"… answers arrive from other users over the next minute."
                 searching -> "$count albums so far for \"$query\", more arriving (new ones are added at the end)…"
                 count == 0 -> "Nothing found for \"$query\". Try fewer or different words."

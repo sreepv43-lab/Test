@@ -43,6 +43,7 @@ import io.github.sreepv43.soundhub.ui.components.Note
 import io.github.sreepv43.soundhub.ui.components.TvDialog
 import io.github.sreepv43.soundhub.ui.components.TwoLines
 import io.github.sreepv43.soundhub.ui.screens.AlbumScreen
+import io.github.sreepv43.soundhub.ui.screens.ArtistsScreen
 import io.github.sreepv43.soundhub.ui.screens.ArtistScreen
 import io.github.sreepv43.soundhub.ui.screens.HomeScreen
 import io.github.sreepv43.soundhub.ui.screens.LibraryScreen
@@ -91,6 +92,7 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
                     is SectionPage -> when (page.section) {
                         Section.HOME -> HomeScreen(onOpenAlbum = openAlbum, onGo = go, onSignIn = signIn, onPlaying = showPlayer)
                         Section.SEARCH -> SearchScreen(onOpen = { navigator.open(ReleasePage(it, Section.SEARCH)) }, onSignIn = signIn)
+                        Section.ARTISTS -> ArtistsScreen(onSearching = { navigator.bringToTop(it) })
                         Section.LIBRARY -> LibraryScreen(
                             onOpenAlbum = openAlbum,
                             onOpenArtist = openArtist,

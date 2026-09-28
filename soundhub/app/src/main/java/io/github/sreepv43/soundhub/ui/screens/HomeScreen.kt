@@ -19,6 +19,7 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -109,6 +110,7 @@ fun HomeScreen(onOpenAlbum: (String) -> Unit, onGo: (Section) -> Unit, onSignIn:
                     primary = playing == null && resumeTrack == null,
                     pageDefault = signedIn && playing == null && resumeTrack == null,
                 ) { onGo(Section.SEARCH) }
+                ActionButton("Famous artists", Icons.Default.Star, primary = false) { onGo(Section.ARTISTS) }
                 if (tracks.isNotEmpty()) {
                     ActionButton("Shuffle library", Icons.Default.Shuffle, primary = false) {
                         if (playOrExplain(context, container, tracks.filter { it.id !in missing }, shuffle = true)) onPlaying()

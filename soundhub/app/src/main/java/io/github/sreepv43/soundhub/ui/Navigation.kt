@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SurroundSound
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -22,6 +23,7 @@ import io.github.sreepv43.soundhub.library.Release
 enum class Section(val label: String, val icon: ImageVector) {
     HOME("Home", Icons.Default.Home),
     SEARCH("Search", Icons.Default.Search),
+    ARTISTS("Artists", Icons.Default.Star),
     LIBRARY("Library", Icons.Default.LibraryMusic),
     TRANSFERS("Transfers", Icons.Default.Download),
     SOUND("Atmos & sound", Icons.Default.SurroundSound),
@@ -93,6 +95,17 @@ class Navigator(start: Section, private val home: Section = Section.HOME) {
     fun open(page: Page) {
         val existing = stack.indexOf(page)
         if (existing >= 0) popTo(existing) else stack.add(page)
+    }
+
+    /**
+     * Shows [section] on top, so Back returns to the current page (e.g. Artists → the search it
+     * started). An older copy further down moves up, keeping its state; the pages above it stay.
+     */
+    fun bringToTop(section: Section) {
+        val page = SectionPage(section)
+        if (current == page) return
+        stack.remove(page)
+        stack.add(page)
     }
 
     fun back(): Boolean {

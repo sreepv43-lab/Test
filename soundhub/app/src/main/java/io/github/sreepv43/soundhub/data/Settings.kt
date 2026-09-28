@@ -34,6 +34,8 @@ class Settings(context: Context) {
     private fun bool(key: String, default: Boolean) =
         Pref(key, default, { k, d -> getBoolean(k, d) }, { k, v -> putBoolean(k, v) })
 
+    private fun long(key: String, default: Long) = Pref(key, default, { k, d -> getLong(k, d) }, { k, v -> putLong(k, v) })
+
     val username = string("username", "")
     val password = string("password", "")
 
@@ -54,6 +56,9 @@ class Settings(context: Context) {
 
     /** The notification permission was explained and asked for once (on the first play or download). */
     val notificationsAsked = bool("notifications_asked", false)
+
+    /** When the last crash report was mentioned at startup (so it is mentioned once). */
+    val crashSeen = long("crash_seen", 0L)
 
     fun addRecentSearch(query: String) {
         val recent = listOf(query) + recentSearches.value.lines().filter { it.isNotBlank() && !it.equals(query, ignoreCase = true) }

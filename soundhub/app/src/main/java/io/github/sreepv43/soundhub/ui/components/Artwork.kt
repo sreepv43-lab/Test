@@ -43,7 +43,6 @@ import io.github.sreepv43.soundhub.ui.AppColors
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import kotlin.math.absoluteValue
 
 private val bitmaps = LruCache<String, ImageBitmap>(64)
 
@@ -99,7 +98,7 @@ private fun decode(file: File, px: Int): ImageBitmap? = runCatching {
 }.getOrNull()
 
 private fun placeholder(title: String): Brush {
-    val hue = (title.lowercase().hashCode().absoluteValue % 360).toFloat()
+    val hue = title.lowercase().hashCode().mod(360).toFloat()
     return Brush.linearGradient(listOf(Color.hsl(hue, 0.45f, 0.32f), Color.hsl((hue + 40f) % 360f, 0.5f, 0.18f)))
 }
 

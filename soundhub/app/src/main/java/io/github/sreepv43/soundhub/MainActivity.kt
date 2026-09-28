@@ -8,9 +8,11 @@ import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import io.github.sreepv43.soundhub.data.CrashLog
 import io.github.sreepv43.soundhub.ui.AppRoot
 import io.github.sreepv43.soundhub.ui.Section
 import io.github.sreepv43.soundhub.ui.SoundHubTheme
+import io.github.sreepv43.soundhub.ui.components.toast
 
 class MainActivity : ComponentActivity() {
     private var sectionRequest by mutableStateOf<Section?>(null)
@@ -18,7 +20,10 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
-        if (savedInstanceState == null) handleIntent(intent)
+        if (savedInstanceState == null) {
+            handleIntent(intent)
+            mentionLastCrash()
+        }
         setContent {
             SoundHubTheme {
                 AppRoot(sectionRequest = sectionRequest, onSectionRequestHandled = { sectionRequest = null })
@@ -29,6 +34,15 @@ class MainActivity : ComponentActivity() {
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         handleIntent(intent)
+    }
+
+    private fun mentionLastCrash() {
+        val writtenAt = CrashLog(this).writtenAt()
+        val settings = container.settings
+        if (writtenAt > settings.crashSeen.value) {
+            settings.crashSeen.set(writtenAt)
+            toast(this, "SoundHub closed because of an error last time. The details are in Settings → About.")
+        }
     }
 
     private fun handleIntent(intent: Intent?) {

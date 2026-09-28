@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import io.github.sreepv43.soundhub.audio.FormatFilter
 import io.github.sreepv43.soundhub.audio.MusicFilter
 import io.github.sreepv43.soundhub.data.CoverCache
+import io.github.sreepv43.soundhub.data.CrashLog
 import io.github.sreepv43.soundhub.data.LibraryEnricher
 import io.github.sreepv43.soundhub.data.Settings
 import io.github.sreepv43.soundhub.library.CollectionStore
@@ -55,6 +56,7 @@ class SoundHubApp : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        CrashLog(this).install()
         container = AppContainer(this)
         container.start()
     }

@@ -22,6 +22,9 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
   the best copy (playable, slot reported free, most songs, best quality, shortest queue); **Sources**
   lists every user's copy to pick another. Playing an album keeps the whole album in the queue and
   downloads the chosen song first.
+- **Artists:** well-known artists by genre (pop, rock, hip-hop, jazz, classical, film scores, Indian
+  film and classical, and "Dolby Atmos picks"). OK on one searches Soulseek for their music, for all
+  music, lossless, Hi-Res or Dolby Atmos; Back returns to the list.
 - **Filters** as separate choices instead of one row of overlapping chips: quality (lossless,
   Hi-Res, lossy), channels (stereo, surround, Dolby Atmos), format (MP3, AAC / MP4, FLAC, ALAC,
   WAV / AIFF, DSD, Dolby / DTS) and availability. The shortcuts All, Lossless, Hi-Res, Dolby Atmos
@@ -51,11 +54,13 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
     time something plays or downloads, with the reason.
   - Transfers are grouped: downloading, waiting in queues, needs attention, completed.
   - UPnP opens the listening port on your router.
+  - If SoundHub ever closes because of an error, the details are kept under Settings → About (on the
+    device only) so they can be reported.
 
 ## Using it with the remote
 
-- **Left** at the left edge of a page opens the menu (Home, Search, Library, Transfers, Atmos &
-  sound, Now playing, Settings). Use Up/Down to move and OK to choose. **Right** or **Back** closes
+- **Left** at the left edge of a page opens the menu (Home, Search, Artists, Library, Transfers,
+  Atmos & sound, Now playing, Settings). Use Up/Down to move and OK to choose. **Right** or **Back** closes
   the menu without changing page.
 - **Back** goes to the previous page (also after choosing another section in the menu) and puts the
   selection back where it was. Home is at the bottom, and Back there leaves the app; music keeps

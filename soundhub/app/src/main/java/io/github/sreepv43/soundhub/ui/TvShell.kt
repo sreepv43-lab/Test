@@ -1,5 +1,6 @@
 package io.github.sreepv43.soundhub.ui
 
+import android.util.Log
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,6 +39,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusManager
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
@@ -293,7 +295,7 @@ fun TvShell(
                             direction == null -> false
                             // The seek bar uses Left/Right to seek.
                             horizontal && shell.horizontalClaim -> false
-                            focusManager.moveFocus(direction) -> true
+                            moveFocusSafely(focusManager, direction) -> true
                             direction == FocusDirection.Left -> {
                                 if (event.nativeKeyEvent.repeatCount == 0) openMenu()
                                 true
@@ -350,6 +352,20 @@ fun TvShell(
             }
         }
     }
+}
+
+/**
+ * Moves the selection; if Compose's focus search fails while a list is changing under it (rows
+ * arriving or being filtered), the key press is dropped instead of closing the app.
+ */
+private fun moveFocusSafely(focusManager: FocusManager, direction: FocusDirection): Boolean = try {
+    focusManager.moveFocus(direction)
+} catch (e: IllegalStateException) {
+    Log.w("SoundHub", "Focus move $direction failed", e)
+    true
+} catch (e: IllegalArgumentException) {
+    Log.w("SoundHub", "Focus move $direction failed", e)
+    true
 }
 
 /** Page and player bar are left only with Up/Down. */
