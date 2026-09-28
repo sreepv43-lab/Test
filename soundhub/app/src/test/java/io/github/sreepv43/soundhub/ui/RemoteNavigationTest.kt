@@ -215,8 +215,8 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertTrue(navigator.current is ReleasePage)
         assertEquals("Play", focused())
-        press(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertTrue(focused(), focused().startsWith("track-"))
+        // Beside the player panel the album's buttons take two lines; Down passes them to the songs.
+        moveUntil(KeyEvent.KEYCODE_DPAD_DOWN) { it.startsWith("track-") }
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         assertTrue("Right on a song reaches its More button: ${focused()}", focused().startsWith("more-"))
         press(KeyEvent.KEYCODE_BACK)
@@ -228,7 +228,7 @@ class RemoteNavigationTest {
     fun playingOpensNowPlayingOnPlayPauseAndBackReturnsToTheAlbumThenHome() {
         downTo("release-Album 1")
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        moveUntil(KeyEvent.KEYCODE_DPAD_DOWN) { it.startsWith("track-") }
         val track = focused()
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals(SectionPage(Section.NOW_PLAYING), navigator.current)
@@ -432,8 +432,7 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         assertEquals("Shuffle", focused())
-        press(KeyEvent.KEYCODE_DPAD_DOWN)
-        assertTrue(focused(), focused().startsWith("track-"))
+        moveUntil(KeyEvent.KEYCODE_DPAD_DOWN) { it.startsWith("track-") }
         press(KeyEvent.KEYCODE_DPAD_UP)
         assertEquals("Play", focused())
     }
