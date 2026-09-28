@@ -38,9 +38,15 @@ jobs:
       - name: SoundHub signing key
         env:
           SOUNDHUB_KEYSTORE: ${{ secrets.SOUNDHUB_KEYSTORE }}
+          SOUNDHUB_KEYSTORE_PASSWORD: ${{ secrets.SOUNDHUB_KEYSTORE_PASSWORD || 'soundhub-key' }}
         run: |
           if [ -n "$SOUNDHUB_KEYSTORE" ]; then
-            echo "$SOUNDHUB_KEYSTORE" | base64 -d > "$RUNNER_TEMP/soundhub.p12"
+            # Pasted on a phone, the secret may carry spaces or line breaks: drop them.
+            printf '%s' "$SOUNDHUB_KEYSTORE" | tr -d ' \t\r\n' | base64 -d > "$RUNNER_TEMP/soundhub.p12" || true
+            if ! keytool -list -keystore "$RUNNER_TEMP/soundhub.p12" -storetype PKCS12 -storepass "$SOUNDHUB_KEYSTORE_PASSWORD" > /dev/null 2>&1; then
+              echo "::error::The SOUNDHUB_KEYSTORE secret isn't a complete SoundHub key. Paste the whole soundhub-signing-key.txt again (Settings > Secrets and variables > Actions)."
+              exit 1
+            fi
             echo "SOUNDHUB_KEYSTORE_FILE=$RUNNER_TEMP/soundhub.p12" >> "$GITHUB_ENV"
             echo "Using the permanent SoundHub signing key"
           else
