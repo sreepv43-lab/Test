@@ -196,7 +196,7 @@ fun IconAction(
             .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = label, tint = if (focused) Color.Black else tint, modifier = Modifier.size(24.dp))
+        Icon(icon, contentDescription = label, tint = if (focused) AppColors.onText else tint, modifier = Modifier.size(24.dp))
     }
 }
 

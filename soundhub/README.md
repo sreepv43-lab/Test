@@ -54,6 +54,8 @@ It is a separate app from StreamHub. It has its own launcher icon and its own AP
     time something plays or downloads, with the reason.
   - Transfers are grouped: downloading, waiting in queues, needs attention, completed.
   - UPnP opens the listening port on your router.
+  - Colour themes under **Settings → Appearance**: Teal, Ocean, Violet, Amber, Crimson, Pure black
+    (for OLED TVs) and Light (for tablets in daylight). A theme applies at once.
   - If SoundHub ever closes because of an error, the details are kept under Settings → About (on the
     device only) so they can be reported.
 

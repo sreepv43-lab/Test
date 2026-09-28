@@ -6,21 +6,29 @@ import android.os.Build
 import android.provider.Settings as AndroidSettings
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Login
 import androidx.compose.material.icons.automirrored.filled.Logout
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +41,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
@@ -46,6 +55,8 @@ import io.github.sreepv43.soundhub.data.CrashLog
 import io.github.sreepv43.soundhub.data.UpdateState
 import io.github.sreepv43.soundhub.slsk.ConnectionState
 import io.github.sreepv43.soundhub.ui.LosslessColor
+import io.github.sreepv43.soundhub.ui.Palette
+import io.github.sreepv43.soundhub.ui.Palettes
 import io.github.sreepv43.soundhub.ui.SettingsKind
 import io.github.sreepv43.soundhub.ui.WarningColor
 import io.github.sreepv43.soundhub.ui.components.ActionButton
@@ -60,6 +71,7 @@ import io.github.sreepv43.soundhub.ui.components.TvDialog
 import io.github.sreepv43.soundhub.ui.components.TwoLines
 import io.github.sreepv43.soundhub.ui.components.formatSize
 import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
+import io.github.sreepv43.soundhub.ui.currentPalette
 import io.github.sreepv43.soundhub.update.AvailableUpdate
 
 /** Settings, one row per area; each opens its own page. */
@@ -111,6 +123,11 @@ fun SettingsScreen(onOpen: (SettingsKind) -> Unit, onSound: () -> Unit) {
                 key = "settings-sound",
                 onClick = onSound,
             )
+        }
+        item(key = "appearance") {
+            SettingsRow("Appearance", "Colour theme: ${currentPalette.name}", key = "settings-APPEARANCE") {
+                onOpen(SettingsKind.APPEARANCE)
+            }
         }
         item(key = "notifications") {
             SettingsRow(
@@ -183,6 +200,7 @@ fun SettingsDetailScreen(kind: SettingsKind) {
         SettingsKind.ACCOUNT -> AccountSettings()
         SettingsKind.STORAGE -> StorageSettings()
         SettingsKind.NETWORK -> NetworkSettings()
+        SettingsKind.APPEARANCE -> AppearanceSettings()
         SettingsKind.UPDATES -> UpdateSettings()
         SettingsKind.ABOUT -> AboutSettings()
     }
@@ -423,6 +441,49 @@ private fun NetworkSettings() {
                     "more users can send to you and results arrive faster. Most home routers do this by themselves " +
                     "when UPnP is on.",
             )
+        }
+    }
+}
+
+@Composable
+private fun AppearanceSettings() {
+    val settings = LocalContext.current.container.settings
+    val chosen by settings.theme.flow.collectAsStateWithLifecycle()
+    AppearanceLayout(Palettes.all, Palettes.byId(chosen).id) { settings.theme.set(it) }
+}
+
+/** The colour themes; choosing one recolours the app at once (no app state here, so tests can drive it). */
+@Composable
+fun AppearanceLayout(palettes: List<Palette>, chosen: String, onChoose: (String) -> Unit) {
+    SettingsList {
+        item(key = "title") { ScreenTitle("Appearance", "Colour theme") }
+        palettes.forEach { palette ->
+            item(key = "theme-${palette.id}") {
+                ListRow(
+                    onClick = { onChoose(palette.id) },
+                    key = "theme-${palette.id}",
+                    pageDefault = palette.id == chosen,
+                    modifier = Modifier.testTag("theme-${palette.id}"),
+                ) {
+                    RadioButton(selected = palette.id == chosen, onClick = null)
+                    Swatches(palette)
+                    TwoLines(palette.name, palette.description, Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+/** The theme in miniature: its background, a list row, the accent and a badge colour. */
+@Composable
+private fun Swatches(palette: Palette) {
+    val shape = RoundedCornerShape(8.dp)
+    Row(
+        Modifier.clip(shape).background(palette.background).border(1.dp, palette.textDim.copy(alpha = 0.4f), shape).padding(8.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        listOf(palette.row, palette.rowFocused, palette.accent, palette.atmos).forEach { color ->
+            Box(Modifier.size(18.dp).clip(CircleShape).background(color))
         }
     }
 }

@@ -59,6 +59,8 @@ import io.github.sreepv43.soundhub.ui.screens.TransferAction
 import io.github.sreepv43.soundhub.ui.screens.TransfersLayout
 import io.github.sreepv43.soundhub.ui.screens.UpdatesLayout
 import io.github.sreepv43.soundhub.update.AvailableUpdate
+import io.github.sreepv43.soundhub.ui.screens.AppearanceLayout
+import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -321,6 +323,28 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_BACK)
         assertEquals(SectionPage(Section.ARTISTS), navigator.current)
         assertEquals(artist, focused())
+    }
+
+    @Test
+    fun choosingAThemeRecoloursAtOnceAndKeepsTheSelection() {
+        rule.runOnUiThread { navigator.open(SettingsPage(SettingsKind.APPEARANCE)) }
+        settle(1_000)
+        assertEquals("the page starts on the theme in use", "theme-teal", focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("ocean", currentPalette.id)
+        assertEquals("theme-ocean", focused())
+        moveTo("theme-light", KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("light", currentPalette.id)
+        assertEquals("theme-light", focused())
+        press(KeyEvent.KEYCODE_BACK)
+        assertEquals(SectionPage(Section.SEARCH), navigator.current)
+    }
+
+    @After
+    fun backToTheDefaultTheme() {
+        currentPalette = Palettes.TEAL
     }
 
     @Test
@@ -678,7 +702,9 @@ private fun FakeApp(
                 onDownload = {},
                 onChooseSource = {},
             )
-            is SettingsPage -> UpdatesLayout(
+            is SettingsPage -> if (page.kind == SettingsKind.APPEARANCE) {
+                AppearanceLayout(Palettes.all, currentPalette.id) { currentPalette = Palettes.byId(it) }
+            } else UpdatesLayout(
                 state = UpdateState.Available(AvailableUpdate(70, "SoundHub build 70", "feat: updates", "https://example.test/a.apk", 1)),
                 currentBuild = 61,
                 onCheck = {},

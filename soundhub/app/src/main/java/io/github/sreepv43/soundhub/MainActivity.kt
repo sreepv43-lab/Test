@@ -1,10 +1,13 @@
 package io.github.sreepv43.soundhub
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -12,6 +15,7 @@ import io.github.sreepv43.soundhub.data.CrashLog
 import io.github.sreepv43.soundhub.ui.AppRoot
 import io.github.sreepv43.soundhub.ui.Section
 import io.github.sreepv43.soundhub.ui.SoundHubTheme
+import io.github.sreepv43.soundhub.ui.currentPalette
 import io.github.sreepv43.soundhub.ui.components.toast
 
 class MainActivity : ComponentActivity() {
@@ -25,6 +29,11 @@ class MainActivity : ComponentActivity() {
             mentionLastCrash()
         }
         setContent {
+            val dark = currentPalette.dark
+            LaunchedEffect(dark) {
+                val bars = if (dark) SystemBarStyle.dark(Color.TRANSPARENT) else SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+                enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
+            }
             SoundHubTheme {
                 AppRoot(sectionRequest = sectionRequest, onSectionRequestHandled = { sectionRequest = null })
             }

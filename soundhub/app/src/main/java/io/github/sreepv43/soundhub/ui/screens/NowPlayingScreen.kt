@@ -344,7 +344,8 @@ private fun ControlButton(
         icon,
         contentDescription = label,
         tint = when {
-            focused || large -> MaterialTheme.colorScheme.onPrimary
+            focused -> AppColors.onText
+            large -> MaterialTheme.colorScheme.onPrimary
             active -> Accent
             else -> MaterialTheme.colorScheme.onSurface
         },

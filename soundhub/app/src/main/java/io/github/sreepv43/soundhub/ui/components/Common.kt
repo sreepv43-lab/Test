@@ -154,7 +154,11 @@ fun Chip(
     ) {
         Text(
             label,
-            color = if (focused || selected) Color.Black else MaterialTheme.colorScheme.onSurface,
+            color = when {
+                focused -> AppColors.onText
+                selected -> MaterialTheme.colorScheme.onPrimary
+                else -> MaterialTheme.colorScheme.onSurface
+            },
             style = MaterialTheme.typography.labelLarge,
             maxLines = 1,
         )

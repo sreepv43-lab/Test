@@ -57,6 +57,9 @@ class Settings(context: Context) {
     /** The notification permission was explained and asked for once (on the first play or download). */
     val notificationsAsked = bool("notifications_asked", false)
 
+    /** The colour theme (see Palettes). */
+    val theme = string("theme", "teal")
+
     /** When GitHub was last asked for a newer SoundHub build. */
     val updateCheckedAt = long("update_checked_at", 0L)
 
