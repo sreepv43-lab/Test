@@ -55,9 +55,9 @@ private val bitmaps = LruCache<String, ImageBitmap>(64)
 fun AlbumArt(file: File?, title: String, size: Dp, modifier: Modifier = Modifier) {
     val px = with(LocalDensity.current) { size.roundToPx() }
     val cacheKey = file?.let { "${it.path}@$px" }
-    val image by produceState(cacheKey?.let(bitmaps::get), cacheKey) {
+    val image by produceState<ImageBitmap?>(cacheKey?.let { bitmaps.get(it) }, cacheKey) {
         // The state outlives a change of file (e.g. the next song): start from the new one's.
-        value = cacheKey?.let(bitmaps::get)
+        value = cacheKey?.let { bitmaps.get(it) }
         if (file == null || cacheKey == null || value != null) return@produceState
         value = withContext(Dispatchers.IO) { decode(file, px) }?.also { bitmaps.put(cacheKey, it) }
     }
