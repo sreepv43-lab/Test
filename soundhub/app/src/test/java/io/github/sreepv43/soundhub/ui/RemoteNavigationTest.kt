@@ -23,6 +23,7 @@ import androidx.compose.ui.input.InputMode
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
+import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
@@ -219,24 +220,27 @@ class RemoteNavigationTest {
         assertTrue(seen.toString(), "Clear completed" in seen)
     }
 
+    // Robolectric doesn't give dialog windows focus, so these check that the first (and selected)
+    // element of each dialog is the safe one; on a device the dialog opens on it.
     @Test
     fun transferOptionsStartOnTheSafeChoice() {
         openSection(Section.TRANSFERS)
         downTo("transfer-8")
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        awaitFocus("option-Try again")
+        assertEquals(listOf("option-Try again", "option-Find another source", "option-Remove…", "option-Cancel"), optionsInOrder())
         rule.onNodeWithTag("option-Remove…").performClick()
         settle()
-        // Removing a part-downloaded song asks first, on Keep.
-        awaitFocus("Keep")
+        // Removing a part-downloaded song asks first, with Keep before Remove.
+        rule.onNodeWithText("Remove this download?").assertExists()
+        assertTrue(left("Keep") < left("Remove"))
         rule.onNodeWithTag("Keep").performClick()
         settle()
         assertTrue(actions.toString(), actions.isEmpty())
 
         upTo("transfer-12")
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        // Stopping is the only action for a waiting song: the dialog starts on Cancel.
-        awaitFocus("option-Cancel")
+        // Stopping is the only action for a waiting song: Cancel comes first.
+        assertEquals(listOf("option-Cancel", "option-Stop download"), optionsInOrder())
         rule.onNodeWithTag("option-Cancel").performClick()
         settle()
         assertTrue(actions.toString(), actions.isEmpty())
@@ -258,7 +262,7 @@ class RemoteNavigationTest {
         repeat(MusicFilter.SHORTCUTS.size) { press(KeyEvent.KEYCODE_DPAD_RIGHT) }
         assertEquals("More filters…", focused())
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        awaitFocus("Any quality")
+        rule.onNodeWithText("Any quality").assertExists()
         rule.onNodeWithText("MP3").performClick()
         rule.onNodeWithTag("Done").performClick()
         settle()
@@ -310,14 +314,14 @@ class RemoteNavigationTest {
         assertEquals(SectionPage(section), navigator.current)
     }
 
-    /** Dialogs take the selection a frame or two after they open. */
-    private fun awaitFocus(target: String) {
-        repeat(20) {
-            if (focused() == target) return
-            settle(100)
-        }
-        assertEquals(target, focused())
-    }
+    /** The rows of the open options dialog, top to bottom. */
+    private fun optionsInOrder(): List<String> =
+        rule.onAllNodes(SemanticsMatcher("option row") { it.config.getOrNull(SemanticsProperties.TestTag)?.startsWith("option-") == true })
+            .fetchSemanticsNodes()
+            .sortedBy { it.boundsInRoot.top }
+            .map { it.config[SemanticsProperties.TestTag] }
+
+    private fun left(tag: String): Float = rule.onNodeWithTag(tag).fetchSemanticsNode().boundsInRoot.left
 
     private fun downTo(target: String) = moveTo(target, KeyEvent.KEYCODE_DPAD_DOWN)
 

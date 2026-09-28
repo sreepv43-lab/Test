@@ -78,13 +78,15 @@ class Option(
 
 /**
  * What can be done with a song, album or download: a list the remote moves through, opening on
- * the first safe choice, with Cancel at the end. Choosing one closes the dialog first.
+ * the first safe choice, with Cancel at the end (at the top when every choice removes something).
+ * Choosing one closes the dialog first.
  */
 @Composable
 fun OptionsDialog(title: String, onDismiss: () -> Unit, options: List<Option>, subtitle: String? = null) {
     val first = remember { FocusRequester() }
-    // The first safe choice; Cancel when every choice removes something.
-    val start = options.indexOfFirst { !it.destructive }
+    // Safe choices first, starting on the first of them; Cancel when every choice removes something.
+    val ordered = options.sortedBy { it.destructive }
+    val start = ordered.indexOfFirst { !it.destructive }
     var hasFocus by remember { mutableStateOf(false) }
     Dialog(onDismissRequest = onDismiss) {
         CompositionLocalProvider(LocalTvShell provides null) {
@@ -116,7 +118,18 @@ fun OptionsDialog(title: String, onDismiss: () -> Unit, options: List<Option>, s
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
-                        options.forEachIndexed { index, option ->
+                        val cancel: @Composable () -> Unit = {
+                            OptionRow(
+                                "Cancel",
+                                null,
+                                MaterialTheme.colorScheme.onSurfaceVariant,
+                                if (start < 0) Modifier.focusRequester(first) else Modifier,
+                                onDismiss,
+                            )
+                        }
+                        // The first row is always a safe one (the system selects it if our request is late).
+                        if (start < 0) cancel()
+                        ordered.forEachIndexed { index, option ->
                             OptionRow(
                                 option.label,
                                 option.icon,
@@ -127,13 +140,7 @@ fun OptionsDialog(title: String, onDismiss: () -> Unit, options: List<Option>, s
                                 option.onClick()
                             }
                         }
-                        OptionRow(
-                            "Cancel",
-                            null,
-                            MaterialTheme.colorScheme.onSurfaceVariant,
-                            if (start < 0) Modifier.focusRequester(first) else Modifier,
-                            onDismiss,
-                        )
+                        if (start >= 0) cancel()
                     }
                 }
             }
