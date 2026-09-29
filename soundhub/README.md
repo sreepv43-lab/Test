@@ -137,8 +137,11 @@ asks you to allow SoundHub to install apps (Install unknown apps â†’ SoundHub â†
 Updates only install over a build signed with the same key. CI signs SoundHub with the permanent
 key in the repository secret `SOUNDHUB_KEYSTORE` (a base64-encoded PKCS12 keystore with the alias
 `soundhub`; its password is the secret `SOUNDHUB_KEYSTORE_PASSWORD`, or `soundhub-key` when that
-secret isn't set). Without the secret, each build gets a throwaway key and must be installed after
-uninstalling the previous one; the updater says so instead of failing.
+secret isn't set); spaces or line breaks pasted into the secret are ignored, and a secret that
+isn't a complete key stops the build with a message saying so. Without the secret, each build gets
+a throwaway key and must be installed after uninstalling the previous one; the updater says so
+instead of failing. Builds from 70 on are signed with the permanent key, so after installing one
+of them (uninstalling an older build first), every later build installs over it.
 
 ## Install
 
@@ -146,10 +149,11 @@ Every build on this branch (and on the default branch) is published on the
 [Releases page](https://github.com/sreepv43-lab/Test/releases) as **SoundHub build N**. Its
 direct link has this form:
 
-`https://github.com/sreepv43-lab/Test/releases/download/soundhub-build-N/soundhub-debug.apk`
+`https://github.com/sreepv43-lab/Test/releases/download/soundhub-build-N/soundhub-release.apk`
 
-On Google TV, install the free **Downloader** app, allow it to install unknown apps, type the
-link and install. With adb: `adb install -r soundhub-debug.apk`.
+(`soundhub-debug.apk` is the same app built for troubleshooting.) Each release also has pictures
+of the main pages. On Google TV, install the free **Downloader** app, allow it to install unknown
+apps, type the link and install. With adb: `adb install -r soundhub-release.apk`.
 
 ## Layout
 
