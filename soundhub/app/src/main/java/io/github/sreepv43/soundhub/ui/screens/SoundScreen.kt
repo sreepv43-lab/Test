@@ -124,8 +124,9 @@ fun SoundScreen(onOpenAlbum: (String) -> Unit, onFindAtmos: () -> Unit) {
                     items(atmosAlbums, key = { "library:" + it.key }) { album ->
                         ListRow(onClick = { onOpenAlbum(album.key) }, key = "library:" + album.key) {
                             AlbumCover(album.key, album.title, 52.dp)
-                            TwoLines(album.title, listOfNotNull(album.artist, "${album.tracks.size} songs").joinToString(" · "), Modifier.weight(1f))
-                            FormatBadge(album.tracks.first().info)
+                            TwoLines(album.title, listOfNotNull(album.artist, "${album.tracks.size} songs").joinToString(" · "), Modifier.weight(1f)) {
+                                FormatBadge(album.tracks.first().info)
+                            }
                         }
                     }
                 }

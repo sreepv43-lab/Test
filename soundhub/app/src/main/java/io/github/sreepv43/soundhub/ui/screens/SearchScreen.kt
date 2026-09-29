@@ -211,22 +211,13 @@ fun LazyListScope.releaseItems(releases: List<Release>, filter: MusicFilter, onO
                     release.artist,
                     "${release.trackCount} songs",
                     if (release.sources.size > 1) "${release.sources.size} sources" else "from ${best.username}",
+                    formatSpeed(best.avgSpeed.toLong()).ifEmpty { null },
                 ).joinToString(" · "),
                 Modifier.weight(1f),
-            )
-            best.summary(filter)?.let { FormatBadge(it) }
-            Availability(best)
-        }
-    }
-}
-
-@Composable
-private fun Availability(folder: SearchFolder) {
-    Column(horizontalAlignment = Alignment.End) {
-        if (folder.slotFree) Badge("Slot free", LosslessColor) else Badge("Queue ${folder.queueLength}", WarningColor)
-        val speed = formatSpeed(folder.avgSpeed.toLong())
-        if (speed.isNotEmpty()) {
-            Text(speed, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            ) {
+                best.summary(filter)?.let { FormatBadge(it) }
+                if (best.slotFree) Badge("Slot free", LosslessColor) else Badge("Queue ${best.queueLength}", WarningColor)
+            }
         }
     }
 }
@@ -356,15 +347,13 @@ fun ReleaseLayout(
             ) {
                 TwoLines(
                     listOfNotNull(track.name.trackNumber?.let { "$it." }, track.name.title).joinToString(" "),
-                    listOfNotNull(status(track), formatSize(track.file.size)).joinToString(" · "),
+                    listOfNotNull(
+                        formatDuration(track.file.durationSec?.toLong()).ifEmpty { null },
+                        formatSize(track.file.size),
+                        status(track),
+                    ).joinToString(" · "),
                     Modifier.weight(1f),
-                )
-                FormatBadge(track.info)
-                Text(
-                    formatDuration(track.file.durationSec?.toLong()),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                ) { FormatBadge(track.info) }
             }
         }
     }

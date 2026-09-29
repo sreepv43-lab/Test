@@ -11,6 +11,7 @@ data class TrackName(
 /** Soulseek shares have no tags in search results, so names come from the folder layout. */
 object PathNames {
     private val TRACK_PREFIX = Regex("""^(?:\d{1,2}-)?(\d{1,3})(?:\s*[-._)]\s*|\s+)(.+)$""")
+    private val TRACK_NUMBER = Regex("""^(?:\d{1,2}-)?(\d{1,3})\.?$""")
     private val DISC_FOLDER = Regex("""^(cd|disc|disk)\s*\d+.*""", RegexOption.IGNORE_CASE)
     private val GENERIC_FOLDERS = setOf(
         "music", "mp3", "flac", "downloads", "download", "albums", "album", "share", "shared", "audio", "complete",
@@ -30,17 +31,55 @@ object PathNames {
         val albumFolder = folders.lastOrNull().orEmpty()
         val parent = folders.getOrNull(folders.size - 2)?.takeUnless { it.lowercase() in GENERIC_FOLDERS || it.length < 2 }
         val (folderArtist, album) = splitArtist(albumFolder)
-
-        val base = file.substringBeforeLast('.')
-        val match = TRACK_PREFIX.find(base)
-        val trackNumber = match?.groupValues?.get(1)?.toIntOrNull()
-        val title = (match?.groupValues?.get(2) ?: base).trim().ifEmpty { base }
+        val artist = folderArtist ?: parent
+        val (trackNumber, title) = titleOf(file.substringBeforeLast('.'), artist, album)
         return TrackName(
             title = title,
             trackNumber = trackNumber,
             album = (album.ifEmpty { title }) + (disc?.let { " ($it)" } ?: ""),
-            artist = folderArtist ?: parent,
+            artist = artist,
         )
+    }
+
+    /**
+     * The song's number and title from a file name, which often repeats the artist and album:
+     * "01 - Title", "01. Title", "Artist - Album - 01 - Title", "Artist - 01 - Title", "01 Artist - Title".
+     */
+    private fun titleOf(base: String, artist: String?, album: String): Pair<Int?, String> {
+        val parts = base.split(" - ").map { it.trim() }.filter { it.isNotEmpty() }
+        if (parts.isEmpty()) return null to base.trim()
+        // A part that is only a number, with the title after it.
+        val numberAt = parts.indexOfFirst { TRACK_NUMBER.matches(it) && !it.equals(artist, ignoreCase = true) }
+        var number: Int? = null
+        var rest: List<String>
+        if (numberAt in 0 until parts.lastIndex) {
+            number = TRACK_NUMBER.find(parts[numberAt])?.groupValues?.get(1)?.toIntOrNull()
+            rest = parts.drop(numberAt + 1)
+        } else {
+            // Or the number stuck to the title ("01. Title", "01 Title"), maybe after the names.
+            rest = withoutNames(parts, artist, album)
+            TRACK_PREFIX.find(rest.first())?.let { match ->
+                number = match.groupValues[1].toIntOrNull()
+                rest = listOf(match.groupValues[2].trim()) + rest.drop(1)
+            }
+        }
+        val title = withoutNames(rest, artist, album).joinToString(" - ").ifEmpty { base.trim() }
+        return number to title
+    }
+
+    /** Drops leading parts that only repeat the artist or the album, keeping at least one. */
+    private fun withoutNames(parts: List<String>, artist: String?, album: String): List<String> {
+        var rest = parts
+        while (rest.size > 1 && (repeats(rest.first(), artist) || repeats(rest.first(), album))) rest = rest.drop(1)
+        return rest
+    }
+
+    /** [part] is [name], or the start of it ("1989" of "1989 (Deluxe)"). */
+    private fun repeats(part: String, name: String?): Boolean {
+        if (name.isNullOrBlank()) return false
+        val p = part.lowercase()
+        val n = name.trim().lowercase()
+        return p == n || (p.length >= 2 && n.startsWith(p) && !n[p.length].isLetterOrDigit())
     }
 
     /** The remote folder a file is in (search results are grouped by it). */

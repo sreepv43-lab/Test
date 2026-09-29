@@ -255,13 +255,11 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
             itemsIndexed(upNext, key = { i, it -> "next:${index + 1 + i}:${it.id}" }) { i, entry ->
                 ListRow(onClick = { playback.jumpTo(index + 1 + i) }, key = "next:${index + 1 + i}:${entry.id}") {
                     AlbumCover(entry.albumKey, entry.album, 44.dp)
-                    TwoLines(entry.title, listOfNotNull(entry.artist, entry.album).joinToString(" · "), Modifier.weight(1f))
-                    FormatBadge(entry.info)
-                    Text(
-                        formatDuration(entry.info.durationSec?.toLong()),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    TwoLines(
+                        entry.title,
+                        listOfNotNull(formatDuration(entry.info.durationSec?.toLong()).ifEmpty { null }, entry.artist, entry.album).joinToString(" · "),
+                        Modifier.weight(1f),
+                    ) { FormatBadge(entry.info) }
                 }
             }
         }
@@ -485,15 +483,14 @@ fun QueueLayout(
                 art(entry)
                 TwoLines(
                     entry.title,
-                    listOfNotNull(entry.artist, entry.album, status(entry)).joinToString(" · "),
+                    listOfNotNull(
+                        formatDuration(entry.info.durationSec?.toLong()).ifEmpty { null },
+                        entry.artist,
+                        entry.album,
+                        status(entry),
+                    ).joinToString(" · "),
                     Modifier.weight(1f),
-                )
-                FormatBadge(entry.info)
-                Text(
-                    formatDuration(entry.info.durationSec?.toLong()),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                ) { FormatBadge(entry.info) }
             }
         }
     }

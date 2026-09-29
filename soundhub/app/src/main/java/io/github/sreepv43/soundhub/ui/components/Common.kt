@@ -104,10 +104,12 @@ fun Badge(text: String, color: Color) {
         text,
         color = color,
         style = MaterialTheme.typography.labelMedium,
+        fontSize = 12.sp,
+        lineHeight = 15.sp,
         maxLines = 1,
         modifier = Modifier
-            .border(1.dp, color.copy(alpha = 0.6f), RoundedCornerShape(6.dp))
-            .padding(horizontal = 6.dp, vertical = 2.dp),
+            .border(1.dp, color.copy(alpha = 0.6f), RoundedCornerShape(5.dp))
+            .padding(horizontal = 5.dp, vertical = 1.dp),
     )
 }
 
@@ -213,18 +215,37 @@ fun ReadableText(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+/**
+ * A row's title (up to two lines, so long names stay readable) and a line under it, which starts
+ * with any [badges] (the format): nothing sits beside the title, so it gets the row's width.
+ */
 @Composable
-fun TwoLines(title: String, subtitle: String?, modifier: Modifier = Modifier) {
+fun TwoLines(
+    title: String,
+    subtitle: String?,
+    modifier: Modifier = Modifier,
+    titleLines: Int = 2,
+    badges: (@Composable RowScope.() -> Unit)? = null,
+) {
     Column(modifier) {
-        Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        if (!subtitle.isNullOrEmpty()) {
-            Text(
-                subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        Text(title, style = MaterialTheme.typography.titleMedium, maxLines = titleLines, overflow = TextOverflow.Ellipsis)
+        if (badges != null || !subtitle.isNullOrEmpty()) {
+            Row(
+                Modifier.padding(top = 2.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                badges?.invoke(this)
+                if (!subtitle.isNullOrEmpty()) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
     }
 }

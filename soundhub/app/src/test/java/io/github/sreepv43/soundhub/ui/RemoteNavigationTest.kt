@@ -552,6 +552,14 @@ class RemoteNavigationTest {
         rule.runOnUiThread { navigator.open(SettingsPage(SettingsKind.APPEARANCE)) }
         settle(1_000)
         screenshot("8-appearance")
+        // File names that repeat the artist and album, with a long title.
+        rule.runOnUiThread {
+            folders.value = listOf(longNames())
+            navigator.open(ReleasePage(Releases.group(folders.value).first(), Section.SEARCH))
+        }
+        settle(1_000)
+        press(KeyEvent.KEYCODE_DPAD_DOWN, 3)
+        screenshot("9-long-names")
     }
 
     /** Saves the screen as [name].png; if it can't be captured, says why in errors.txt instead of failing. */
@@ -688,6 +696,22 @@ private fun folder(i: Int): SearchFolder {
         )
     }
     return SearchFolder("user$i", directory, tracks, slotFree = true, avgSpeed = 1_000_000, queueLength = 0)
+}
+
+/** An album whose file names repeat the artist and album, as many shares do. */
+private fun longNames(): SearchFolder {
+    val directory = "@@tay\\Music\\Taylor Swift\\1989 (Deluxe Edition) [FLAC 24-44.1]"
+    val titles = listOf("Welcome To New York", "Blank Space", "Style", "Out Of The Woods", "All You Had To Do Was Stay (Live From The Tour)", "Shake It Off")
+    val tracks = titles.mapIndexed { i, title ->
+        val path = "$directory\\Taylor Swift - 1989 - 0${i + 1} - $title.flac"
+        SearchTrack(
+            "tay",
+            SharedFile(path, 46_000_000, "", mapOf(1 to 230, 4 to 44_100, 5 to 24)),
+            AudioFormats.classify(path, 46_000_000, durationSec = 230, sampleRate = 44_100, bitDepth = 24),
+            PathNames.describe(path),
+        )
+    }
+    return SearchFolder("tay", directory, tracks, slotFree = true, avgSpeed = 900_000, queueLength = 0)
 }
 
 /** Answers from [count] users in a mix of formats, three users per album (so albums have several sources). */

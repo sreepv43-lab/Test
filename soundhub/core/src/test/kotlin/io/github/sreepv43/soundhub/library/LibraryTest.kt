@@ -32,6 +32,25 @@ class LibraryTest {
     }
 
     @Test
+    fun fileNamesThatRepeatTheArtistAndAlbumGiveJustTheSongTitle() {
+        fun title(path: String) = PathNames.describe(path).let { it.trackNumber to it.title }
+        assertEquals(
+            1 to "Welcome To New York",
+            title("@@u\\Music\\Taylor Swift\\1989 (Deluxe)\\Taylor Swift - 1989 - 01 - Welcome To New York.flac"),
+        )
+        assertEquals(2 to "Blank Space", title("@@u\\Taylor Swift - 1989\\Taylor Swift - 02 - Blank Space.flac"))
+        assertEquals(3 to "Style", title("@@u\\Taylor Swift - 1989\\03 Taylor Swift - Style.flac"))
+        assertEquals(4 to "Out Of The Woods", title("@@u\\Taylor Swift - 1989\\Taylor Swift - 1989 - 04 Out Of The Woods.flac"))
+        assertEquals(null to "Shake It Off", title("@@u\\Taylor Swift - 1989\\Taylor Swift - Shake It Off.flac"))
+        // A " - " inside the title stays, and a title that is a year isn't a track number.
+        assertEquals(5 to "All You Had To Do Was Stay - Remastered", title("@@u\\Artist - Album\\05 - All You Had To Do Was Stay - Remastered.mp3"))
+        assertEquals(null to "1979", title("@@u\\Smashing Pumpkins - Mellon Collie\\1979.mp3"))
+        assertEquals(6 to "1979", title("@@u\\Smashing Pumpkins - Mellon Collie\\06 - 1979.mp3"))
+        // A band called by a number isn't taken for the track number.
+        assertEquals(7 to "Down", title("@@u\\311 - Transistor\\311 - 07 - Down.mp3"))
+    }
+
+    @Test
     fun localPathsKeepArtistAndAlbumAndAreSafe() {
         assertEquals(
             "Artist/Album _2020_/01 Song.flac",

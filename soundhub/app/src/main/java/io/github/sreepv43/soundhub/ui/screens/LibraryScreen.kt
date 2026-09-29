@@ -52,6 +52,7 @@ import io.github.sreepv43.soundhub.library.LibrarySort
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.library.LibraryTrack
 import io.github.sreepv43.soundhub.library.LibraryViews
+import io.github.sreepv43.soundhub.ui.FavouriteColor
 import io.github.sreepv43.soundhub.ui.WarningColor
 import io.github.sreepv43.soundhub.ui.components.ActionButton
 import io.github.sreepv43.soundhub.ui.components.AlbumCover
@@ -316,8 +317,7 @@ private fun LazyListScope.albumRows(albums: List<Album>, missing: Set<String>, p
                 album.title,
                 listOfNotNull(album.artist, "${album.tracks.size} songs", if (gone) "Drive disconnected" else null).joinToString(" · "),
                 Modifier.weight(1f),
-            )
-            album.mainFormat()?.let { FormatBadge(it) }
+            ) { album.mainFormat()?.let { FormatBadge(it) } }
         }
     }
 }
@@ -332,8 +332,7 @@ private fun LazyListScope.songRows(
     items(songs, key = { "$prefix:" + it.id }) { track ->
         RowWithMore(onClick = { onPlay(track) }, onMore = { onMore(track) }, key = "$prefix:" + track.id) {
             AlbumCover(LibraryViews.albumKeyOf(track.path), track.album, 44.dp)
-            TwoLines(track.title, songLine(track, track.id in missing, withAlbum = true), Modifier.weight(1f))
-            FormatBadge(track.info)
+            TwoLines(track.title, songLine(track, track.id in missing, withAlbum = true), Modifier.weight(1f)) { FormatBadge(track.info) }
         }
     }
 }
@@ -433,11 +432,10 @@ fun AlbumScreen(albumKey: String, onPlaying: () -> Unit, onGone: () -> Unit, onO
                     listOfNotNull(track.trackNumber?.let { "$it." }, track.title).joinToString(" "),
                     songLine(track, track.id in missing, withAlbum = false).ifEmpty { null },
                     Modifier.weight(1f),
-                )
+                ) { FormatBadge(track.info) }
                 if (track.id in collection.favouriteTracks) {
-                    Icon(Icons.Default.Favorite, contentDescription = "Favourite", tint = MaterialTheme.colorScheme.primary)
+                    Icon(Icons.Default.Favorite, contentDescription = "Favourite", tint = FavouriteColor)
                 }
-                FormatBadge(track.info)
             }
         }
     }
@@ -551,8 +549,7 @@ fun PlaylistScreen(id: String, onPlaying: () -> Unit, onGone: () -> Unit) {
                     TwoLines("Removed from the library", "Choose More → Remove from playlist", Modifier.weight(1f))
                 } else {
                     AlbumCover(LibraryViews.albumKeyOf(track.path), track.album, 44.dp)
-                    TwoLines(track.title, songLine(track, track.id in missing, withAlbum = true), Modifier.weight(1f))
-                    FormatBadge(track.info)
+                    TwoLines(track.title, songLine(track, track.id in missing, withAlbum = true), Modifier.weight(1f)) { FormatBadge(track.info) }
                 }
             }
         }

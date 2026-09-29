@@ -198,10 +198,11 @@ fun PlayerPanelLayout(
                         ) {
                             Text("${i + 1}", style = MaterialTheme.typography.titleMedium, color = dim, modifier = Modifier.width(20.dp))
                             art(entry, 42.dp)
-                            TwoLines(entry.title, entry.artist, Modifier.weight(1f))
-                            entry.durationSec?.let {
-                                Text(formatDuration(it), style = MaterialTheme.typography.labelLarge, color = dim)
-                            }
+                            TwoLines(
+                                entry.title,
+                                listOfNotNull(entry.artist, entry.durationSec?.let(::formatDuration)).joinToString(" · "),
+                                Modifier.weight(1f),
+                            )
                         }
                     }
                 }
