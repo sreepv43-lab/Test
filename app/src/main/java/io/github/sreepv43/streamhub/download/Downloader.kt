@@ -3,6 +3,7 @@ package io.github.sreepv43.streamhub.download
 import android.content.Context
 import android.content.Intent
 import android.net.ConnectivityManager
+import android.net.Uri
 import android.net.Network
 import android.net.NetworkCapabilities
 import android.net.NetworkRequest
@@ -325,6 +326,9 @@ class Downloader(
                     body.contentLength().takeIf { it >= 0 }
                 } ?: -1L
 
+                storage.maxFileSize(item.location)?.let { limit ->
+                    if (total > limit) throw PermanentFailure(TOO_BIG_FOR_DRIVE.format(item.location.label))
+                }
                 val fileName = item.fileName ?: FileNames.choose(
                     suggested = item.suggestedFileName,
                     contentDisposition = response.header("Content-Disposition"),
@@ -381,9 +385,25 @@ class Downloader(
                                 speedBytes = 0
                             }
                             if (now - lastUiUpdate > 500) {
-                                val persist = now - lastPersist > 10_000
-                                if (persist) lastPersist = now
-                                repository.update(id, persist) { it.copy(downloadedBytes = done) }
+                                val persist = now - lastPersist > PERSIST_MS
+                                var shown = done
+                                if (persist) {
+                                    lastPersist = now
+                                    storage.sync(out)
+                                    // What the drive really holds is the progress that counts.
+                                    val saved = runCatching { storage.length(fileUri) }.getOrDefault(done)
+                                    if (saved in 1 until done) {
+                                        shown = saved
+                                        if (Uri.parse(fileUri).scheme == "file" && done - saved > LOSS_TOLERANCE) {
+                                            throw PermanentFailure(
+                                                "${item.location.label} stopped saving at ${saved / 1_000_000} MB " +
+                                                    "(it may be full, or formatted as FAT32 which can't hold files over 4 GB). " +
+                                                    "Choose another location, or format the drive as exFAT.",
+                                            )
+                                        }
+                                    }
+                                }
+                                repository.update(id, persist) { it.copy(downloadedBytes = shown) }
                                 lastUiUpdate = now
                             }
                         }
@@ -413,7 +433,17 @@ class Downloader(
         } finally {
             calls.remove(id, call)
             _speeds.update { it - id }
+            saveProgress(id)
         }
+    }
+
+    /** Stores how much of the file is really on the drive, so progress survives pauses and restarts. */
+    private fun saveProgress(id: String) {
+        val item = repository.get(id) ?: return
+        val uri = item.fileUri ?: return
+        if (item.status == DownloadItem.Status.COMPLETED) return
+        val actual = runCatching { storage.length(uri) }.getOrNull() ?: return
+        if (actual != item.downloadedBytes) repository.update(id) { it.copy(downloadedBytes = actual) }
     }
 
     private fun refreshActive() {
@@ -438,6 +468,10 @@ class Downloader(
         const val MAX_ATTEMPTS = 6
         const val BUFFER_SIZE = 256 * 1024
         const val SPEED_WINDOW_MS = 1_000L
+        const val PERSIST_MS = 3_000L
+        const val LOSS_TOLERANCE = 32L * 1024 * 1024
+        const val TOO_BIG_FOR_DRIVE = "%s is formatted as FAT32, which can't hold files over 4 GB. " +
+            "Choose another location, or format the drive as exFAT."
         /** What Android says when a file outgrows a FAT32 drive (EFBIG). */
         val FILE_TOO_LARGE = Regex("(?i)EFBIG|file too large")
     }

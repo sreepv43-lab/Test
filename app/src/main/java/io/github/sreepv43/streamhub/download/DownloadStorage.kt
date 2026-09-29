@@ -34,6 +34,7 @@ class DownloadStorage(private val context: Context) {
 
     private companion object {
         const val DRIVE_FOLDER = "StreamHub"
+        const val FAT32_MAX_FILE = 4L * 1024 * 1024 * 1024 - 1
     }
 
     /** Every mounted volume (internal, SD card, USB drives) plus folders the user has granted. */
@@ -122,13 +123,7 @@ class DownloadStorage(private val context: Context) {
      * "NTFS, read-only". Null when the mount looks writable or can't be inspected.
      */
     private fun mountProblem(dir: File): String? {
-        val root = removableVolumeRoots().map { it.first }.firstOrNull { dir.path.startsWith(it.path) } ?: return null
-        val mount = runCatching { File("/proc/self/mounts").readLines() }.getOrDefault(emptyList())
-            .map { it.split(' ') }
-            .filter { it.size >= 4 }
-            // The drive is mounted at /mnt/media_rw/<id> and exposed to apps at /storage/<id>.
-            .firstOrNull { it[1] == "/mnt/media_rw/${root.name}" || it[1] == root.path }
-            ?: return null
+        val mount = mountEntry(dir) ?: return null
         val type = mount[2].lowercase()
         val readOnly = mount[3].split(',').any { it == "ro" }
         val format = when {
@@ -140,6 +135,28 @@ class DownloadStorage(private val context: Context) {
         return if (readOnly) {
             "this TV mounts the drive read-only ($format). Reformat it as exFAT on a computer to download to it"
         } else null
+    }
+
+    /** The /proc/mounts fields (device, mount point, type, options…) of the removable drive holding [dir]. */
+    private fun mountEntry(dir: File): List<String>? {
+        val root = removableVolumeRoots().map { it.first }.firstOrNull { dir.path.startsWith(it.path) } ?: return null
+        return runCatching { File("/proc/self/mounts").readLines() }.getOrDefault(emptyList())
+            .map { it.split(' ') }
+            .filter { it.size >= 4 }
+            // The drive is mounted at /mnt/media_rw/<id> and exposed to apps at /storage/<id>.
+            .firstOrNull { it[1] == "/mnt/media_rw/${root.name}" || it[1] == root.path }
+    }
+
+    /** The biggest file [location] can hold, when known (FAT32 drives stop at 4 GB). */
+    fun maxFileSize(location: DownloadLocation): Long? {
+        if (location.kind != DownloadLocation.Kind.DIRECTORY) return null
+        val type = mountEntry(File(location.value))?.get(2)?.lowercase() ?: return null
+        return if (type == "vfat" || type == "msdos") FAT32_MAX_FILE else null
+    }
+
+    /** Pushes what was written to the drive itself, so the file's length can be trusted. */
+    fun sync(out: OutputStream) {
+        if (out is FileOutputStream) runCatching { out.fd.sync() }
     }
 
     /** Root directories and names of mounted removable drives (USB sticks/disks, SD cards). */

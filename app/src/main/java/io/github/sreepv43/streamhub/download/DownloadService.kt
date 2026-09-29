@@ -44,31 +44,41 @@ class DownloadService : Service() {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC else 0,
         )
         acquireLocks()
+        // After the system restarted us (the process was killed), pick the downloads up again.
+        (application as StreamHubApp).container.downloader.resumeInterrupted()
         if (!observing) {
             observing = true
             observe()
         }
-        return START_NOT_STICKY
+        return START_STICKY
     }
 
     @OptIn(kotlinx.coroutines.FlowPreview::class)
     private fun observe() {
         val downloader = (application as StreamHubApp).container.downloader
         scope.launch {
-            combine(downloader.activeCount, downloader.items) { active, items -> active to items }
+            combine(downloader.items, downloader.waitingForWifi) { items, waiting -> items to waiting }
                 .sample(1_000)
-                .collect { (active, items) ->
-                    if (active == 0) {
+                .collect { (items, waiting) ->
+                    val running = items.filter { it.status == DownloadItem.Status.RUNNING }
+                    val queued = items.any { it.status == DownloadItem.Status.QUEUED }
+                    // Stay alive while anything is left to do: a download between retries or waiting
+                    // for Wi-Fi must not lose its foreground service (it can't be started again
+                    // once the app is in the background).
+                    if (running.isEmpty() && !queued) {
                         stopSelf()
                         return@collect
                     }
-                    val running = items.filter { it.status == DownloadItem.Status.RUNNING }
                     val total = running.sumOf { it.totalBytes.coerceAtLeast(0) }
                     val done = running.sumOf { it.downloadedBytes }
-                    val title = if (running.size == 1) running.first().title else "Downloading ${running.size} videos"
+                    val title = when {
+                        running.isEmpty() -> if (waiting) "Waiting for Wi-Fi" else "Downloads queued"
+                        running.size == 1 -> running.first().title
+                        else -> "Downloading ${running.size} videos"
+                    }
                     val percent = if (total > 0) (done * 100 / total).toInt() else 0
                     getSystemService(NotificationManager::class.java)
-                        .notify(NOTIFICATION_ID, buildNotification(title, percent, indeterminate = total <= 0))
+                        .notify(NOTIFICATION_ID, buildNotification(title, percent, indeterminate = running.isEmpty() || total <= 0))
                 }
         }
     }
