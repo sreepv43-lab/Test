@@ -16,6 +16,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.net.SocketTimeoutException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import kotlin.concurrent.thread
@@ -118,6 +120,56 @@ class SoulseekClientTest {
         } finally {
             scope.cancel()
         }
+    }
+
+    @Test
+    fun manyUsersConnectingAtOnceKeepOnlyTheLimitOpen() {
+        client.close()
+        client = SoulseekClient(
+            serverHost = "127.0.0.1",
+            serverPort = server.port,
+            listenPorts = listenPort..listenPort,
+            maxPeerConnections = 3,
+        )
+        signIn()
+        val sockets = (0 until 6).map { i ->
+            FakePeer("user$i").connectTo(listenPort).also { peer ->
+                peer.write(Messages.peerInit("user$i", ConnType.PEER, 0))
+                waitUntil { client.openPeerConnections >= minOf(i + 1, 3) }
+                Thread.sleep(50)
+            }
+        }
+        waitUntil { client.openPeerConnections == 3 }
+        sockets.forEachIndexed { i, peer ->
+            peer.socket.soTimeout = 1_000
+            val closed = try {
+                peer.input.read() < 0
+            } catch (e: SocketTimeoutException) {
+                false
+            } catch (e: IOException) {
+                true
+            }
+            assertEquals("user$i: the three idlest connections are closed", i < 3, closed)
+        }
+        sockets.forEach { it.close() }
+    }
+
+    @Test
+    fun aUserWhoOnlySentSearchResultsIsDisconnectedWhenQuiet() {
+        client.close()
+        client = SoulseekClient(
+            serverHost = "127.0.0.1",
+            serverPort = server.port,
+            listenPorts = listenPort..listenPort,
+            timeouts = SoulseekClient.Timeouts(peerIdleMs = 300),
+        )
+        signIn()
+        FakePeer("alice").connectTo(listenPort).use { peer ->
+            peer.write(Messages.peerInit("alice", ConnType.PEER, 0))
+            peer.socket.soTimeout = 5_000
+            assertTrue("closed after being quiet", peer.input.read() < 0)
+        }
+        waitUntil { client.openPeerConnections == 0 }
     }
 
     @Test

@@ -28,7 +28,10 @@ import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketTimeoutException
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executor
 import java.util.concurrent.Executors
+import java.util.concurrent.ScheduledThreadPoolExecutor
+import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.random.Random
@@ -70,24 +73,35 @@ class SoulseekClient(
     private val listenPorts: IntRange = DEFAULT_LISTEN_PORTS,
     private val description: String = "SoundHub",
     private val timeouts: Timeouts = Timeouts(),
+    /** Peer connections kept open at once; past it the idlest ones not downloading anything close. */
+    private val maxPeerConnections: Int = MAX_PEER_CONNECTIONS,
     private val log: (String) -> Unit = {},
 ) {
     data class Timeouts(
         val connectMs: Int = 8_000,
         val serverReplyMs: Long = 10_000,
         val indirectMs: Long = 20_000,
-        val initReadMs: Int = 30_000,
+        val initReadMs: Int = 15_000,
+        /** How long a connection of a user we download from may stay silent. */
         val idleMs: Int = 120_000,
+        /** How long other connections (usually a user who sent search results) may stay silent. */
+        val peerIdleMs: Int = 20_000,
         val fileReadMs: Int = 60_000,
         val retryDelayMs: Long = 5_000,
         val queueRefreshMs: Long = 60_000,
     )
 
-    // Every peer connection blocks one thread while reading; searches can bring hundreds at once.
+    // Every peer connection blocks one thread while reading, and a search can bring hundreds of
+    // users at once. TVs can't start thousands of threads, so: small stacks, connections that go
+    // quiet are closed, at most maxPeerConnections stay open, and when the device still won't
+    // start a thread, idle connections are closed and the work waits a moment (never a crash).
     private val executor = Executors.newCachedThreadPool { runnable ->
-        Thread(runnable, "slsk-io").apply { isDaemon = true }
+        Thread(null, runnable, "slsk-io", THREAD_STACK_BYTES).apply { isDaemon = true }
     }
-    private val dispatcher = executor.asCoroutineDispatcher()
+    private val retrier = ScheduledThreadPoolExecutor(1) { runnable ->
+        Thread(null, runnable, "slsk-retry", THREAD_STACK_BYTES).apply { isDaemon = true }
+    }.apply { prestartAllCoreThreads() }
+    private val dispatcher = Executor { task -> runOnThread(task) }.asCoroutineDispatcher()
     private val scope = CoroutineScope(SupervisorJob() + dispatcher)
 
     private val _state = MutableStateFlow<ConnectionState>(ConnectionState.Disconnected)
@@ -111,6 +125,12 @@ class SoulseekClient(
     private val addressWaiters = ConcurrentHashMap<String, CompletableDeferred<PeerAddress>>()
     private val pierceWaiters = ConcurrentHashMap<Int, CompletableDeferred<Link>>()
     private val peers = ConcurrentHashMap<String, PeerConnection>()
+
+    /** Every peer connection being read (a user can have more than one for a moment). */
+    private val livePeers: MutableSet<PeerConnection> = ConcurrentHashMap.newKeySet()
+
+    /** Connections still introducing themselves: incoming ones reading PeerInit, relayed ones dialling. */
+    private val handshakes = AtomicInteger()
     private val peerLocks = ConcurrentHashMap<String, Mutex>()
     private val transfersById = ConcurrentHashMap<Long, Transfer>()
 
@@ -189,6 +209,21 @@ class SoulseekClient(
         listener = null
         scope.cancel()
         executor.shutdownNow()
+        retrier.shutdownNow()
+    }
+
+    /** Peer connections open now. */
+    val openPeerConnections: Int get() = livePeers.size
+
+    private fun runOnThread(task: Runnable) {
+        try {
+            executor.execute(task)
+        } catch (e: OutOfMemoryError) {
+            // "pthread_create failed": free threads by closing idle connections, then try again.
+            log("No thread free with ${livePeers.size} peer connections open; retrying")
+            trimPeers(limit = livePeers.size / 2)
+            retrier.schedule({ runOnThread(task) }, THREAD_RETRY_MS, TimeUnit.MILLISECONDS)
+        }
     }
 
     fun search(query: String): Search {
@@ -296,7 +331,12 @@ class SoulseekClient(
             }
             ServerCode.CONNECT_TO_PEER -> {
                 val request = Messages.parseConnectToPeer(payload)
-                scope.launch { answerConnectToPeer(request) }
+                if (handshakes.incrementAndGet() > MAX_HANDSHAKES) {
+                    handshakes.decrementAndGet()
+                    runCatching { sendServer(Messages.cantConnectToPeer(request.token, request.username)) }
+                } else {
+                    scope.launch { answerConnectToPeer(request) }
+                }
             }
             ServerCode.CANT_CONNECT_TO_PEER -> {
                 val token = Messages.parseCantConnectToPeer(payload)
@@ -340,6 +380,9 @@ class SoulseekClient(
     private inner class PeerConnection(val username: String, val socket: Socket, val input: InputStream) {
         private val writeLock = Any()
 
+        /** When a message last arrived ([System.nanoTime]). */
+        @Volatile var lastActive: Long = System.nanoTime()
+
         val open: Boolean get() = !socket.isClosed
 
         fun send(bytes: ByteArray) = synchronized(writeLock) {
@@ -373,16 +416,29 @@ class SoulseekClient(
             } catch (e: IOException) {
                 break
             }
+            // A flood of users connecting at once: turn away the ones past the limit.
+            if (handshakes.incrementAndGet() > MAX_HANDSHAKES) {
+                handshakes.decrementAndGet()
+                socket.closeQuietly()
+                continue
+            }
             scope.launch { handleIncoming(socket) }
         }
     }
 
     /** A user connected to us: a peer or file connection (PeerInit), or an answer to our relay request. */
     private fun handleIncoming(socket: Socket) {
-        try {
+        val (input, reader) = try {
             socket.soTimeout = timeouts.initReadMs
             val input = BufferedInputStream(socket.getInputStream())
-            val reader = MessageReader(input.readFrame(MAX_INIT_FRAME))
+            input to MessageReader(input.readFrame(MAX_INIT_FRAME))
+        } catch (e: IOException) {
+            socket.closeQuietly()
+            return
+        } finally {
+            handshakes.decrementAndGet()
+        }
+        try {
             when (reader.u8()) {
                 InitCode.PEER_INIT -> {
                     val user = reader.str()
@@ -407,9 +463,13 @@ class SoulseekClient(
     private fun answerConnectToPeer(request: ConnectToPeer) {
         val socket = Socket()
         try {
-            socket.connect(InetSocketAddress(request.ip, request.port), timeouts.connectMs)
-            socket.getOutputStream().write(Messages.pierceFirewall(request.token))
-            val input = BufferedInputStream(socket.getInputStream())
+            val input = try {
+                socket.connect(InetSocketAddress(request.ip, request.port), timeouts.connectMs)
+                socket.getOutputStream().write(Messages.pierceFirewall(request.token))
+                BufferedInputStream(socket.getInputStream())
+            } finally {
+                handshakes.decrementAndGet()
+            }
             when (request.type) {
                 ConnType.PEER -> runPeer(PeerConnection(request.username, socket, input))
                 ConnType.FILE -> receiveFile(request.username, socket, input)
@@ -461,10 +521,15 @@ class SoulseekClient(
 
     private fun runPeer(connection: PeerConnection) {
         peers.compute(connection.username) { _, old -> if (old != null && old.open) old else connection }
+        livePeers += connection
+        trimPeers()
         try {
-            connection.socket.soTimeout = timeouts.idleMs
+            // A user we download from gets time to start the upload; others (search results) close
+            // soon. Either reconnects when it has something new.
+            connection.socket.soTimeout = if (connection.username in downloadingFrom()) timeouts.idleMs else timeouts.peerIdleMs
             while (true) {
                 val frame = connection.input.readFrame(MAX_PEER_FRAME)
+                connection.lastActive = System.nanoTime()
                 val code = MessageReader(frame).u32()
                 try {
                     handlePeerMessage(connection, code, frame.payload())
@@ -477,9 +542,24 @@ class SoulseekClient(
         } catch (e: IOException) {
             // Closed.
         } finally {
+            livePeers -= connection
             connection.socket.closeQuietly()
             peers.remove(connection.username, connection)
         }
+    }
+
+    private fun downloadingFrom(): Set<String> = transfersById.values.filter { it.info.active }.mapTo(HashSet()) { it.username }
+
+    /** Past [limit] open peer connections, closes the idlest ones of users nothing is downloading from. */
+    private fun trimPeers(limit: Int = maxPeerConnections) {
+        val excess = livePeers.size - limit
+        if (excess <= 0) return
+        val busy = downloadingFrom()
+        livePeers.filter { it.username !in busy }
+            .map { it to it.lastActive }
+            .sortedBy { it.second }
+            .take(excess)
+            .forEach { (connection, _) -> connection.socket.closeQuietly() }
     }
 
     private fun handlePeerMessage(connection: PeerConnection, code: Int, payload: ByteArray) {
@@ -677,6 +757,10 @@ class SoulseekClient(
         private const val MAX_RETRIES = 3
         private const val PING_INTERVAL_MS = 5 * 60_000L
         private const val RECONNECT_DELAY_MS = 15_000L
+        const val MAX_PEER_CONNECTIONS = 150
+        private const val MAX_HANDSHAKES = 100
+        private const val THREAD_STACK_BYTES = 256L * 1024
+        private const val THREAD_RETRY_MS = 500L
     }
 }
 
