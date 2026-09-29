@@ -66,7 +66,7 @@ class CollectionStore(private val file: File, private val now: () -> Long = Syst
 
     @Synchronized
     fun createPlaylist(name: String, trackIds: List<String> = emptyList()): Playlist {
-        val playlist = Playlist(UUID.randomUUID().toString(), name.trim().ifEmpty { "Playlist" }, trackIds, now())
+        val playlist = Playlist(UUID.randomUUID().toString(), name.trim().ifEmpty { "Playlist" }, trackIds.distinct(), now())
         change { it.copy(playlists = it.playlists + playlist) }
         return playlist
     }
@@ -77,8 +77,14 @@ class CollectionStore(private val file: File, private val now: () -> Long = Syst
     @Synchronized
     fun deletePlaylist(id: String) = change { data -> data.copy(playlists = data.playlists.filterNot { it.id == id }) }
 
+    /** Adds songs at the end, skipping ones the playlist already has. Returns how many were added. */
     @Synchronized
-    fun addToPlaylist(id: String, trackIds: List<String>) = editPlaylist(id) { it.copy(trackIds = it.trackIds + trackIds) }
+    fun addToPlaylist(id: String, trackIds: List<String>): Int {
+        val playlist = _data.value.playlists.firstOrNull { it.id == id } ?: return 0
+        val fresh = trackIds.distinct().filter { it !in playlist.trackIds }
+        if (fresh.isNotEmpty()) editPlaylist(id) { it.copy(trackIds = it.trackIds + fresh) }
+        return fresh.size
+    }
 
     @Synchronized
     fun removeFromPlaylist(id: String, index: Int) = editPlaylist(id) { playlist ->

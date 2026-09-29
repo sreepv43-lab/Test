@@ -64,7 +64,58 @@ fun addToQueue(context: Context, container: AppContainer, tracks: List<LibraryTr
     )
 }
 
-private enum class MenuStep { MAIN, PLAYLIST, NEW_PLAYLIST, DELETE }
+private enum class MenuStep { MAIN, PLAYLIST, DELETE }
+
+/**
+ * Chooses a playlist (or makes one) for songs given by their library ids: OK on a playlist adds
+ * them, "New playlist…" asks for a name first. [beforeAdding] runs first and can stop it (e.g. when
+ * songs that still have to be downloaded can't be, because nobody is signed in).
+ */
+@Composable
+fun AddToPlaylistDialog(
+    ids: List<String>,
+    suggestedName: String,
+    onDismiss: () -> Unit,
+    beforeAdding: () -> Boolean = { true },
+) {
+    val context = LocalContext.current
+    val container = context.container
+    val collection by container.collection.data.collectAsStateWithLifecycle()
+    var naming by remember { mutableStateOf(false) }
+    if (naming) {
+        TextEntryDialog(
+            title = "Name the new playlist",
+            initial = suggestedName,
+            onDismiss = onDismiss,
+            onDone = { name ->
+                if (beforeAdding()) {
+                    val playlist = container.collection.createPlaylist(name, ids)
+                    toast(context, "Made playlist ${playlist.name}")
+                }
+                onDismiss()
+            },
+        )
+    } else {
+        OptionsDialog(
+            title = "Add to playlist",
+            subtitle = "Playlists are under Library → Playlists.",
+            onDismiss = onDismiss,
+            options = listOf(Option("New playlist…", closes = false) { naming = true }) +
+                collection.playlists.map { playlist ->
+                    Option("${playlist.name} (${playlist.trackIds.size})") {
+                        if (beforeAdding()) {
+                            val added = container.collection.addToPlaylist(playlist.id, ids)
+                            toast(
+                                context,
+                                if (added == 0) "Already in ${playlist.name}"
+                                else "Added ${if (added == 1) "1 song" else "$added songs"} to ${playlist.name}",
+                            )
+                        }
+                    }
+                },
+        )
+    }
+}
 
 /**
  * What can be done with library songs (one song, or an album's): play, queue, add to a playlist,
@@ -117,27 +168,7 @@ fun SongMenu(
                 },
             )
         }
-        MenuStep.PLAYLIST -> OptionsDialog(
-            title = "Add to playlist",
-            onDismiss = onDismiss,
-            options = listOf(Option("New playlist…", closes = false) { step = MenuStep.NEW_PLAYLIST }) +
-                collection.playlists.map { playlist ->
-                    Option("${playlist.name} (${playlist.trackIds.size})") {
-                        container.collection.addToPlaylist(playlist.id, tracks.map { it.id })
-                        toast(context, "Added to ${playlist.name}")
-                    }
-                },
-        )
-        MenuStep.NEW_PLAYLIST -> TextEntryDialog(
-            title = "Name the new playlist",
-            initial = single?.album ?: title,
-            onDismiss = onDismiss,
-            onDone = { name ->
-                val playlist = container.collection.createPlaylist(name, tracks.map { it.id })
-                toast(context, "Made playlist ${playlist.name}")
-                onDismiss()
-            },
-        )
+        MenuStep.PLAYLIST -> AddToPlaylistDialog(tracks.map { it.id }, single?.album ?: title, onDismiss)
         MenuStep.DELETE -> TvDialog(
             title = if (single != null) "Delete \"${single.title}\"?" else "Delete ${tracks.size} songs?",
             onDismiss = onDismiss,

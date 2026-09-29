@@ -247,6 +247,7 @@ fun ReleaseScreen(release: Release, onPlaying: () -> Unit) {
     val transfers by container.client.transfers.collectAsStateWithLifecycle()
     val library by container.library.tracks.collectAsStateWithLifecycle()
     val inLibrary = remember(library) { library.mapTo(HashSet()) { it.id } }
+    var forPlaylist by remember { mutableStateOf<List<SearchTrack>?>(null) }
     fun added(count: Int, next: Boolean) {
         if (count > 0) toast(context, if (next) "Playing next" else "Added $count song${if (count == 1) "" else "s"} to the queue")
     }
@@ -273,7 +274,32 @@ fun ReleaseScreen(release: Release, onPlaying: () -> Unit) {
             }
         },
         onChooseSource = { sourceKey = it.key },
+        onPlaylist = { forPlaylist = it },
     )
+    forPlaylist?.let { tracks ->
+        AddToPlaylistDialog(
+            ids = tracks.map { LibraryStore.id(it.username, it.file.filename) },
+            suggestedName = current.album,
+            onDismiss = { forPlaylist = null },
+            // Songs join the library once downloaded, so what isn't there yet is fetched first.
+            beforeAdding = {
+                val missing = tracks.filter { LibraryStore.id(it.username, it.file.filename) !in inLibrary }
+                when {
+                    missing.isEmpty() -> true
+                    !container.requireSignIn() -> false
+                    else -> {
+                        container.download(source, missing)
+                        toast(
+                            context,
+                            "Downloading ${missing.size} song${if (missing.size == 1) "" else "s"}: they play from the playlist once " +
+                                "they are in your library. Progress is under Transfers.",
+                        )
+                        true
+                    }
+                }
+            },
+        )
+    }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -288,6 +314,7 @@ fun ReleaseLayout(
     onDownload: (List<SearchTrack>) -> Unit,
     onChooseSource: (SearchFolder) -> Unit,
     hidden: Int = 0,
+    onPlaylist: (List<SearchTrack>) -> Unit = {},
 ) {
     val playable = source.tracks.filter { it.info.playable }
     var options by remember { mutableStateOf<SearchTrack?>(null) }
@@ -320,6 +347,7 @@ fun ReleaseLayout(
                     ActionButton("Shuffle", Icons.Default.Shuffle, primary = false) { onPlay(playable.random(), true) }
                     ActionButton("Add to queue", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false) { onEnqueue(playable, false) }
                 }
+                ActionButton("Add to playlist", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false) { onPlaylist(source.tracks) }
                 ActionButton("Download", Icons.Default.Download, primary = playable.isEmpty(), pageDefault = playable.isEmpty()) {
                     onDownload(source.tracks)
                 }
@@ -367,10 +395,14 @@ fun ReleaseLayout(
                     Option("Play from here", Icons.Default.PlayArrow) { onPlay(track, false) },
                     Option("Play next") { onEnqueue(listOf(track), true) },
                     Option("Add to queue", Icons.AutoMirrored.Filled.PlaylistAdd) { onEnqueue(listOf(track), false) },
+                    Option("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { onPlaylist(listOf(track)) },
                     Option("Download only", Icons.Default.Download) { onDownload(listOf(track)) },
                 )
             } else {
-                listOf(Option("Download", Icons.Default.Download) { onDownload(listOf(track)) })
+                listOf(
+                    Option("Download", Icons.Default.Download) { onDownload(listOf(track)) },
+                    Option("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { onPlaylist(listOf(track)) },
+                )
             },
         )
     }

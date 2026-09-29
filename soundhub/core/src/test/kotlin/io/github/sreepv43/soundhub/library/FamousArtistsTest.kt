@@ -27,4 +27,35 @@ class FamousArtistsTest {
         }
         assertEquals("Rahman", FamousArtists.genres.flatMap { it.artists }.first { it.name == "A. R. Rahman" }.query)
     }
+
+    @Test
+    fun hindiTamilMalayalamAndTeluguHaveTheirOwnGenres() {
+        val byName = FamousArtists.genres.associateBy { it.name }
+        listOf("Hindi", "Tamil", "Malayalam", "Telugu").forEach { language ->
+            assertTrue("$language genre", (byName[language]?.artists?.size ?: 0) >= 15)
+        }
+        val names = { genre: String -> byName.getValue(genre).artists.map { it.name } }
+        assertTrue("Arijit Singh" in names("Hindi"))
+        assertTrue("Ilaiyaraaja" in names("Tamil"))
+        assertTrue("A. R. Rahman" in names("Tamil") && "A. R. Rahman" in names("Hindi"))
+        assertTrue("K. J. Yesudas" in names("Malayalam"))
+        assertEquals("Yesudas", byName.getValue("Malayalam").artists.first { it.name == "K. J. Yesudas" }.query)
+        assertEquals("Shankar Ehsaan Loy", byName.getValue("Hindi").artists.first { it.name == "Shankar-Ehsaan-Loy" }.query)
+    }
+
+    @Test
+    fun myArtistsAreKeptNewestFirstWithoutDuplicates() {
+        var text = ""
+        text = MyArtists.add(text, "  Alan   Walker ")
+        text = MyArtists.add(text, "Nucleya")
+        text = MyArtists.add(text, "alan walker")
+        text = MyArtists.add(text, "   ")
+        assertEquals(listOf("Nucleya", "Alan Walker"), MyArtists.parse(text))
+        assertEquals(listOf("Nucleya"), MyArtists.parse(MyArtists.remove(text, "Alan Walker")))
+        val genre = MyArtists.genre(text)
+        assertEquals(MyArtists.GENRE, genre.name)
+        assertEquals(listOf("Nucleya", "Alan Walker"), genre.artists.map { it.name })
+        assertEquals("Alan Walker", genre.artists.last().query)
+        assertEquals(200, MyArtists.parse((1..300).fold("") { acc, i -> MyArtists.add(acc, "Artist $i") }).size)
+    }
 }

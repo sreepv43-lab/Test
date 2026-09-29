@@ -54,6 +54,9 @@ class Settings(context: Context) {
     /** The last searches, newest first, one per line (typing on a TV is slow). */
     val recentSearches = string("recent_searches", "")
 
+    /** The listener's own artists on the Artists page, one per line, newest first (see MyArtists). */
+    val myArtists = string("my_artists", "")
+
     /** The notification permission was explained and asked for once (on the first play or download). */
     val notificationsAsked = bool("notifications_asked", false)
 

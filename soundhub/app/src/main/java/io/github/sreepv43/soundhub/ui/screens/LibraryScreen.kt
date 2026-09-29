@@ -546,7 +546,11 @@ fun PlaylistScreen(id: String, onPlaying: () -> Unit, onGone: () -> Unit) {
                 key = "entry:$index",
             ) {
                 if (track == null) {
-                    TwoLines("Removed from the library", "Choose More → Remove from playlist", Modifier.weight(1f))
+                    TwoLines(
+                        "Not in your library yet",
+                        "Still downloading, or removed. It plays here once it is in the library; More → Remove from playlist",
+                        Modifier.weight(1f),
+                    )
                 } else {
                     AlbumCover(LibraryViews.albumKeyOf(track.path), track.album, 44.dp)
                     TwoLines(track.title, songLine(track, track.id in missing, withAlbum = true), Modifier.weight(1f)) { FormatBadge(track.info) }
@@ -562,7 +566,7 @@ fun PlaylistScreen(id: String, onPlaying: () -> Unit, onGone: () -> Unit) {
         )
         val track = entries.getOrNull(index)
         if (track == null) {
-            OptionsDialog(title = "Song removed from the library", onDismiss = { menuAt = null }, options = move)
+            OptionsDialog(title = "Song not in your library yet", onDismiss = { menuAt = null }, options = move)
         } else {
             SongMenu(
                 tracks = listOf(track),

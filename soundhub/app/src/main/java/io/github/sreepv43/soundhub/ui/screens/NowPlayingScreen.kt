@@ -118,6 +118,7 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
     val infos by container.downloads.infos.collectAsStateWithLifecycle()
     val library by container.library.tracks.collectAsStateWithLifecycle()
     var showSleep by remember { mutableStateOf(false) }
+    var showPlaylist by remember { mutableStateOf(false) }
 
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
@@ -221,6 +222,7 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
                     if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     primary = false,
                 ) { container.collection.toggleFavouriteTrack(current.id) }
+                ActionButton("Add to playlist", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false) { showPlaylist = true }
                 ActionButton("Queue (${queue.size})", Icons.AutoMirrored.Filled.QueueMusic, primary = false, onClick = onQueue)
                 ActionButton(sleepLabel(sleep, now), Icons.Default.Bedtime, primary = false) { showSleep = true }
                 ActionButton("Sound", Icons.Default.SurroundSound, primary = false) { onGo(Section.SOUND) }
@@ -263,6 +265,9 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
                 }
             }
         }
+    }
+    if (showPlaylist) {
+        AddToPlaylistDialog(listOf(current.id), current.album.ifEmpty { current.title }, onDismiss = { showPlaylist = false })
     }
     if (showSleep) {
         OptionsDialog(
@@ -418,7 +423,12 @@ fun QueueItemMenu(at: Int, onDismiss: () -> Unit) {
     val playback = LocalContext.current.container.playback
     val queue by playback.queue.collectAsStateWithLifecycle()
     val index by playback.currentIndex.collectAsStateWithLifecycle()
+    var adding by remember { mutableStateOf(false) }
     val entry = queue.getOrNull(at) ?: return
+    if (adding) {
+        AddToPlaylistDialog(listOf(entry.id), entry.album.ifEmpty { entry.title }, onDismiss)
+        return
+    }
     OptionsDialog(
         title = entry.title,
         subtitle = listOfNotNull(entry.artist, entry.album).joinToString(" · "),
@@ -428,6 +438,7 @@ fun QueueItemMenu(at: Int, onDismiss: () -> Unit) {
             Option("Play next", Icons.Default.SkipNext) { playback.playNext(at) }.takeIf { at != index && at != index + 1 },
             Option("Move up", Icons.Default.ArrowUpward) { playback.move(at, -1) }.takeIf { at > 0 },
             Option("Move down", Icons.Default.ArrowDownward) { playback.move(at, +1) }.takeIf { at < queue.lastIndex },
+            Option("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd, closes = false) { adding = true },
             Option("Remove from queue", Icons.Default.RemoveCircleOutline) { playback.removeAt(at) },
         ),
     )

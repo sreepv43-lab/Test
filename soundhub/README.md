@@ -28,9 +28,12 @@ page, with a big round play button.
   the best copy (playable, slot reported free, most songs, best quality, shortest queue); **Sources**
   lists every user's copy to pick another. Playing an album keeps the whole album in the queue and
   downloads the chosen song first.
-- **Artists:** well-known artists by genre (pop, rock, hip-hop, jazz, classical, film scores, Indian
-  film and classical, and "Dolby Atmos picks"). OK on one searches Soulseek for their music, for all
-  music, lossless, Hi-Res or Dolby Atmos; Back returns to the list.
+- **Artists:** well-known artists by genre and language (Hindi, Tamil, Malayalam, Telugu, pop, rock,
+  metal, hip-hop, R&B, electronic, jazz, classical, film scores, Indian classical and ghazal, Latin,
+  country, K-pop and J-pop, and "Dolby Atmos picks"). OK on one searches Soulseek for their music, for
+  all music, lossless, Hi-Res or Dolby Atmos; Back returns to the list. **My artists** (the first
+  chip) is your own list: **Add an artist** (type the name as it appears in file names, for example
+  Rahman) and **Remove an artist…**.
 - **Filters** as separate choices instead of one row of overlapping chips: a **File type** row (MP3,
   AAC / MP4, FLAC, ALAC, WAV / AIFF, DSD, Dolby / DTS, other) and a **Quality** row (lossless,
   Hi-Res, lossy) under the search, each chip with how many albums it finds; **More filters…** has
@@ -41,6 +44,11 @@ page, with a big round play button.
   - The app then reads each file's header as soon as the first bytes arrive. This fixes labels
     that are wrong, for example "24-bit" files that are really 16-bit, or `.m4a` files that are
     AAC, ALAC or Dolby.
+- **Playlists of your own** (Library → Playlists → New playlist). Add songs from anywhere: **Add to
+  playlist** on an album or song in search results (songs not in the library yet are downloaded, and
+  play from the playlist once they are), on Now playing, in the queue or Up Next (…), and in the
+  library (More). A song is only added once to a playlist; playlists can be played, shuffled,
+  reordered and renamed.
 - **Library** with artwork (the folder's cover, or the one embedded in the songs), real names from
   the files' tags, its own search, sorting, and Albums, Songs, Artists, Playlists and Favourites.
   Songs on an unplugged USB drive stay listed as **Drive disconnected** until you remove them.

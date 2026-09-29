@@ -41,7 +41,10 @@ import io.github.sreepv43.soundhub.audio.Channels
 import io.github.sreepv43.soundhub.audio.Quality
 import io.github.sreepv43.soundhub.data.UpdateState
 import io.github.sreepv43.soundhub.audio.MusicFilter
+import io.github.sreepv43.soundhub.library.ArtistGenre
+import io.github.sreepv43.soundhub.library.FamousArtist
 import io.github.sreepv43.soundhub.library.FamousArtists
+import io.github.sreepv43.soundhub.library.MyArtists
 import io.github.sreepv43.soundhub.library.PathNames
 import io.github.sreepv43.soundhub.library.Releases
 import io.github.sreepv43.soundhub.library.SearchFolder
@@ -105,6 +108,9 @@ class RemoteNavigationTest {
     private val panelSeeks = mutableListOf<Long>()
     private val jumps = mutableListOf<Int>()
     private val atmosSwitches = mutableListOf<Boolean>()
+    private val playlistAdds = mutableListOf<Int>()
+    private var artistAdds = 0
+    private val mine = mutableStateOf<List<String>?>(null)
 
     @OptIn(ExperimentalComposeUiApi::class)
     @Before
@@ -126,6 +132,9 @@ class RemoteNavigationTest {
                     onPanelSeek = { panelSeeks += it },
                     onJump = { jumps += it },
                     onAtmos = { atmosSwitches += it },
+                    mine = mine.value,
+                    onAddArtist = { artistAdds++ },
+                    onPlaylist = { playlistAdds += it },
                 )
             }
         }
@@ -375,6 +384,47 @@ class RemoteNavigationTest {
         press(KeyEvent.KEYCODE_BACK)
         assertEquals(SectionPage(Section.ARTISTS), navigator.current)
         assertEquals(artist, focused())
+    }
+
+    @Test
+    fun myArtistsComeFirstAndCanBeAddedFromAndSearched() {
+        rule.runOnUiThread { mine.value = listOf("Alan Walker", "Nucleya") }
+        openSection(Section.ARTISTS)
+        assertEquals("starts on the first shipped genre", FamousArtists.genres.first().name, focused())
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals(MyArtists.GENRE, focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("Add an artist", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(1, artistAdds)
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertEquals("artist-Alan Walker", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("artist-Nucleya", focused())
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("Up from any of the first artists reaches the Add button", "Add an artist", focused())
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals(MyArtists.GENRE, focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf("Alan Walker"), picked)
+    }
+
+    @Test
+    fun anAlbumAndItsSongsCanBeAddedToAPlaylistFromSearch() {
+        downTo("release-Album 5")
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithTag("Add to playlist").performClick()
+        assertEquals(listOf(3), playlistAdds)
+        moveUntil(KeyEvent.KEYCODE_DPAD_DOWN) { it.startsWith("track-") }
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertTrue(optionsInOrder().toString(), "option-Add to playlist…" in optionsInOrder())
+        rule.onNodeWithTag("option-Add to playlist…").performClick()
+        settle()
+        assertEquals(listOf(3, 1), playlistAdds)
     }
 
     @Test
@@ -765,6 +815,9 @@ private fun FakeApp(
     onPanelSeek: (Long) -> Unit,
     onJump: (Int) -> Unit,
     onAtmos: (Boolean) -> Unit,
+    mine: List<String>?,
+    onAddArtist: () -> Unit,
+    onPlaylist: (Int) -> Unit,
 ) {
     val navigator = remember { Navigator(Section.SEARCH) }
     SideEffect { onNavigator(navigator) }
@@ -842,9 +895,14 @@ private fun FakeApp(
                     )
                 }
                 Section.ARTISTS -> {
-                    var genre by remember { mutableStateOf(0) }
+                    // As on the device: the listener's own artists come first once there are some.
+                    val genres = remember(mine) {
+                        if (mine == null) FamousArtists.genres
+                        else listOf(ArtistGenre(MyArtists.GENRE, mine.map { FamousArtist(it) })) + FamousArtists.genres
+                    }
+                    var genre by remember { mutableStateOf(if (mine == null) 0 else 1) }
                     var mode by remember { mutableStateOf(ArtistSearch.ALL) }
-                    ArtistsLayout(FamousArtists.genres, genre, { genre = it }, mode, { mode = it }) { artist ->
+                    ArtistsLayout(genres, genre, { genre = it }, mode, { mode = it }, onAdd = onAddArtist) { artist ->
                         onArtist(artist.name)
                         navigator.bringToTop(Section.SEARCH)
                     }
@@ -874,6 +932,7 @@ private fun FakeApp(
                 onEnqueue = { _, _ -> },
                 onDownload = {},
                 onChooseSource = {},
+                onPlaylist = { onPlaylist(it.size) },
             )
             is SettingsPage -> if (page.kind == SettingsKind.APPEARANCE) {
                 AppearanceLayout(Palettes.all, currentPalette.id) { currentPalette = Palettes.byId(it) }
