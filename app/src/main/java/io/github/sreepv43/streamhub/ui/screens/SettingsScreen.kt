@@ -8,6 +8,9 @@ import io.github.sreepv43.streamhub.ui.components.TvTextField
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.key
+import androidx.compose.ui.focus.FocusDirection
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
@@ -99,6 +102,10 @@ fun SettingsScreen() {
                     .weight(1f)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
+                    // Left at a row's start must reach the side menu, not jump up to a tab.
+                    .focusProperties {
+                        exit = { direction -> if (direction == FocusDirection.Left) FocusRequester.Cancel else FocusRequester.Default }
+                    }
                     .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {
