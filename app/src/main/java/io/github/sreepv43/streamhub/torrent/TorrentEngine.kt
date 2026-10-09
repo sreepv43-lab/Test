@@ -55,7 +55,9 @@ class TorrentEngine(
 ) {
     private val log = Logger.getLogger("TorrentEngine")
     private val lock = Any()
-    private var session: SessionManager? = null
+    @Volatile private var session: SessionManager? = null
+    /** Starting the session is slow; it has its own lock so it never holds up readers and the UI. */
+    private val sessionLock = Any()
     private val torrents = HashMap<String, Entry>()
     private val sourcesToHash = HashMap<String, String>()
     private val janitor = Executors.newSingleThreadScheduledExecutor { r ->
@@ -355,13 +357,15 @@ class TorrentEngine(
             info.infoHash().toHex().lowercase() to info
         }
 
+        // Looking at the drives can be slow (a sleeping USB disk); never do it while holding the lock.
+        val cacheDir = pickCacheDir()
         val saveDir = synchronized(lock) {
             torrents[hash]?.takeIf { it.handle.isValid }?.let { entry ->
                 sourcesToHash[source] = hash
                 entry.refs++
                 return entry
             }
-            val dir = File(pickCacheDir(), hash).apply { mkdirs() }
+            val dir = File(cacheDir, hash).apply { mkdirs() }
             if (info != null) {
                 val priorities = Array(info.numFiles()) { Priority.IGNORE }
                 session.download(info, dir, null, priorities, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
@@ -427,22 +431,35 @@ class TorrentEngine(
         janitor.schedule({ entry.saveDir.deleteRecursively() }, 5, TimeUnit.SECONDS)
     }
 
-    private fun session(): SessionManager = synchronized(lock) {
-        session ?: SessionManager(false).also { s ->
-            // Leftovers from a previous run are never reused.
-            cacheDirs().forEach { dir -> dir.listFiles()?.forEach { it.deleteRecursively() } }
-            val settings = SettingsPack()
-                .connectionsLimit(200)
-                .activeDownloads(8)
-                .activeSeeds(8)
-            settings.setInteger(settings_pack.int_types.request_timeout.swigValue(), 10)
-            settings.setInteger(settings_pack.int_types.piece_timeout.swigValue(), 10)
-            settings.setEnableDht(true)
-            settings.setEnableLsd(true)
-            configure(settings)
-            s.start(SessionParams(settings))
-            session = s
+    private fun session(): SessionManager {
+        session?.let { return it }
+        return synchronized(sessionLock) {
+            session ?: SessionManager(false).also { s ->
+                // Leftovers from a previous run are never reused. Moving them aside is instant;
+                // deleting them (gigabytes, perhaps on a USB drive) happens in the background.
+                val stale = cacheDirs().flatMap { dir -> dir.listFiles()?.toList().orEmpty() }.mapNotNull { leftover ->
+                    val aside = File(leftover.parentFile, ".old-" + System.nanoTime())
+                    if (leftover.renameTo(aside)) aside else { leftover.deleteRecursively(); null }
+                }
+                if (stale.isNotEmpty()) janitor.execute { stale.forEach { runCatching { it.deleteRecursively() } } }
+                val settings = SettingsPack()
+                    .connectionsLimit(200)
+                    .activeDownloads(8)
+                    .activeSeeds(8)
+                settings.setInteger(settings_pack.int_types.request_timeout.swigValue(), 10)
+                settings.setInteger(settings_pack.int_types.piece_timeout.swigValue(), 10)
+                settings.setEnableDht(true)
+                settings.setEnableLsd(true)
+                configure(settings)
+                s.start(SessionParams(settings))
+                session = s
+            }
         }
+    }
+
+    /** Starts the BitTorrent session in the background so the first torrent doesn't wait for it. */
+    fun warmUp() {
+        prefetcher.execute { runCatching { session() }.onFailure { log.log(Level.WARNING, "warm-up failed", it) } }
     }
 
     private fun pickCacheDir(): File =

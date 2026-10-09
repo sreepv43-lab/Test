@@ -8,6 +8,12 @@ import io.github.sreepv43.streamhub.ui.components.MetaRow
 import io.github.sreepv43.streamhub.addon.Meta
 import org.junit.Assert.assertFalse
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import io.github.sreepv43.streamhub.ui.components.TvTextField
 import android.content.pm.PackageManager
 import android.os.SystemClock
 import android.view.KeyEvent
@@ -125,6 +131,9 @@ class ScreensTest {
         show { SettingsScreen() }
         val settings = container.settings
 
+        // Settings are in tabs; the quality choices are under Playback.
+        focus(rule.onNodeWithText("Playback"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
         focus(rule.onNodeWithText("1080p"))
         assertEquals("1080p", focused())
         press(KeyEvent.KEYCODE_DPAD_LEFT)
@@ -177,6 +186,24 @@ class ScreensTest {
         rule.onNodeWithText("Remove from My List").performClick()
         settle()
         assertFalse(container.library.contains("tt0111161"))
+    }
+
+    @Test
+    fun textFieldOnlyOpensTheEditorWhenOkIsPressed() {
+        var typed = ""
+        show {
+            var value by remember { mutableStateOf("") }
+            TvTextField(value = value, onValueChange = { value = it; typed = it }, label = "Stremio email")
+        }
+        focus(rule.onNodeWithText("Stremio email"))
+        assertTrue("moving onto the field must not start typing", rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty())
+
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNode(hasSetTextAction()).performTextInput("me@example.com")
+        rule.onNodeWithText("OK").performClick()
+        settle()
+        assertEquals("me@example.com", typed)
+        assertTrue(rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty())
     }
 
     private fun addon(name: String) = InstalledAddon("https://$name.example/manifest.json".replace(' ', '-'), Manifest(id = name, name = name))

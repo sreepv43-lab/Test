@@ -3,6 +3,7 @@ package io.github.sreepv43.streamhub
 import android.app.Application
 import android.content.Context
 import android.net.Uri
+import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import coil.ImageLoader
 import coil.ImageLoaderFactory
@@ -91,12 +92,22 @@ class AppContainer(context: Context) {
     val torrents = TorrentEngine(
         cacheDirs = {
             (ContextCompat.getExternalFilesDirs(context, null).filterNotNull() + context.filesDir)
-                .map { File(it, "torrent-cache") } + storage.writableDriveFolders(".torrent-cache")
+                .map { File(it, "torrent-cache") } + driveCacheFolders()
         },
         fetchTorrentFile = { url -> fetchBytes(context, url) },
         cacheLimitBytes = { settings.torrentCacheLimitGb.value * (1L shl 30) },
     )
     val torrentServer = TorrentHttpServer(torrents)
+
+    private var driveFolders: Pair<Long, List<File>>? = null
+
+    /** Cache folders on USB drives. Checking them writes a test file, so it's remembered for a minute. */
+    @Synchronized
+    private fun driveCacheFolders(): List<File> {
+        val now = SystemClock.elapsedRealtime()
+        driveFolders?.takeIf { now - it.first < DRIVE_CHECK_MS }?.let { return it.second }
+        return storage.writableDriveFolders(".torrent-cache").also { driveFolders = now to it }
+    }
 
     /** Local torrent streams may wait for peers, so they get generous timeouts. */
     val torrentHttp: OkHttpClient = mediaHttp.newBuilder()
@@ -129,6 +140,7 @@ class AppContainer(context: Context) {
 
     private companion object {
         const val PREPARED_STREAMS = 3
+        const val DRIVE_CHECK_MS = 60_000L
     }
 
     private fun fetchBytes(context: Context, url: String): ByteArray {

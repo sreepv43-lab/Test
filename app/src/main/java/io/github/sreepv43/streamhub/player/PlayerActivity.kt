@@ -346,15 +346,14 @@ class PlayerActivity : ComponentActivity() {
 
         val start = savedPosition ?: request.videoId?.let { container.history.positionFor(it) } ?: 0L
         exo.playWhenReady = true
-        // Subtitle addons (e.g. OpenSubtitles) are asked first, but never hold playback up for long.
+        // Subtitle addons (e.g. OpenSubtitles) are asked in parallel; playback only waits a moment for them.
         lifecycleScope.launch {
             val type = request.type
             val videoId = request.videoId
-            val addonSubtitles = if (type != null && videoId != null) {
-                withTimeoutOrNull(SUBTITLE_TIMEOUT_MS) {
-                    runCatching { container.addons.subtitles(type, videoId) }.getOrNull()
-                }.orEmpty()
-            } else emptyList()
+            val lookup = if (type != null && videoId != null) {
+                async { runCatching { container.addons.subtitles(type, videoId) }.getOrDefault(emptyList()) }
+            } else null
+            val early = lookup?.let { withTimeoutOrNull(SUBTITLE_WAIT_MS) { it.await() } }
             if (player !== exo) return@launch
             // Torrents are read through the built-in engine's local HTTP server.
             val url = if (torrent != null) {
@@ -363,11 +362,22 @@ class PlayerActivity : ComponentActivity() {
                 container.playableUrl(request.url)
             }
             mediaUrl = url
-            subtitleSources = (request.subtitles + addonSubtitles).distinctBy { it.url }.take(MAX_SUBTITLES)
+            subtitleSources = (request.subtitles + early.orEmpty()).distinctBy { it.url }.take(MAX_SUBTITLES)
             exo.setMediaItem(buildMediaItem(url, subtitleSources), start)
             exo.prepare()
             if (start > RESUME_MIN_MS) {
                 Toast.makeText(this@PlayerActivity, "Resuming from ${formatTime(start)}", Toast.LENGTH_SHORT).show()
+            }
+            // Slow subtitle servers: add their subtitles once they answer, if the film has only just begun.
+            if (lookup != null && early == null) {
+                val late = lookup.await()
+                if (player === exo && late.isNotEmpty() && exo.currentPosition < LATE_SUBTITLES_MAX_MS) {
+                    val selectedId = selectedTextFormatId(exo.currentTracks)
+                    pendingSubtitleId = subtitleSources.firstOrNull { sub -> selectedId != null && selectedId.endsWith(sub.url) }?.url
+                    subtitleSources = (subtitleSources + late).distinctBy { it.url }.take(MAX_SUBTITLES)
+                    exo.setMediaItem(buildMediaItem(url, subtitleSources), exo.currentPosition)
+                    exo.prepare()
+                }
             }
         }
         // Save the position regularly, not only on exit: turning the TV off kills the app without
@@ -994,7 +1004,8 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         private const val STATE_POSITION = "position"
         private const val MAX_SUBTITLES = 40
-        private const val SUBTITLE_TIMEOUT_MS = 2_500L
+        private const val SUBTITLE_WAIT_MS = 1_000L
+        private const val LATE_SUBTITLES_MAX_MS = 180_000L
         private const val MIN_REBUFFER_MS = 2_000
         private const val AUDIO_INFO_MS = 8_000L
         private const val PULSE_MS = 900L

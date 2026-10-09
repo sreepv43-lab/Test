@@ -36,7 +36,7 @@ import io.github.sreepv43.streamhub.ui.components.WatchContext
 import io.github.sreepv43.streamhub.ui.components.rememberStreamDialogState
 import io.github.sreepv43.streamhub.ui.components.rememberStreamHandlers
 import io.github.sreepv43.streamhub.ui.components.FlatButton
-import io.github.sreepv43.streamhub.ui.components.flatTextFieldColors
+import io.github.sreepv43.streamhub.ui.components.TvTextField
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 
 /** Turns whatever was pasted or shared into a stream the app can play or download. */
@@ -83,16 +83,15 @@ fun LinkScreen(initialUrl: String?) {
                 "Torrents are streamed and downloaded with the built-in torrent engine.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        OutlinedTextField(
-            colors = flatTextFieldColors(),
+        TvTextField(
             value = text,
             onValueChange = { text = it },
-            label = { Text("Link") },
-            singleLine = true,
+            label = "Link",
+            placeholder = "Press OK to type or paste the link",
+            keyboardType = KeyboardType.Uri,
             isError = text.isNotBlank() && stream == null,
-            supportingText = hint?.let { message -> @Composable { Text(message) } },
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            modifier = Modifier.fillMaxWidth().widthIn(max = 900.dp).tvFocus(),
+            supportingText = hint,
+            modifier = Modifier.fillMaxWidth().widthIn(max = 900.dp),
         )
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             FlatButton("Play", { stream?.let(handlers.onPlay) }, icon = Icons.Default.PlayArrow, prominent = true, enabled = stream != null)

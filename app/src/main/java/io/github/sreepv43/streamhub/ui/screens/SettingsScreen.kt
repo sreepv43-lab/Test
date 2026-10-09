@@ -4,7 +4,10 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.width
 import io.github.sreepv43.streamhub.sync.Trakt
-import io.github.sreepv43.streamhub.ui.components.flatTextFieldColors
+import io.github.sreepv43.streamhub.ui.components.TvTextField
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.runtime.key
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.KeyboardType
@@ -62,180 +65,193 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+private enum class SettingsTab(val title: String) {
+    Theme("Theme"),
+    Playback("Playback"),
+    Downloads("Downloads"),
+    Torrents("Torrents"),
+    Sync("Import & sync"),
+    About("Addons & updates"),
+}
+
+/** Settings are split into tabs, so the remote only has a few rows to move through at a time. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen() {
-    val context = LocalContext.current
-    val container = context.container
+    var tab by rememberSaveable { mutableStateOf(SettingsTab.Theme) }
+    Column(Modifier.fillMaxSize()) {
+        Text(
+            "Settings",
+            style = MaterialTheme.typography.headlineLarge,
+            modifier = Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp),
+        )
+        FlowRow(
+            Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SettingsTab.entries.forEach { FlatChip(it.title, selected = it == tab, onClick = { tab = it }) }
+        }
+        // Each tab has its own scroll position and is only built while it is showing.
+        key(tab) {
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(20.dp),
+            ) {
+                when (tab) {
+                    SettingsTab.Theme -> ThemeTab()
+                    SettingsTab.Playback -> SettingsSection("Video and audio") { PlaybackSettings() }
+                    SettingsTab.Downloads -> DownloadsTab()
+                    SettingsTab.Torrents -> TorrentsTab()
+                    SettingsTab.Sync -> SyncTab()
+                    SettingsTab.About -> AboutTab()
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ThemeTab() {
+    val settings = LocalContext.current.container.settings
+    val themeId by settings.theme.collectAsStateWithLifecycle()
+    SettingsSection("Colour theme") {
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Palettes.all.forEach { palette ->
+                ThemeSwatch(palette, selected = palette.id == themeId, onClick = { settings.setTheme(palette.id) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun DownloadsTab() {
+    val container = LocalContext.current.container
     val settings = container.settings
     val location by settings.downloadLocation.collectAsStateWithLifecycle()
-    var cacheSize by remember { mutableStateOf<Long?>(null) }
-    val themeId by settings.theme.collectAsStateWithLifecycle()
     // Looking up storage volumes touches the disk; never do it on the UI thread.
     val defaultLocation by produceState<DownloadLocation?>(null) {
         value = withContext(Dispatchers.IO) { container.storage.defaultLocation() }
     }
-    val scope = rememberCoroutineScope()
-
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(24.dp),
-        verticalArrangement = Arrangement.spacedBy(20.dp),
-    ) {
-        item {
-            Text("Settings", style = MaterialTheme.typography.headlineLarge)
-        }
-
-        item {
-            SettingsSection("Theme") {
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Palettes.all.forEach { palette ->
-                        ThemeSwatch(palette, selected = palette.id == themeId, onClick = { settings.setTheme(palette.id) })
-                    }
-                }
-            }
-        }
-
-        item {
-            SettingsSection("Playback") {
-                PlaybackSettings()
-            }
-        }
-
-        item {
-            SettingsSection("Import from Stremio") {
-                StremioImportSection()
-            }
-        }
-
-        item {
-            SettingsSection("Import from IMDb") {
-                ImdbImportSection()
-            }
-        }
-
-        item {
-            SettingsSection("TV home screen") {
-                HomeScreenRowSection()
-            }
-        }
-
-        item {
-            SettingsSection("Trakt") {
-                TraktSection()
-            }
-        }
-
-        item {
-            SettingsSection("Updates") {
-                UpdatesSection()
-            }
-        }
-
-        item {
-            SettingsSection("Download location") {
-                Text(
-                    "Pick internal storage or any connected USB drive or SD card. New drives appear here when plugged in.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Column(Modifier.widthIn(max = 720.dp)) {
-                    StorageChooser(
-                        selected = location ?: defaultLocation,
-                        onSelect = settings::setDownloadLocation,
-                    )
-                }
-            }
-        }
-
-        item {
-            SettingsSection("Downloads") {
-                val wifiOnly by settings.downloadsWifiOnly.flow.collectAsStateWithLifecycle()
-                val speedLimit by settings.downloadSpeedLimitKb.flow.collectAsStateWithLifecycle()
-                val deleteAfter by settings.deleteAfterWatching.flow.collectAsStateWithLifecycle()
-                ChoiceRow("Download only on Wi-Fi or Ethernet", listOf(false to "Any connection", true to "Wi-Fi only"), wifiOnly) {
-                    settings.downloadsWifiOnly.set(it)
-                }
-                ChoiceRow(
-                    "Speed limit",
-                    listOf(0 to "No limit", 1024 to "1 MB/s", 2048 to "2 MB/s", 5120 to "5 MB/s", 10240 to "10 MB/s"),
-                    speedLimit,
-                ) { settings.downloadSpeedLimitKb.set(it) }
-                ChoiceRow("Delete a download after watching it", listOf(false to "Keep", true to "Delete"), deleteAfter) {
-                    settings.deleteAfterWatching.set(it)
-                }
-            }
-        }
-
-        item {
-            SettingsSection("Torrents") {
-                Text(
-                    "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
-                        "is fetched, in order, so playback starts after a few seconds when there are enough peers. " +
-                        "Streaming data is kept in a temporary cache on the drive with the most free space and deleted " +
-                        "a few minutes after you stop watching.",
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                val prepare by settings.prepareTorrents.flow.collectAsStateWithLifecycle()
-                ChoiceRow(
-                    "Get the best torrents ready as soon as a stream list opens (starts faster, uses some data)",
-                    listOf(true to "On", false to "Off"),
-                    prepare,
-                ) { settings.prepareTorrents.set(it) }
-                val cacheLimit by settings.torrentCacheLimitGb.flow.collectAsStateWithLifecycle()
-                ChoiceRow(
-                    "Cache limit (torrents you aren't watching are removed when it's exceeded)",
-                    listOf(2 to "2 GB", 5 to "5 GB", 10 to "10 GB", 20 to "20 GB", 0 to "No limit"),
-                    cacheLimit,
-                ) {
-                    settings.torrentCacheLimitGb.set(it)
-                    scope.launch(Dispatchers.IO) { container.torrents.trimCache() }
-                }
-                LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))
-                    FlatButton(
-                        text = "Clear torrent cache",
-                        onClick = {
-                            scope.launch {
-                                cacheSize = withContext(Dispatchers.IO) {
-                                    container.torrents.clearCache()
-                                    container.torrents.cacheSizeBytes()
-                                }
-                                StreamActions.toast(context, "Torrent cache cleared (torrents in use were kept)")
-                            }
-                        },
-                        modifier = Modifier.padding(start = 16.dp),
-                    )
-                }
-            }
-        }
-
-        item {
-            SettingsSection("Addons") {
-                FlatButton(
-                    text = "Update all addon manifests",
-                    onClick = {
-                        scope.launch {
-                            container.addons.refreshAll()
-                            StreamActions.toast(context, "Addons updated")
-                        }
-                    },
-                )
-            }
-        }
-
-        item {
-            Text(
-                "StreamHub ${BuildConfig.VERSION_NAME}. Compatible with Stremio addons. " +
-                    "Only stream and download content you have the rights to.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+    SettingsSection("Download location") {
+        Text(
+            "Pick internal storage or any connected USB drive or SD card. New drives appear here when plugged in.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Column(Modifier.widthIn(max = 720.dp)) {
+            StorageChooser(
+                selected = location ?: defaultLocation,
+                onSelect = settings::setDownloadLocation,
             )
         }
     }
+    SettingsSection("Download options") {
+        val wifiOnly by settings.downloadsWifiOnly.flow.collectAsStateWithLifecycle()
+        val speedLimit by settings.downloadSpeedLimitKb.flow.collectAsStateWithLifecycle()
+        val deleteAfter by settings.deleteAfterWatching.flow.collectAsStateWithLifecycle()
+        ChoiceRow("Download only on Wi-Fi or Ethernet", listOf(false to "Any connection", true to "Wi-Fi only"), wifiOnly) {
+            settings.downloadsWifiOnly.set(it)
+        }
+        ChoiceRow(
+            "Speed limit",
+            listOf(0 to "No limit", 1024 to "1 MB/s", 2048 to "2 MB/s", 5120 to "5 MB/s", 10240 to "10 MB/s"),
+            speedLimit,
+        ) { settings.downloadSpeedLimitKb.set(it) }
+        ChoiceRow("Delete a download after watching it", listOf(false to "Keep", true to "Delete"), deleteAfter) {
+            settings.deleteAfterWatching.set(it)
+        }
+    }
+}
+
+@Composable
+private fun TorrentsTab() {
+    val context = LocalContext.current
+    val container = context.container
+    val settings = container.settings
+    val scope = rememberCoroutineScope()
+    var cacheSize by remember { mutableStateOf<Long?>(null) }
+    SettingsSection("Torrents") {
+        Text(
+            "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
+                "is fetched, in order, so playback starts after a few seconds when there are enough peers. " +
+                "Streaming data is kept in a temporary cache on the drive with the most free space and deleted " +
+                "a few minutes after you stop watching.",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        val prepare by settings.prepareTorrents.flow.collectAsStateWithLifecycle()
+        ChoiceRow(
+            "Get the best torrents ready as soon as a stream list opens (starts faster, uses some data)",
+            listOf(true to "On", false to "Off"),
+            prepare,
+        ) { settings.prepareTorrents.set(it) }
+        val cacheLimit by settings.torrentCacheLimitGb.flow.collectAsStateWithLifecycle()
+        ChoiceRow(
+            "Cache limit (torrents you aren't watching are removed when it's exceeded)",
+            listOf(2 to "2 GB", 5 to "5 GB", 10 to "10 GB", 20 to "20 GB", 0 to "No limit"),
+            cacheLimit,
+        ) {
+            settings.torrentCacheLimitGb.set(it)
+            scope.launch(Dispatchers.IO) { container.torrents.trimCache() }
+        }
+        LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))
+            FlatButton(
+                text = "Clear torrent cache",
+                onClick = {
+                    scope.launch {
+                        cacheSize = withContext(Dispatchers.IO) {
+                            container.torrents.clearCache()
+                            container.torrents.cacheSizeBytes()
+                        }
+                        StreamActions.toast(context, "Torrent cache cleared (torrents in use were kept)")
+                    }
+                },
+                modifier = Modifier.padding(start = 16.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun SyncTab() {
+    SettingsSection("Import from Stremio") { StremioImportSection() }
+    SettingsSection("Import from IMDb") { ImdbImportSection() }
+    SettingsSection("TV home screen") { HomeScreenRowSection() }
+    SettingsSection("Trakt") { TraktSection() }
+}
+
+@Composable
+private fun AboutTab() {
+    val context = LocalContext.current
+    val container = context.container
+    val scope = rememberCoroutineScope()
+    SettingsSection("Addons") {
+        FlatButton(
+            text = "Update all addon manifests",
+            onClick = {
+                scope.launch {
+                    container.addons.refreshAll()
+                    StreamActions.toast(context, "Addons updated")
+                }
+            },
+        )
+    }
+    SettingsSection("Updates") { UpdatesSection() }
+    Text(
+        "StreamHub ${BuildConfig.VERSION_NAME}. Compatible with Stremio addons. " +
+            "Only stream and download content you have the rights to.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 @Composable
@@ -347,24 +363,20 @@ private fun StremioImportSection() {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
+        TvTextField(
             value = email,
             onValueChange = { email = it },
-            label = { Text("Stremio email") },
-            singleLine = true,
-            colors = flatTextFieldColors(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-            modifier = Modifier.width(320.dp).tvFocus(),
+            label = "Stremio email",
+            keyboardType = KeyboardType.Email,
+            modifier = Modifier.width(320.dp),
         )
-        OutlinedTextField(
+        TvTextField(
             value = password,
             onValueChange = { password = it },
-            label = { Text("Password") },
-            singleLine = true,
-            colors = flatTextFieldColors(),
-            visualTransformation = PasswordVisualTransformation(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-            modifier = Modifier.width(260.dp).tvFocus(),
+            label = "Password",
+            keyboardType = KeyboardType.Password,
+            password = true,
+            modifier = Modifier.width(260.dp),
         )
         FlatButton(
             text = if (busy) "Importing…" else "Import",
@@ -400,15 +412,13 @@ private fun ImdbImportSection() {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     Row(horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-        OutlinedTextField(
+        TvTextField(
             value = link,
             onValueChange = { link = it },
-            label = { Text("IMDb list or watchlist link") },
-            placeholder = { Text("imdb.com/user/ur12345678/watchlist") },
-            singleLine = true,
-            colors = flatTextFieldColors(),
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
-            modifier = Modifier.width(520.dp).tvFocus(),
+            label = "IMDb list or watchlist link",
+            placeholder = "imdb.com/user/ur12345678/watchlist",
+            keyboardType = KeyboardType.Uri,
+            modifier = Modifier.width(520.dp),
         )
         FlatButton(
             text = if (busy) "Importing…" else "Import",

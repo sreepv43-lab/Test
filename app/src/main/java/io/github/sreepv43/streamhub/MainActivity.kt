@@ -32,6 +32,7 @@ import io.github.sreepv43.streamhub.ui.components.DialogShape
 import io.github.sreepv43.streamhub.ui.components.FlatButton
 import io.github.sreepv43.streamhub.ui.components.StreamActions
 import io.github.sreepv43.streamhub.update.Updater
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import io.github.sreepv43.streamhub.ui.Routes
 import io.github.sreepv43.streamhub.ui.Palettes
@@ -49,6 +50,11 @@ class MainActivity : ComponentActivity() {
         if (savedInstanceState == null) handleIntent(intent)
         container.downloader.resumeInterrupted()
         requestNotificationPermission()
+        // Get the torrent engine going while the home screen loads, so the first play doesn't wait for it.
+        lifecycleScope.launch {
+            delay(WARM_UP_DELAY_MS)
+            container.torrents.warmUp()
+        }
 
         setContent {
             val themeId by container.settings.theme.collectAsState()
@@ -145,6 +151,7 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         const val EXTRA_OPEN_DOWNLOADS = "open_downloads"
+        private const val WARM_UP_DELAY_MS = 3_000L
         const val ACTION_OPEN_TITLE = "io.github.sreepv43.streamhub.OPEN_TITLE"
         const val EXTRA_TYPE = "type"
         const val EXTRA_META_ID = "meta_id"
