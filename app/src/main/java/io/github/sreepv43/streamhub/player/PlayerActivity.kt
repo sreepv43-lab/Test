@@ -68,6 +68,7 @@ import io.github.sreepv43.streamhub.addon.StreamResolver
 import io.github.sreepv43.streamhub.addon.Video
 import java.io.File
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -350,10 +351,10 @@ class PlayerActivity : ComponentActivity() {
         lifecycleScope.launch {
             val type = request.type
             val videoId = request.videoId
-            val lookup = if (type != null && videoId != null) {
-                async { runCatching { container.addons.subtitles(type, videoId) }.getOrDefault(emptyList()) }
+            val lookup: Deferred<List<Subtitle>>? = if (type != null && videoId != null) {
+                async { runCatching { container.addons.subtitles(type, videoId) }.getOrDefault(emptyList<Subtitle>()) }
             } else null
-            val early = lookup?.let { withTimeoutOrNull(SUBTITLE_WAIT_MS) { it.await() } }
+            val early: List<Subtitle>? = if (lookup == null) emptyList() else withTimeoutOrNull(SUBTITLE_WAIT_MS) { lookup.await() }
             if (player !== exo) return@launch
             // Torrents are read through the built-in engine's local HTTP server.
             val url = if (torrent != null) {
