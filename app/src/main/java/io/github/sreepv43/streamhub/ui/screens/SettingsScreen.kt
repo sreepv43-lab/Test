@@ -5,6 +5,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.layout.width
 import io.github.sreepv43.streamhub.sync.Trakt
 import io.github.sreepv43.streamhub.ui.components.TvTextField
+import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.key
@@ -102,6 +103,7 @@ fun SettingsScreen() {
                     .verticalScroll(rememberScrollState())
                     // Left at a row's start must reach the side menu, not jump up to a tab.
                     .tvRow()
+                    .focusGroup()
                     .padding(start = 24.dp, end = 24.dp, bottom = 24.dp),
                 verticalArrangement = Arrangement.spacedBy(20.dp),
             ) {

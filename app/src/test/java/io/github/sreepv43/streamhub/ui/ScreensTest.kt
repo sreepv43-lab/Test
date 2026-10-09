@@ -147,6 +147,7 @@ class ScreensTest {
         assertEquals(2160, settings.maxResolution.value)
 
         press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertTrue("Down goes to the start buffer row: ${focused()}", focused() in listOf("0.5 s", "1 s", "2.5 s", "5 s"))
         press(KeyEvent.KEYCODE_DPAD_LEFT, times = 3)
         assertEquals("the start buffer row is below the quality row", "0.5 s", focused())
         press(KeyEvent.KEYCODE_DPAD_CENTER)
