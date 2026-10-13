@@ -37,6 +37,7 @@ import io.github.sreepv43.soundhub.audio.AudioFormats
 import io.github.sreepv43.soundhub.container
 import io.github.sreepv43.soundhub.slsk.TransferInfo
 import io.github.sreepv43.soundhub.slsk.TransferStatus
+import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.components.ActionButton
 import io.github.sreepv43.soundhub.ui.components.DialogButton
 import io.github.sreepv43.soundhub.ui.components.ListRow
@@ -117,7 +118,7 @@ fun TransfersLayout(
     val groups = remember(songs) { songs.groupBy(::groupOf) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

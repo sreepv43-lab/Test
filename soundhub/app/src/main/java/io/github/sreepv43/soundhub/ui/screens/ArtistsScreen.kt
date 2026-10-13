@@ -48,6 +48,7 @@ import io.github.sreepv43.soundhub.library.ArtistGenre
 import io.github.sreepv43.soundhub.library.FamousArtist
 import io.github.sreepv43.soundhub.library.FamousArtists
 import io.github.sreepv43.soundhub.library.MyArtists
+import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.AppColors
 import io.github.sreepv43.soundhub.ui.Section
 import io.github.sreepv43.soundhub.ui.components.ActionButton
@@ -147,7 +148,7 @@ fun ArtistsLayout(
         val rows = remember(shown, columns) { shown.artists.chunked(columns) }
         LazyColumn(
             Modifier.fillMaxSize().testTag("page-list"),
-            state = rememberLazyListState(),
+            state = rememberPageListState(),
             contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {

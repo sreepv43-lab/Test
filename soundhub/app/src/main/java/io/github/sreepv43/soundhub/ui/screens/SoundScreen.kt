@@ -34,6 +34,7 @@ import io.github.sreepv43.soundhub.container
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.player.AudioOutput
 import io.github.sreepv43.soundhub.player.OutputReport
+import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.AtmosColor
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.WarningColor
@@ -77,7 +78,7 @@ fun SoundScreen(onOpenAlbum: (String) -> Unit, onFindAtmos: () -> Unit) {
 
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

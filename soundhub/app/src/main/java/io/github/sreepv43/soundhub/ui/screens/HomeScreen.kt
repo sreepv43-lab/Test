@@ -46,6 +46,7 @@ import io.github.sreepv43.soundhub.library.Album
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.library.LibraryViews
 import io.github.sreepv43.soundhub.slsk.ConnectionState
+import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.AppColors
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.Section
@@ -95,7 +96,7 @@ fun HomeScreen(
 
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

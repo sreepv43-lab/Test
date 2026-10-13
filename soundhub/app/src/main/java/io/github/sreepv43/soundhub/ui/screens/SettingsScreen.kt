@@ -54,6 +54,7 @@ import io.github.sreepv43.soundhub.data.AppUpdater
 import io.github.sreepv43.soundhub.data.CrashLog
 import io.github.sreepv43.soundhub.data.UpdateState
 import io.github.sreepv43.soundhub.slsk.ConnectionState
+import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.Palette
 import io.github.sreepv43.soundhub.ui.Palettes
@@ -182,7 +183,7 @@ private fun openNotificationSettings(context: android.content.Context) {
 private fun SettingsList(content: LazyListScope.() -> Unit) {
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
         content = content,

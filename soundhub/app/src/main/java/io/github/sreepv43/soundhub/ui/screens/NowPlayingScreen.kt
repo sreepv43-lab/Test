@@ -70,6 +70,7 @@ import androidx.media3.common.Player
 import io.github.sreepv43.soundhub.container
 import io.github.sreepv43.soundhub.player.QueueItem
 import io.github.sreepv43.soundhub.player.SleepTimer
+import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.Accent
 import io.github.sreepv43.soundhub.ui.AppColors
 import io.github.sreepv43.soundhub.ui.AtmosColor
@@ -162,7 +163,7 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
     val favourite = current.id in collection.favouriteTracks
     val upNext = queue.drop(index + 1).take(UP_NEXT)
 
-    val listState = rememberLazyListState()
+    val listState = rememberPageListState()
     val scope = rememberCoroutineScope()
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),

@@ -27,6 +27,8 @@ import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
@@ -97,6 +99,9 @@ internal const val PANEL_KEY = "player-panel"
  */
 class TvShellState internal constructor() {
     internal var shownPage: Any? = null
+
+    /** Counts the times the page was asked to scroll to its top (the Cinema top bar was entered). */
+    internal var scrollTopRequests by mutableIntStateOf(0)
     internal var focusedPage by mutableStateOf<Any?>(null)
 
     /** The player bar under the page holds the selection. */
@@ -277,6 +282,7 @@ fun TvShell(
     fun pageHasFocus() = shell.focusedPage == pageKey
 
     fun openMenu() {
+        if (currentLayout == UiLayout.CINEMA) shell.scrollTopRequests++
         menuActive = true
         expanded = true
         runCatching { menuFocus.requestFocus() }
@@ -696,6 +702,25 @@ private fun MenuItem(
             )
         }
     }
+}
+
+/**
+ * A page list's state that also scrolls back to the very top when the Cinema top bar is entered, so
+ * the page header (artwork, titles) is fully visible behind it.
+ */
+@Composable
+fun rememberPageListState(): LazyListState {
+    val state = rememberLazyListState()
+    val shell = LocalTvShell.current
+    val requests = shell?.scrollTopRequests ?: 0
+    var seen by remember { mutableIntStateOf(requests) }
+    LaunchedEffect(requests) {
+        if (requests != seen) {
+            seen = requests
+            state.animateScrollToItem(0)
+        }
+    }
+    return state
 }
 
 /** How lists follow the selection (installed by [TvShell]). */

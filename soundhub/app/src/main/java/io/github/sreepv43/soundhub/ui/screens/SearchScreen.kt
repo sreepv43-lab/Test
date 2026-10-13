@@ -43,6 +43,7 @@ import io.github.sreepv43.soundhub.library.SearchFolder
 import io.github.sreepv43.soundhub.library.SearchSession
 import io.github.sreepv43.soundhub.library.SearchTrack
 import io.github.sreepv43.soundhub.slsk.ConnectionState
+import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.WarningColor
 import io.github.sreepv43.soundhub.ui.components.ActionButton
@@ -124,7 +125,7 @@ fun SearchLayout(
     val more = MusicFilter(channels = filter.channels, freeSlotOnly = filter.freeSlotOnly).takeUnless { it.isDefault }?.label
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -323,7 +324,7 @@ fun ReleaseLayout(
     var showMore by remember { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {

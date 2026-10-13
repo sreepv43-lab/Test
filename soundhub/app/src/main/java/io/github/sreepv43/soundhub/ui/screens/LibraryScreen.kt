@@ -52,6 +52,7 @@ import io.github.sreepv43.soundhub.library.LibrarySort
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.library.LibraryTrack
 import io.github.sreepv43.soundhub.library.LibraryViews
+import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.FavouriteColor
 import io.github.sreepv43.soundhub.ui.WarningColor
 import io.github.sreepv43.soundhub.ui.components.ActionButton
@@ -121,7 +122,7 @@ fun LibraryScreen(
 
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -375,7 +376,7 @@ fun AlbumScreen(albumKey: String, onPlaying: () -> Unit, onGone: () -> Unit, onO
     val gone = album.tracks.count { it.id in missing }
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -472,7 +473,7 @@ fun ArtistScreen(name: String, onOpenAlbum: (String) -> Unit, onPlaying: () -> U
     val artist = remember(tracks, name) { LibraryViews.artists(tracks).firstOrNull { it.name == name } }
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -521,7 +522,7 @@ fun PlaylistScreen(id: String, onPlaying: () -> Unit, onGone: () -> Unit) {
     val tracks = entries.filterNotNull()
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = rememberPageListState(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
