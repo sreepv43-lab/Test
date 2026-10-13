@@ -187,9 +187,77 @@ object Palettes {
         favourite = Color(0xFF16A34A),
     )
 
+    /** The Simple layout's own light colours: pale blue, white cards, strong blue buttons. */
+    val SIMPLE_LIGHT = Palette(
+        id = "simple-light",
+        name = "Light",
+        description = "Pale blue with white cards",
+        dark = false,
+        background = Color(0xFFDEEDFA),
+        backgroundEnd = Color(0xFFDEEDFA),
+        rail = Color(0xFFDEEDFA),
+        railEnd = Color(0xFFDEEDFA),
+        onRail = Color(0xFF16324E),
+        railSelected = Color(0xFFFAFDFF),
+        onRailSelected = Color(0xFF0567C5),
+        panel = Color(0xFFFAFDFF),
+        row = Color(0xFFFAFDFF),
+        rowFocused = Color(0xFFDCEAF6),
+        surfaceVariant = Color(0xFFE8F1F9),
+        text = Color(0xFF16324E),
+        textDim = Color(0xFF506A83),
+        onText = Color.White,
+        accent = Color(0xFF0567C5),
+        onAccent = Color.White,
+        focus = Color(0xFF132F4E),
+        atmos = Color(0xFF2F5BD3),
+        hiRes = Color(0xFF9A6400),
+        lossless = Color(0xFF00796B),
+        warning = Color(0xFFB45309),
+        error = Color(0xFFC62828),
+        favourite = Color(0xFF16A34A),
+    )
+
+    /** The Simple layout's dark colours ("Midnight"). */
+    val SIMPLE_DARK = Palette(
+        id = "simple-dark",
+        name = "Midnight",
+        description = "Deep navy with soft blue",
+        dark = true,
+        background = Color(0xFF112238),
+        backgroundEnd = Color(0xFF112238),
+        rail = Color(0xFF112238),
+        railEnd = Color(0xFF112238),
+        onRail = Color(0xFFEEF6FF),
+        railSelected = Color(0xFF1B3047),
+        onRailSelected = Color(0xFF96CAFF),
+        panel = Color(0xFF1B3047),
+        row = Color(0xFF1B3047),
+        rowFocused = Color(0xFF2A4560),
+        surfaceVariant = Color(0xFF284159),
+        text = Color(0xFFEEF6FF),
+        textDim = Color(0xFFADBED1),
+        onText = Color(0xFF12283D),
+        accent = Color(0xFFAED5FF),
+        onAccent = Color(0xFF12283D),
+        focus = Color.White,
+        atmos = Color(0xFF8FB4FF),
+        hiRes = Color(0xFFFFC857),
+        lossless = Color(0xFF5ED3B5),
+        warning = Color(0xFFFFB86B),
+        error = Color(0xFFFF6B6B),
+        favourite = Color(0xFF3DDC97),
+    )
+
+    /** The colour themes of the Panel layout. */
     val all = listOf(SKY, TEAL, OCEAN, VIOLET, AMBER, CRIMSON, BLACK, LIGHT)
 
-    fun byId(id: String): Palette = all.firstOrNull { it.id == id } ?: SKY
+    /** The colour sets of the Simple layout. */
+    val simple = listOf(SIMPLE_LIGHT, SIMPLE_DARK)
+
+    fun forLayout(layout: UiLayout): List<Palette> = if (layout == UiLayout.SIMPLE) simple else all
+
+    fun byId(id: String): Palette = (all + simple).firstOrNull { it.id == id } ?: SKY
 }
 
 /**

@@ -29,6 +29,7 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.isFocused
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -416,7 +417,12 @@ class RemoteNavigationTest {
     fun anAlbumAndItsSongsCanBeAddedToAPlaylistFromSearch() {
         downTo("release-Album 5")
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        rule.onNodeWithTag("Add to playlist").performClick()
+        // Play, Shuffle and Download are on the page; queueing and playlists are under More.
+        rule.onNodeWithTag("More…").performClick()
+        settle()
+        assertTrue(optionsInOrder().toString(), "option-Add to playlist…" in optionsInOrder())
+        rule.onNodeWithTag("option-Add to playlist…").performClick()
+        settle()
         assertEquals(listOf(3), playlistAdds)
         moveUntil(KeyEvent.KEYCODE_DPAD_DOWN) { it.startsWith("track-") }
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
@@ -425,6 +431,59 @@ class RemoteNavigationTest {
         rule.onNodeWithTag("option-Add to playlist…").performClick()
         settle()
         assertEquals(listOf(3, 1), playlistAdds)
+    }
+
+    @Test
+    fun choosingTheSimpleLayoutSwitchesTheWholeAppAndItsColours() {
+        rule.runOnUiThread { navigator.open(SettingsPage(SettingsKind.APPEARANCE)) }
+        settle(1_000)
+        assertEquals("theme-sky", focused())
+        assertTrue("the Panel layout has the icon menu", menuWidth() < 150.dp)
+        moveTo("layout-simple", KeyEvent.KEYCODE_DPAD_UP)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        settle(1_000)
+        assertEquals(UiLayout.SIMPLE, currentLayout)
+        assertEquals("the Simple layout brings its own colours", "simple-light", currentPalette.id)
+        assertTrue("the Simple layout has the labelled menu", menuWidth() > 180.dp)
+        rule.onNodeWithTag("player-card").assertDoesNotExist()
+        assertEquals("the selection stays where it was", "layout-simple", focused())
+        moveTo("theme-simple-dark", KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("simple-dark", currentPalette.id)
+        moveTo("layout-panel", KeyEvent.KEYCODE_DPAD_UP)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        settle(1_000)
+        assertEquals(UiLayout.PANEL, currentLayout)
+        assertEquals("sky", currentPalette.id)
+        assertTrue(menuWidth() < 150.dp)
+    }
+
+    @Test
+    fun theSimpleLayoutHasOnePlayerBarUnderThePageThatTheRemoteReaches() {
+        rule.runOnUiThread {
+            currentLayout = UiLayout.SIMPLE
+            currentPalette = Palettes.SIMPLE_LIGHT
+        }
+        settle(1_000)
+        rule.onNodeWithText("SoundHub").assertExists()
+        rule.onNodeWithTag("player-card").assertDoesNotExist()
+        downTo("player-bar")
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("bar-play", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("bar-next", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Now playing", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Queue · 5", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Right at the end of the bar stays on it", "Queue · 5", focused())
+        moveTo("player-bar", KeyEvent.KEYCODE_DPAD_LEFT)
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertTrue(focused(), focused().startsWith("release-"))
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals("menu-SEARCH", focused())
+        assertTrue(menuWidth() > 180.dp)
     }
 
     @Test
@@ -447,6 +506,7 @@ class RemoteNavigationTest {
     @After
     fun backToTheDefaultTheme() {
         currentPalette = Palettes.SKY
+        currentLayout = UiLayout.PANEL
     }
 
     @Test
@@ -610,6 +670,19 @@ class RemoteNavigationTest {
         settle(1_000)
         press(KeyEvent.KEYCODE_DPAD_DOWN, 3)
         screenshot("9-long-names")
+        // The Simple layout, in its light and Midnight colours.
+        rule.runOnUiThread {
+            folders.value = manyResults(40)
+            currentLayout = UiLayout.SIMPLE
+            currentPalette = Palettes.SIMPLE_LIGHT
+            navigator.select(Section.SEARCH)
+        }
+        settle(1_000)
+        press(KeyEvent.KEYCODE_DPAD_DOWN, 5)
+        screenshot("10-simple-search")
+        rule.runOnUiThread { currentPalette = Palettes.SIMPLE_DARK }
+        settle(500)
+        screenshot("11-simple-midnight")
     }
 
     /** Saves the screen as [name].png; if it can't be captured, says why in errors.txt instead of failing. */
@@ -693,6 +766,8 @@ class RemoteNavigationTest {
     }
 
     private fun menuOpen(): Boolean = focused().startsWith("menu-")
+
+    private fun menuWidth() = rule.onNodeWithTag("menu").getBoundsInRoot().let { it.right - it.left }
 
     private fun focused(): String {
         val nodes = rule.onAllNodes(isFocused()).fetchSemanticsNodes()
@@ -836,6 +911,7 @@ private fun FakeApp(
             downloaded = null,
             seekable = true,
             onOpen = { navigator.open(SectionPage(Section.NOW_PLAYING)) },
+            onViewQueue = {},
             onFavourite = {},
             onShuffle = {},
             onPrevious = {},
@@ -849,9 +925,28 @@ private fun FakeApp(
             art = { song, size -> AlbumArt(null, song.title, size) },
         )
     }
+    // As AppRoot lays it out: the panel beside the page (Panel layout), or one player bar under it (Simple).
+    val simple = currentLayout == UiLayout.SIMPLE
+    val notPlayingPage = navigator.current != SectionPage(Section.NOW_PLAYING)
     SoundHubShell(
         navigator,
-        sidePanel = if (navigator.current != SectionPage(Section.NOW_PLAYING)) panel else null,
+        bottomBar = {
+            if (simple && notPlayingPage) {
+                PlayerBarLayout(
+                    title = "Song 1",
+                    subtitle = "Artist 0 · Album 0",
+                    playing = true,
+                    progress = 0.3f,
+                    onOpen = { navigator.open(SectionPage(Section.NOW_PLAYING)) },
+                    onPlayPause = {},
+                    onNext = {},
+                    onQueue = {},
+                    labelled = true,
+                    queueCount = 5,
+                ) {}
+            }
+        },
+        sidePanel = if (!simple && notPlayingPage) panel else null,
     ) { page ->
         when (page) {
             is SectionPage -> when (page.section) {
@@ -935,7 +1030,16 @@ private fun FakeApp(
                 onPlaylist = { onPlaylist(it.size) },
             )
             is SettingsPage -> if (page.kind == SettingsKind.APPEARANCE) {
-                AppearanceLayout(Palettes.all, currentPalette.id) { currentPalette = Palettes.byId(it) }
+                AppearanceLayout(
+                    palettes = Palettes.forLayout(currentLayout),
+                    chosen = currentPalette.id,
+                    onChoose = { currentPalette = Palettes.byId(it) },
+                    layout = currentLayout,
+                    onLayout = {
+                        currentLayout = it
+                        currentPalette = Palettes.forLayout(it).first()
+                    },
+                )
             } else UpdatesLayout(
                 state = UpdateState.Available(AvailableUpdate(70, "SoundHub build 70", "feat: updates", "https://example.test/a.apk", 1)),
                 currentBuild = 61,

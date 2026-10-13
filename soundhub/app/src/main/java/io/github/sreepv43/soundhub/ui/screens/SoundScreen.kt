@@ -139,13 +139,17 @@ fun SoundScreen(onOpenAlbum: (String) -> Unit, onFindAtmos: () -> Unit) {
                         Note("Play a song to see its format and what reaches your receiver.")
                     } else {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("File: ${state.input}", style = MaterialTheme.typography.titleMedium)
+                            Text("File format: ${state.input}", style = MaterialTheme.typography.titleMedium)
                             Text(
-                                "Sent: ${state.output}",
+                                "App output: ${state.output}",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = if (state.passthrough) AtmosColor else MaterialTheme.colorScheme.onSurface,
                             )
                             state.warning?.let { Note(it, WarningColor) }
+                            Note(
+                                "What the receiver itself plays isn't visible to SoundHub: check its display for Dolby Atmos. " +
+                                    "A ✓ on a badge means the file itself says it has Atmos.",
+                            )
                         }
                     }
                 }

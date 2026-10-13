@@ -2,6 +2,10 @@ package io.github.sreepv43.soundhub.data
 
 import android.content.Context
 import android.content.SharedPreferences
+import io.github.sreepv43.soundhub.ui.Palettes
+import io.github.sreepv43.soundhub.ui.UiLayout
+import io.github.sreepv43.soundhub.ui.currentLayout
+import io.github.sreepv43.soundhub.ui.currentPalette
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -60,14 +64,27 @@ class Settings(context: Context) {
     /** The notification permission was explained and asked for once (on the first play or download). */
     val notificationsAsked = bool("notifications_asked", false)
 
-    /** The colour theme (see Palettes). */
+    /** The colour theme of the Panel layout (see Palettes). */
     val theme = string("theme", "sky")
+
+    /** How the app is laid out: "panel" or "simple" (see UiLayout). */
+    val layout = string("layout", "panel")
+
+    /** The Simple layout's colours: "simple-light" or "simple-dark". */
+    val simpleTheme = string("simple_theme", "simple-light")
 
     /** When GitHub was last asked for a newer SoundHub build. */
     val updateCheckedAt = long("update_checked_at", 0L)
 
     /** When the last crash report was mentioned at startup (so it is mentioned once). */
     val crashSeen = long("crash_seen", 0L)
+
+    /** Makes the chosen layout and its colours the ones in use (the Simple layout has its own colours). */
+    fun applyAppearance() {
+        val chosen = UiLayout.byId(layout.value)
+        currentLayout = chosen
+        currentPalette = Palettes.byId(if (chosen == UiLayout.SIMPLE) simpleTheme.value else theme.value)
+    }
 
     fun addRecentSearch(query: String) {
         val recent = listOf(query) + recentSearches.value.lines().filter { it.isNotBlank() && !it.equals(query, ignoreCase = true) }

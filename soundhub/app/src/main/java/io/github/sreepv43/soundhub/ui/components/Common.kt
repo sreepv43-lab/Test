@@ -33,6 +33,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.Search
@@ -141,12 +142,15 @@ fun Chip(
 ) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(50)
+    // Chosen is filled (with a tick); where the remote is shows as the outline alone, so a chosen
+    // chip stays chosen while selected.
     val background = when {
-        focused -> AppColors.text
         selected -> Accent
+        focused -> AppColors.rowFocused
         else -> MaterialTheme.colorScheme.surfaceVariant
     }
-    Box(
+    val content = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+    Row(
         modifier
             .onFocusChanged { focused = it.hasFocus }
             .tvFocus(shape, key = key, pageDefault = pageDefault)
@@ -154,17 +158,13 @@ fun Chip(
             .background(background)
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 9.dp),
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(
-            label,
-            color = when {
-                focused -> AppColors.onText
-                selected -> MaterialTheme.colorScheme.onPrimary
-                else -> MaterialTheme.colorScheme.onSurface
-            },
-            style = MaterialTheme.typography.labelLarge,
-            maxLines = 1,
-        )
+        if (selected) {
+            Icon(Icons.Default.Check, contentDescription = null, tint = content, modifier = Modifier.size(16.dp))
+            Spacer(Modifier.width(6.dp))
+        }
+        Text(label, color = content, style = MaterialTheme.typography.labelLarge, maxLines = 1)
     }
 }
 

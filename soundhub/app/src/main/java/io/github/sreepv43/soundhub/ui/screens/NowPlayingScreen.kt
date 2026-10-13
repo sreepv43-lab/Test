@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Bedtime
 import androidx.compose.material.icons.filled.ClearAll
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
@@ -351,16 +352,17 @@ internal fun ControlButton(
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
+    // The outline shows where the remote is; the fill says what is on (shuffle, repeat) and never changes with focus.
     val background = when {
-        focused -> AppColors.text
         large -> Accent
+        focused -> AppColors.rowFocused
+        active -> Accent.copy(alpha = 0.18f)
         else -> Color.Transparent
     }
     Icon(
         icon,
         contentDescription = label,
         tint = when {
-            focused -> AppColors.onText
             large -> MaterialTheme.colorScheme.onPrimary
             active -> Accent
             else -> MaterialTheme.colorScheme.onSurface
@@ -485,12 +487,16 @@ fun QueueLayout(
                 modifier = Modifier.testTag("queue-$i"),
                 pageDefault = isCurrent,
             ) {
-                Text(
-                    if (isCurrent) "▶" else "${i + 1}",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = if (isCurrent) Accent else MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.width(28.dp),
-                )
+                if (isCurrent) {
+                    Icon(Icons.Default.GraphicEq, contentDescription = "Playing", tint = Accent, modifier = Modifier.width(28.dp))
+                } else {
+                    Text(
+                        "${i + 1}",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.width(28.dp),
+                    )
+                }
                 art(entry)
                 TwoLines(
                     entry.title,

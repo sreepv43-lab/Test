@@ -21,14 +21,14 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import io.github.sreepv43.soundhub.library.Release
 
 /** The side menu, top to bottom (short labels: they sit under the icons). */
-enum class Section(val label: String, val icon: ImageVector) {
+enum class Section(val label: String, val icon: ImageVector, val title: String = label) {
     HOME("Home", Icons.Default.Home),
     SEARCH("Search", Icons.Default.Search),
     ARTISTS("Artists", Icons.Default.Star),
     LIBRARY("Library", Icons.Default.LibraryMusic),
-    NOW_PLAYING("Playing", Icons.Default.GraphicEq),
+    NOW_PLAYING("Playing", Icons.Default.GraphicEq, "Now playing"),
     TRANSFERS("Transfers", Icons.Default.Download),
-    SOUND("Atmos", Icons.Default.SurroundSound),
+    SOUND("Atmos", Icons.Default.SurroundSound, "Atmos & sound"),
     SETTINGS("Settings", Icons.Default.Settings),
 }
 
@@ -132,7 +132,7 @@ class Navigator(start: Section, private val home: Section = Section.HOME) {
     }
 }
 
-private val menu = Section.entries.map { MenuEntry(it.name, it.label, it.icon) }
+private val menu = Section.entries.map { MenuEntry(it.name, it.label, it.icon, it.title) }
 
 /**
  * The TV shell around the page on top of [navigator]'s stack: side menu, Back, the player bar or
@@ -144,6 +144,7 @@ fun SoundHubShell(
     navigator: Navigator,
     bottomBar: @Composable () -> Unit = {},
     sidePanel: (@Composable () -> Unit)? = null,
+    sidePanelFocusable: Boolean = true,
     content: @Composable (Page) -> Unit,
 ) {
     val states = rememberSaveableStateHolder()
@@ -160,6 +161,7 @@ fun SoundHubShell(
         onSelect = { navigator.select(Section.valueOf(it.key)) },
         bottomBar = bottomBar,
         sidePanel = sidePanel,
+        sidePanelFocusable = sidePanelFocusable,
     ) { modifier ->
         Box(modifier) {
             key(page.key) {

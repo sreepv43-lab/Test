@@ -1,11 +1,15 @@
 package io.github.sreepv43.soundhub.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
@@ -21,11 +25,17 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.filled.SystemUpdate
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
@@ -36,10 +46,12 @@ import io.github.sreepv43.soundhub.library.Album
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.library.LibraryViews
 import io.github.sreepv43.soundhub.slsk.ConnectionState
+import io.github.sreepv43.soundhub.ui.AppColors
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.Section
 import io.github.sreepv43.soundhub.ui.components.ActionButton
 import io.github.sreepv43.soundhub.ui.components.AlbumCard
+import io.github.sreepv43.soundhub.ui.components.AlbumCover
 import io.github.sreepv43.soundhub.ui.components.Note
 import io.github.sreepv43.soundhub.ui.components.ScreenTitle
 import io.github.sreepv43.soundhub.ui.components.SectionHeader
@@ -77,6 +89,9 @@ fun HomeScreen(
     }
     val signedIn = state is ConnectionState.Connected
     val playing = current
+    // What Home leads with: the song playing, else the last session's song.
+    val hero = playing?.let { Hero(it.title, it.artist, it.album, it.albumKey, now = true) }
+        ?: resumeTrack?.let { Hero(it.title, it.artist, it.album, LibraryViews.albumKeyOf(it.path), now = false) }
 
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
@@ -85,13 +100,10 @@ fun HomeScreen(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         item(key = "title") {
+            // Who is signed in is under Settings → Account; Home only speaks up when something needs doing.
             ScreenTitle(
                 "SoundHub",
-                when (val s = state) {
-                    is ConnectionState.Connected -> "Signed in to Soulseek as ${s.username} · ${tracks.size} songs in your library"
-                    ConnectionState.Connecting -> "Connecting to Soulseek…"
-                    else -> "${tracks.size} songs in your library"
-                },
+                if (state is ConnectionState.Connecting) "Connecting to Soulseek…" else "${tracks.size} songs in your library",
             )
         }
         (update as? UpdateState.Available)?.let { available ->
@@ -115,34 +127,68 @@ fun HomeScreen(
                             ?: "Sign in to Soulseek to search and stream music. Your library plays without it.",
                         modifier = Modifier.weight(1f),
                     )
-                    ActionButton("Sign in", pageDefault = playing == null && resumeTrack == null, onClick = onSignIn)
+                    ActionButton("Sign in", pageDefault = hero == null, onClick = onSignIn)
                 }
             }
         }
-        item(key = "actions") {
-            FlowRow(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                when {
-                    playing != null -> ActionButton("Now playing: ${playing.title}", Icons.Default.GraphicEq, pageDefault = true, onClick = onPlaying)
-                    resumeTrack != null -> ActionButton("Resume: ${resumeTrack.title}", Icons.Default.PlayArrow, pageDefault = true) {
-                        if (container.resume()) onPlaying() else toast(context, "Those songs aren't available (is their drive connected?)")
+        if (hero != null) {
+            item(key = "hero") {
+                Row(
+                    Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(AppColors.surfaceVariant).padding(18.dp),
+                    horizontalArrangement = Arrangement.spacedBy(22.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    AlbumCover(hero.albumKey, hero.album, 128.dp)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            "CONTINUE LISTENING",
+                            style = MaterialTheme.typography.labelMedium,
+                            letterSpacing = 1.6.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(hero.title, style = MaterialTheme.typography.headlineSmall, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        hero.artist?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+                        FlowRow(
+                            Modifier.tvButtonGroup().padding(top = 10.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            if (hero.now) {
+                                ActionButton("Now playing", Icons.Default.GraphicEq, pageDefault = true, onClick = onPlaying)
+                            } else {
+                                ActionButton("Resume", Icons.Default.PlayArrow, pageDefault = true) {
+                                    if (container.resume()) onPlaying() else toast(context, "Those songs aren't available (is their drive connected?)")
+                                }
+                            }
+                            if (tracks.isNotEmpty()) {
+                                ActionButton("Shuffle library", Icons.Default.Shuffle, primary = false) {
+                                    if (playOrExplain(context, container, tracks.filter { it.id !in missing }, shuffle = true)) onPlaying()
+                                }
+                            }
+                        }
                     }
                 }
-                ActionButton(
-                    "Search",
-                    Icons.Default.Search,
-                    primary = playing == null && resumeTrack == null,
-                    pageDefault = signedIn && playing == null && resumeTrack == null,
-                ) { onGo(Section.SEARCH) }
-                ActionButton("Famous artists", Icons.Default.Star, primary = false) { onGo(Section.ARTISTS) }
-                if (tracks.isNotEmpty()) {
-                    ActionButton("Shuffle library", Icons.Default.Shuffle, primary = false) {
-                        if (playOrExplain(context, container, tracks.filter { it.id !in missing }, shuffle = true)) onPlaying()
+            }
+        }
+        // The menu already leads to Search, Artists and the Library, so these are only for a start
+        // with nothing to continue, and for the favourites.
+        val starting = hero == null
+        if (starting || favouriteSongs.isNotEmpty()) {
+            item(key = "actions") {
+                FlowRow(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (starting) {
+                        ActionButton("Search", Icons.Default.Search, pageDefault = signedIn) { onGo(Section.SEARCH) }
+                        ActionButton("Browse artists", Icons.Default.Star, primary = false) { onGo(Section.ARTISTS) }
+                        if (tracks.isNotEmpty()) {
+                            ActionButton("Shuffle library", Icons.Default.Shuffle, primary = false) {
+                                if (playOrExplain(context, container, tracks.filter { it.id !in missing }, shuffle = true)) onPlaying()
+                            }
+                        }
                     }
-                    ActionButton("Library", Icons.Default.LibraryMusic, primary = false) { onGo(Section.LIBRARY) }
-                }
-                if (favouriteSongs.isNotEmpty()) {
-                    ActionButton("Favourite songs", Icons.Default.Favorite, primary = false) {
-                        if (playOrExplain(context, container, favouriteSongs.filter { it.id !in missing }, shuffle = true)) onPlaying()
+                    if (favouriteSongs.isNotEmpty()) {
+                        ActionButton("Favourite songs", Icons.Default.Favorite, primary = false) {
+                            if (playOrExplain(context, container, favouriteSongs.filter { it.id !in missing }, shuffle = true)) onPlaying()
+                        }
                     }
                 }
             }
@@ -160,6 +206,9 @@ fun HomeScreen(
         }
     }
 }
+
+/** What the Continue listening card shows. [now] is true when it is playing, false for the last session. */
+private class Hero(val title: String, val artist: String?, val album: String, val albumKey: String?, val now: Boolean)
 
 /** A row of album tiles; Left from the first opens the menu. */
 private fun LazyListScope.shelf(title: String, key: String, albums: List<Album>, onOpen: (String) -> Unit) {

@@ -32,6 +32,14 @@ class LibraryTest {
     }
 
     @Test
+    fun aMusicServiceFolderIsNotTheArtist() {
+        assertNull(PathNames.describe("@@u\\Apple Music\\Midnights\\01 - Lavender Haze.m4a").artist)
+        assertEquals("Taylor Swift", PathNames.describe("@@u\\Apple Music\\Taylor Swift - Midnights\\01 - Lavender Haze.m4a").artist)
+        assertEquals("Midnights/01 Lavender Haze.m4a", PathNames.localPath("u", "@@u\\iTunes\\Midnights\\01 Lavender Haze.m4a"))
+        assertEquals("Taylor Swift", PathNames.describe("@@u\\Music\\Taylor Swift\\Midnights\\01 - Lavender Haze.m4a").artist)
+    }
+
+    @Test
     fun fileNamesThatRepeatTheArtistAndAlbumGiveJustTheSongTitle() {
         fun title(path: String) = PathNames.describe(path).let { it.trackNumber to it.title }
         assertEquals(

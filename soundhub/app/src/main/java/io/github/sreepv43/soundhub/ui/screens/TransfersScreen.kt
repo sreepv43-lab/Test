@@ -136,12 +136,8 @@ fun TransfersLayout(
         if (songs.isEmpty()) {
             item(key = "empty") {
                 Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Note(
-                        "Nothing is downloading. Songs you play or download from Search show here until they arrive; " +
-                            "a song starts once its owner has a free upload slot.",
-                        modifier = Modifier.weight(1f),
-                    )
-                    ActionButton("Search", Icons.Default.Search, pageDefault = true, onClick = onSearch)
+                    Note("No active downloads. Music you play or download from Search appears here.", modifier = Modifier.weight(1f))
+                    ActionButton("Search music", Icons.Default.Search, pageDefault = true, onClick = onSearch)
                 }
             }
         }

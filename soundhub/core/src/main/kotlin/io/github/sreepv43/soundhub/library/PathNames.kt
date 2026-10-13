@@ -16,6 +16,9 @@ object PathNames {
     private val GENERIC_FOLDERS = setOf(
         "music", "mp3", "flac", "downloads", "download", "albums", "album", "share", "shared", "audio", "complete",
         "completed", "soulseek", "my music", "musique", "musik", "incoming", "lossless", "hi-res", "atmos",
+        // Where a file came from, never who made it.
+        "apple music", "itunes", "itunes media", "itunes music", "spotify", "tidal", "qobuz", "deezer", "amazon music",
+        "youtube music", "bandcamp", "new folder", "unknown artist", "various",
     )
     private val UNSAFE = Regex("""[\\/:*?"<>|\u0000-\u001F]""")
 

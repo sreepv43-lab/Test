@@ -208,7 +208,7 @@ fun IconAction(
             .clip(CircleShape)
             .background(
                 when {
-                    focused -> AppColors.text
+                    focused -> AppColors.rowFocused
                     flat -> Color.Transparent
                     else -> MaterialTheme.colorScheme.surfaceVariant
                 },
@@ -217,7 +217,7 @@ fun IconAction(
             .testTag(tag),
         contentAlignment = Alignment.Center,
     ) {
-        Icon(icon, contentDescription = label, tint = if (focused) AppColors.onText else tint, modifier = Modifier.size(size / 2))
+        Icon(icon, contentDescription = label, tint = tint, modifier = Modifier.size(size / 2))
     }
 }
 
@@ -437,10 +437,7 @@ fun SeekBar(
                 modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
                 textAlign = TextAlign.Center,
             )
-            Text(
-                if (durationMs > 0) "-" + formatDuration((durationMs - positionMs).coerceAtLeast(0) / 1000) else "",
-                style = MaterialTheme.typography.labelLarge,
-            )
+            Text(formatDuration(durationMs / 1000), style = MaterialTheme.typography.labelLarge)
         }
     }
 }

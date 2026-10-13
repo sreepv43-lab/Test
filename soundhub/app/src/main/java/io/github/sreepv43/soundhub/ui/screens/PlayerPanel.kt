@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -74,7 +75,7 @@ data class PanelSong(
 )
 
 /** The player panel's width (wide screens: beside every page while something is loaded). */
-val PanelWidth = 330.dp
+val PanelWidth = 300.dp
 
 /**
  * Beside every page on wide screens while something is loaded: what plays next (OK plays it, …
@@ -82,7 +83,7 @@ val PanelWidth = 330.dp
  * the seek bar. OK on the song opens Now playing.
  */
 @Composable
-fun PlayerPanel(onOpen: () -> Unit) {
+fun PlayerPanel(onOpen: () -> Unit, onViewQueue: () -> Unit = {}) {
     val context = LocalContext.current
     val container = context.container
     val playback = container.playback
@@ -93,7 +94,11 @@ fun PlayerPanel(onOpen: () -> Unit) {
     val shuffle by playback.shuffle.collectAsStateWithLifecycle()
     val repeat by playback.repeatMode.collectAsStateWithLifecycle()
     val collection by container.collection.data.collectAsStateWithLifecycle()
-    val current = item ?: return
+    val current = item
+    if (current == null) {
+        IdlePanel()
+        return
+    }
     var position by remember { mutableLongStateOf(0L) }
     var duration by remember { mutableLongStateOf(0L) }
     var downloaded by remember { mutableStateOf<Float?>(null) }
@@ -120,6 +125,7 @@ fun PlayerPanel(onOpen: () -> Unit) {
         downloaded = downloaded,
         seekable = playback.seekable,
         onOpen = onOpen,
+        onViewQueue = onViewQueue,
         onFavourite = { container.collection.toggleFavouriteTrack(current.id) },
         onShuffle = playback::toggleShuffle,
         onPrevious = playback::previous,
@@ -154,6 +160,7 @@ fun PlayerPanelLayout(
     downloaded: Float?,
     seekable: Boolean,
     onOpen: () -> Unit,
+    onViewQueue: () -> Unit,
     onFavourite: () -> Unit,
     onShuffle: () -> Unit,
     onPrevious: () -> Unit,
@@ -177,10 +184,11 @@ fun PlayerPanelLayout(
         ) {
             Row(Modifier.fillMaxWidth().padding(start = 4.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Up Next", style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-                if (upNext.isNotEmpty()) TextAction("Clear", tag = "panel-clear", onClick = onClear)
+                if (upNext.isNotEmpty()) TextAction("Clear upcoming", tag = "panel-clear", onClick = onClear)
             }
             if (upNext.isEmpty()) {
                 Note("Nothing after this song. Choose More → Add to queue on any song.", modifier = Modifier.padding(4.dp))
+                Spacer(Modifier.weight(1f))
             } else {
                 LazyColumn(
                     Modifier.weight(1f).fillMaxWidth().testTag("up-next"),
@@ -207,6 +215,7 @@ fun PlayerPanelLayout(
                     }
                 }
             }
+            TextAction("View queue", tag = "panel-queue", onClick = onViewQueue)
         }
         Column(
             Modifier.fillMaxWidth().card().padding(horizontal = 12.dp, vertical = 10.dp),
@@ -288,7 +297,25 @@ fun PlayerPanelLayout(
     }
 }
 
-/** A text button in the accent colour (Clear on Up Next). */
+/** The panel while nothing is loaded: the same two cards, empty, so the page beside it never resizes. */
+@Composable
+private fun IdlePanel() {
+    Column(Modifier.width(PanelWidth).fillMaxHeight(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        Column(Modifier.weight(1f).fillMaxWidth().card().padding(16.dp)) {
+            Text("Up Next", style = MaterialTheme.typography.titleLarge)
+            Note("Nothing is playing. Play or queue a song and what comes next shows here.", modifier = Modifier.padding(top = 8.dp))
+        }
+        Column(
+            Modifier.fillMaxWidth().card().padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text("Nothing playing", style = MaterialTheme.typography.titleMedium)
+            Note("Choose a song in Search or your Library.")
+        }
+    }
+}
+
+/** A text button in the accent colour (Clear upcoming, View queue). */
 @Composable
 private fun TextAction(text: String, tag: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
@@ -297,12 +324,12 @@ private fun TextAction(text: String, tag: String, onClick: () -> Unit) {
         text,
         style = MaterialTheme.typography.labelLarge,
         fontSize = 16.sp,
-        color = if (focused) AppColors.onText else Accent,
+        color = Accent,
         modifier = Modifier
             .onFocusChanged { focused = it.hasFocus }
             .tvFocus(shape)
             .clip(shape)
-            .background(if (focused) AppColors.text else Color.Transparent)
+            .background(if (focused) AppColors.rowFocused else Color.Transparent)
             .clickable(onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 6.dp)
             .testTag(tag),

@@ -34,9 +34,7 @@ import io.github.sreepv43.soundhub.slsk.ConnectionState
 import io.github.sreepv43.soundhub.slsk.SoulseekClient
 import io.github.sreepv43.soundhub.slsk.TransferInfo
 import io.github.sreepv43.soundhub.slsk.Upnp
-import io.github.sreepv43.soundhub.ui.Palettes
 import io.github.sreepv43.soundhub.ui.components.toast
-import io.github.sreepv43.soundhub.ui.currentPalette
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -44,6 +42,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.flowOn
@@ -60,9 +59,12 @@ class SoundHubApp : Application() {
         super.onCreate()
         CrashLog(this).install()
         container = AppContainer(this)
-        // The chosen theme from the first frame on, and whenever it is changed.
-        currentPalette = Palettes.byId(container.settings.theme.value)
-        container.appScope.launch { container.settings.theme.flow.collect { currentPalette = Palettes.byId(it) } }
+        // The chosen layout and its colours from the first frame on, and whenever they change.
+        container.settings.applyAppearance()
+        container.appScope.launch {
+            combine(container.settings.layout.flow, container.settings.theme.flow, container.settings.simpleTheme.flow) { _, _, _ -> }
+                .collect { container.settings.applyAppearance() }
+        }
         container.start()
     }
 }

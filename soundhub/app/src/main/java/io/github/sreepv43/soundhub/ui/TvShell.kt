@@ -11,15 +11,19 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -39,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.FocusDirection
 import androidx.compose.ui.focus.FocusManager
@@ -46,6 +51,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.InputMode
@@ -65,7 +71,8 @@ import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
-data class MenuEntry(val key: String, val label: String, val icon: ImageVector)
+/** A section in the side menu: [label] under its icon, [title] at the top of the Simple layout. */
+data class MenuEntry(val key: String, val label: String, val icon: ImageVector, val title: String = label)
 
 /** The side menu's width. */
 val RailWidth = 92.dp
@@ -247,6 +254,8 @@ fun TvShell(
     modifier: Modifier = Modifier,
     bottomBar: @Composable () -> Unit = {},
     sidePanel: (@Composable () -> Unit)? = null,
+    /** False while the panel has nothing to select (nothing playing), so Right doesn't try to enter it. */
+    sidePanelFocusable: Boolean = true,
     content: @Composable (Modifier) -> Unit,
 ) {
     val focusManager = LocalFocusManager.current
@@ -261,7 +270,7 @@ fun TvShell(
 
     SideEffect {
         shell.shownPage = pageKey
-        shell.panelShown = sidePanel != null
+        shell.panelShown = sidePanel != null && sidePanelFocusable
     }
     fun pageHasFocus() = shell.focusedPage == pageKey
 
@@ -319,15 +328,20 @@ fun TvShell(
         }
     }
 
-    Row(modifier.fillMaxSize().background(AppColors.backdrop).padding(ShellGap)) {
+    val simple = currentLayout == UiLayout.SIMPLE
+    Column(modifier.fillMaxSize().background(AppColors.backdrop).padding(ShellGap)) {
+        if (simple) ShellHeader(entries.firstOrNull { it.key == selectedKey }?.title.orEmpty())
+        Row(Modifier.weight(1f).fillMaxWidth()) {
         val selectedIndex = entries.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
         Box(
             Modifier
-                .width(RailWidth)
-                .fillMaxHeight()
-                .shadow(6.dp, RailShape)
-                .clip(RailShape)
-                .background(AppColors.railBrush)
+                .then(
+                    if (simple) {
+                        Modifier.width(SimpleMenuWidth).fillMaxHeight()
+                    } else {
+                        Modifier.width(RailWidth).fillMaxHeight().shadow(6.dp, RailShape).clip(RailShape).background(AppColors.railBrush)
+                    },
+                )
                 // A focus group, so moving between items never reports the menu as unfocused.
                 .onFocusChanged {
                     menuHasFocus = it.hasFocus
@@ -352,6 +366,7 @@ fun TvShell(
                     MenuItem(
                         entry = entry,
                         selected = entry.key == selectedKey,
+                        simple = simple,
                         focusable = { menuActive },
                         modifier = if (index == selectedIndex) Modifier.focusRequester(menuFocus) else Modifier,
                         onClick = {
@@ -437,10 +452,28 @@ fun TvShell(
                 }
             }
         }
+        }
     }
 }
 
 private val RailShape = RoundedCornerShape(28.dp)
+
+/** The Simple layout's menu is a labelled list on the backdrop, not a card. */
+private val SimpleMenuWidth = 206.dp
+
+/** The Simple layout's top line: the app's name and where you are. */
+@Composable
+private fun ShellHeader(title: String) {
+    Row(
+        Modifier.fillMaxWidth().height(44.dp).padding(horizontal = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Accent, modifier = Modifier.size(28.dp))
+        Text("SoundHub", style = MaterialTheme.typography.titleLarge, color = AppColors.text, modifier = Modifier.padding(start = 12.dp))
+        Spacer(Modifier.weight(1f))
+        Text(title, style = MaterialTheme.typography.titleMedium, color = AppColors.textDim)
+    }
+}
 
 /**
  * Moves the selection; if Compose's focus search fails while a list is changing under it (rows
@@ -496,52 +529,77 @@ private fun handleMenuKey(event: KeyEvent, expanded: Boolean, onExpand: () -> Un
     }
 }
 
-/** An icon with its label under it; the section shown sits on a pill, the selected item is filled. */
+/**
+ * A menu item. Panel layout: an icon with its label under it, the section shown on a pill. Simple
+ * layout: icon and label in a row, the section shown on a card with a bar at its left. The item
+ * the remote is on is filled dark in both.
+ */
 @Composable
 private fun MenuItem(
     entry: MenuEntry,
     selected: Boolean,
+    simple: Boolean,
     focusable: () -> Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(18.dp)
+    val shape = RoundedCornerShape(if (simple) 14.dp else 18.dp)
     val tint = when {
         focused -> AppColors.onText
         selected -> AppColors.onRailSelected
         else -> AppColors.onRail
     }
-    Column(
-        modifier
-            .fillMaxWidth()
-            .testTag("menu-${entry.key}")
-            // Unreachable with the remote while the menu is closed; taps still work on tablets.
-            .focusProperties { canFocus = focusable() }
-            .onFocusChanged { focused = it.isFocused }
-            .clip(shape)
-            .background(
-                when {
-                    focused -> AppColors.text
-                    selected -> AppColors.railSelected
-                    else -> Color.Transparent
-                },
-                shape,
-            )
-            .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 7.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(2.dp),
-    ) {
-        Icon(entry.icon, contentDescription = entry.label, tint = tint, modifier = Modifier.size(24.dp))
-        Text(
-            entry.label,
-            style = MaterialTheme.typography.labelMedium,
-            fontSize = 12.sp,
-            color = tint,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
+    val marker = AppColors.onRailSelected
+    val base = modifier
+        .fillMaxWidth()
+        .testTag("menu-${entry.key}")
+        // Unreachable with the remote while the menu is closed; taps still work on tablets.
+        .focusProperties { canFocus = focusable() }
+        .onFocusChanged { focused = it.isFocused }
+        .clip(shape)
+        .background(
+            when {
+                focused -> AppColors.text
+                selected -> AppColors.railSelected
+                else -> Color.Transparent
+            },
+            shape,
         )
+    if (simple) {
+        Row(
+            base
+                .drawBehind { if (selected && !focused) drawRect(marker, size = Size(4.dp.toPx(), size.height)) }
+                .clickable(onClick = onClick)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(entry.icon, contentDescription = entry.label, tint = tint, modifier = Modifier.size(24.dp))
+            Text(
+                entry.label,
+                style = MaterialTheme.typography.titleMedium,
+                color = tint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(start = 14.dp),
+            )
+        }
+    } else {
+        Column(
+            base.clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 7.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Icon(entry.icon, contentDescription = entry.label, tint = tint, modifier = Modifier.size(24.dp))
+            Text(
+                entry.label,
+                style = MaterialTheme.typography.labelMedium,
+                fontSize = 12.sp,
+                color = tint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 

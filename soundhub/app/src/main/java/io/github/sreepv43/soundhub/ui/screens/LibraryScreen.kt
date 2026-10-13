@@ -113,7 +113,11 @@ fun LibraryScreen(
     LaunchedEffect(Unit) { container.refreshMissing() }
 
     val visible = remember(tracks, query, filter) { LibraryViews.filter(LibraryViews.search(tracks, query), filter) }
-    val folder = remember { container.musicFolder().path }
+    // "USB drive", not the path; the exact folder is under Settings → Storage.
+    val folder = remember {
+        val path = container.musicFolder().path
+        container.musicFolders().firstOrNull { it.dir.path == path }?.label ?: "chosen folder"
+    }
 
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
@@ -124,7 +128,7 @@ fun LibraryScreen(
         item(key = "title") {
             ScreenTitle(
                 "Your Library",
-                if (tracks.isEmpty()) null else "${tracks.size} songs · ${formatSize(tracks.sumOf { it.size })} · saved in $folder",
+                if (tracks.isEmpty()) null else "${tracks.size} songs · ${formatSize(tracks.sumOf { it.size })} · $folder",
             )
         }
         if (tracks.isEmpty()) {

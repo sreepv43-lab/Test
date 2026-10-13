@@ -11,6 +11,14 @@ It looks like a light-blue music player: a blue side menu with labelled icons, e
 card, and (on TVs and tablets held sideways) **Up Next** and the song playing in a panel beside the
 page, with a big round play button.
 
+There are two **layouts**, chosen under **Settings → Appearance**, each with its own colours:
+- **Panel** (the default): the above, with the colour themes Sky, Teal, Ocean, Violet, Amber,
+  Crimson, Pure black and Light.
+- **Simple**: a labelled menu list with the SoundHub name and where you are along the top, a large
+  **Continue listening** card on Home, and one player bar along the bottom (Now playing and Queue
+  as buttons) instead of the side panel. Its colours are Light (pale blue, white cards) or Midnight
+  (deep navy).
+
 ## Features
 
 - **Soulseek client built in.** Sign in with a Soulseek username and password. A new username is
@@ -20,8 +28,10 @@ page, with a big round play button.
 - **Plays while it downloads.** Pick a song or an album and playback starts as soon as the first
   bytes arrive. Finished songs go to the library in `Music/<Artist>/<Album>/`, on internal
   storage, an SD card or a USB drive.
-- **Home** carries on where you were: what is playing, or **Resume** for the last session (nothing
-  plays by itself at startup), then recently played, favourite and recently added albums.
+- **Home** carries on where you were: a **Continue listening** card with what is playing (or
+  **Resume** for the last session; nothing plays by itself at startup) and Shuffle library, then
+  recently played, favourite and recently added albums. Buttons that repeat the menu only appear
+  when there is nothing to continue.
 - **One search** for everything. Its **Dolby Atmos only** switch adds "atmos" to your words and
   shows only Atmos files (turning it on or off searches again).
 - **Search by album.** Each album shows once, however many users have it. The album page plays from
@@ -64,9 +74,9 @@ page, with a big round play button.
     output mode you chose (Automatic, or forced HDMI / ARC), and what the player actually sends.
   - A ✓ on a format badge means the file itself confirmed Atmos: the JOC flag in a Dolby Digital
     Plus stream, or the 16-channel substream in TrueHD.
-- **Now playing** shows whether audio goes to the receiver as a bitstream ("Bitstream to the
-  receiver: Dolby Atmos (DD+)") or is decoded on the device. If Atmos gets lost on the way, it
-  says why.
+- **Now playing** shows whether the app passes the audio through undecoded ("Passthrough: Dolby
+  Atmos (DD+) sent undecoded to the audio output") or decodes it on the device. If Atmos gets lost
+  on the way, it says why. What the receiver itself shows can't be read by the app.
 - **Other features:**
   - Background playback with system media controls. Notification permission is asked the first
     time something plays or downloads, with the reason.

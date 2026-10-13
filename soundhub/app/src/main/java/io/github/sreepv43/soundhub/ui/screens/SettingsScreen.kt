@@ -57,6 +57,8 @@ import io.github.sreepv43.soundhub.slsk.ConnectionState
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.Palette
 import io.github.sreepv43.soundhub.ui.Palettes
+import io.github.sreepv43.soundhub.ui.UiLayout
+import io.github.sreepv43.soundhub.ui.currentLayout
 import io.github.sreepv43.soundhub.ui.SettingsKind
 import io.github.sreepv43.soundhub.ui.WarningColor
 import io.github.sreepv43.soundhub.ui.components.ActionButton
@@ -66,6 +68,7 @@ import io.github.sreepv43.soundhub.ui.components.ListRow
 import io.github.sreepv43.soundhub.ui.components.Note
 import io.github.sreepv43.soundhub.ui.components.ReadableText
 import io.github.sreepv43.soundhub.ui.components.ScreenTitle
+import io.github.sreepv43.soundhub.ui.components.SectionHeader
 import io.github.sreepv43.soundhub.ui.components.TextEntryDialog
 import io.github.sreepv43.soundhub.ui.components.TvDialog
 import io.github.sreepv43.soundhub.ui.components.TwoLines
@@ -125,7 +128,7 @@ fun SettingsScreen(onOpen: (SettingsKind) -> Unit, onSound: () -> Unit) {
             )
         }
         item(key = "appearance") {
-            SettingsRow("Appearance", "Colour theme: ${currentPalette.name}", key = "settings-APPEARANCE") {
+            SettingsRow("Appearance", "${currentLayout.label} layout · ${currentPalette.name}", key = "settings-APPEARANCE") {
                 onOpen(SettingsKind.APPEARANCE)
             }
         }
@@ -448,15 +451,38 @@ private fun NetworkSettings() {
 @Composable
 private fun AppearanceSettings() {
     val settings = LocalContext.current.container.settings
-    val chosen by settings.theme.flow.collectAsStateWithLifecycle()
-    AppearanceLayout(Palettes.all, Palettes.byId(chosen).id) { settings.theme.set(it) }
+    val layoutId by settings.layout.flow.collectAsStateWithLifecycle()
+    val theme by settings.theme.flow.collectAsStateWithLifecycle()
+    val simpleTheme by settings.simpleTheme.flow.collectAsStateWithLifecycle()
+    val layout = UiLayout.byId(layoutId)
+    // Each layout has its own colours: the Panel layout the themes, the Simple layout light or Midnight.
+    AppearanceLayout(
+        palettes = Palettes.forLayout(layout),
+        chosen = Palettes.byId(if (layout == UiLayout.SIMPLE) simpleTheme else theme).id,
+        onChoose = { if (layout == UiLayout.SIMPLE) settings.simpleTheme.set(it) else settings.theme.set(it) },
+        layout = layout,
+        onLayout = { settings.layout.set(it.id) },
+    )
 }
 
 /** The colour themes; choosing one recolours the app at once (no app state here, so tests can drive it). */
 @Composable
-fun AppearanceLayout(palettes: List<Palette>, chosen: String, onChoose: (String) -> Unit) {
+fun AppearanceLayout(
+    palettes: List<Palette>,
+    chosen: String,
+    onChoose: (String) -> Unit,
+    layout: UiLayout = UiLayout.PANEL,
+    onLayout: (UiLayout) -> Unit = {},
+) {
     SettingsList {
-        item(key = "title") { ScreenTitle("Appearance", "Colour theme") }
+        item(key = "title") { ScreenTitle("Appearance", "How SoundHub is laid out, and its colours") }
+        item(key = "layout-title") { SectionHeader("Layout") }
+        UiLayout.entries.forEach { entry ->
+            item(key = "layout-${entry.id}") {
+                ChoiceRow(entry.label, entry.description, selected = entry == layout, key = "layout-${entry.id}") { onLayout(entry) }
+            }
+        }
+        item(key = "colours-title") { SectionHeader(if (layout == UiLayout.SIMPLE) "Colours of the Simple layout" else "Colour theme") }
         palettes.forEach { palette ->
             item(key = "theme-${palette.id}") {
                 ListRow(

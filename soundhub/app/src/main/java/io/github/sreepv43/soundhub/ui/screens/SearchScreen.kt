@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.MoreHoriz
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Shuffle
@@ -211,12 +212,12 @@ fun LazyListScope.releaseItems(releases: List<Release>, filter: MusicFilter, onO
                     release.artist,
                     "${release.trackCount} songs",
                     if (release.sources.size > 1) "${release.sources.size} sources" else "from ${best.username}",
-                    formatSpeed(best.avgSpeed.toLong()).ifEmpty { null },
+                    formatSpeed(best.avgSpeed.toLong()).ifEmpty { null }?.let { "$it reported" },
                 ).joinToString(" · "),
                 Modifier.weight(1f),
             ) {
                 best.summary(filter)?.let { FormatBadge(it) }
-                if (best.slotFree) Badge("Slot free", LosslessColor) else Badge("Queue ${best.queueLength}", WarningColor)
+                if (best.slotFree) Badge("Source available", LosslessColor) else Badge("Busy · ${best.queueLength} waiting", WarningColor)
             }
         }
     }
@@ -319,6 +320,7 @@ fun ReleaseLayout(
     val playable = source.tracks.filter { it.info.playable }
     var options by remember { mutableStateOf<SearchTrack?>(null) }
     var choosingSource by rememberSaveable { mutableStateOf(false) }
+    var showMore by remember { mutableStateOf(false) }
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
         state = rememberLazyListState(),
@@ -334,26 +336,23 @@ fun ReleaseLayout(
                     Note(sourceLine(source))
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         source.summary(filter)?.let { FormatBadge(it) }
-                        if (source.slotFree) Badge("Slot reported free", LosslessColor)
-                        else Badge("${source.queueLength} waiting in their queue", WarningColor)
+                        if (source.slotFree) Badge("Source available", LosslessColor)
+                        else Badge("Busy · ${source.queueLength} waiting", WarningColor)
                     }
                 }
             }
         }
         item(key = "actions") {
             FlowRow(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                // Play first; the rest by how often they are used, with the occasional ones under More.
                 if (playable.isNotEmpty()) {
                     ActionButton("Play", Icons.Default.PlayArrow, pageDefault = true) { onPlay(playable.first(), false) }
                     ActionButton("Shuffle", Icons.Default.Shuffle, primary = false) { onPlay(playable.random(), true) }
-                    ActionButton("Add to queue", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false) { onEnqueue(playable, false) }
                 }
-                ActionButton("Add to playlist", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false) { onPlaylist(source.tracks) }
                 ActionButton("Download", Icons.Default.Download, primary = playable.isEmpty(), pageDefault = playable.isEmpty()) {
                     onDownload(source.tracks)
                 }
-                if (release.sources.size > 1) {
-                    ActionButton("Sources (${release.sources.size})", Icons.Default.People, primary = false) { choosingSource = true }
-                }
+                ActionButton("More…", Icons.Default.MoreHoriz, primary = false) { showMore = true }
             }
         }
         item(key = "note") {
@@ -406,6 +405,19 @@ fun ReleaseLayout(
             },
         )
     }
+    if (showMore) {
+        OptionsDialog(
+            title = release.album,
+            subtitle = "More for this album",
+            onDismiss = { showMore = false },
+            options = listOfNotNull(
+                Option("Add to queue", Icons.AutoMirrored.Filled.PlaylistAdd) { onEnqueue(playable, false) }.takeIf { playable.isNotEmpty() },
+                Option("Add to playlist…", Icons.AutoMirrored.Filled.PlaylistAdd) { onPlaylist(source.tracks) },
+                Option("Choose another copy (${release.sources.size})", Icons.Default.People) { choosingSource = true }
+                    .takeIf { release.sources.size > 1 },
+            ),
+        )
+    }
     if (choosingSource) {
         OptionsDialog(
             title = "Choose whose copy to use",
@@ -418,7 +430,7 @@ fun ReleaseLayout(
                             folder.username,
                             folder.summary(filter)?.label,
                             "${folder.tracks.size} songs",
-                            if (folder.slotFree) "slot free" else "queue ${folder.queueLength}",
+                            if (folder.slotFree) "available" else "busy, ${folder.queueLength} waiting",
                             formatSpeed(folder.avgSpeed.toLong()).ifEmpty { null },
                         ).joinToString(" · "),
                 ) { onChooseSource(folder) }

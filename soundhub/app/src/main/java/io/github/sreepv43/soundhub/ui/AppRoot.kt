@@ -14,13 +14,16 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.QueueMusic
+import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.SkipNext
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -36,6 +39,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.soundhub.container
+import io.github.sreepv43.soundhub.ui.components.ActionButton
 import io.github.sreepv43.soundhub.ui.components.AlbumCover
 import io.github.sreepv43.soundhub.ui.components.DialogButton
 import io.github.sreepv43.soundhub.ui.components.IconAction
@@ -83,18 +87,26 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
     val openArtist = { name: String -> navigator.open(ArtistPage(name)) }
 
     val loaded by container.playback.current.collectAsStateWithLifecycle()
-    val panel: @Composable () -> Unit = { PlayerPanel(onOpen = showPlayer) }
+    val panel: @Composable () -> Unit = { PlayerPanel(onOpen = showPlayer, onViewQueue = { navigator.open(QueuePage) }) }
+    val simple = currentLayout == UiLayout.SIMPLE
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             val wide = maxWidth >= WIDE_LAYOUT
             val onNowPlaying = navigator.current == SectionPage(Section.NOW_PLAYING)
+            // Panel layout: the panel is beside every page on wide screens (empty until something
+            // plays, so the page never resizes when playback starts). Simple layout, and narrow
+            // screens: one player bar along the bottom.
+            val beside = wide && !simple
             SoundHubShell(
                 navigator,
                 bottomBar = {
-                    if (!wide && !onNowPlaying) PlayerBar(onOpen = showPlayer, onQueue = { navigator.open(QueuePage) })
+                    if (!beside && !onNowPlaying) {
+                        PlayerBar(onOpen = showPlayer, onQueue = { navigator.open(QueuePage) }, labelled = simple && wide, always = simple)
+                    }
                 },
-                sidePanel = if (wide && !onNowPlaying && loaded != null) panel else null,
+                sidePanel = if (beside && !onNowPlaying) panel else null,
+                sidePanelFocusable = loaded != null,
             ) { page ->
                 when (page) {
                     is SectionPage -> when (page.section) {
@@ -150,11 +162,17 @@ private val WIDE_LAYOUT = 840.dp
  * goes back into the page.
  */
 @Composable
-private fun PlayerBar(onOpen: () -> Unit, onQueue: () -> Unit) {
+private fun PlayerBar(onOpen: () -> Unit, onQueue: () -> Unit, labelled: Boolean, always: Boolean) {
     val playback = LocalContext.current.container.playback
     val item by playback.current.collectAsStateWithLifecycle()
     val playing by playback.isPlaying.collectAsStateWithLifecycle()
-    val current = item ?: return
+    val queue by playback.queue.collectAsStateWithLifecycle()
+    val current = item
+    if (current == null) {
+        // The Simple layout keeps its bar when nothing plays, so the page doesn't resize when something starts.
+        if (always) IdleBar()
+        return
+    }
     var progress by remember { mutableFloatStateOf(0f) }
     LaunchedEffect(current.id) {
         while (true) {
@@ -172,7 +190,21 @@ private fun PlayerBar(onOpen: () -> Unit, onQueue: () -> Unit) {
         onPlayPause = playback::togglePlay,
         onNext = playback::next,
         onQueue = onQueue,
-    ) { AlbumCover(current.albumKey, current.album, 40.dp) }
+        labelled = labelled,
+        queueCount = queue.size,
+    ) { AlbumCover(current.albumKey, current.album, if (labelled) 52.dp else 40.dp) }
+}
+
+@Composable
+private fun IdleBar() {
+    Row(
+        Modifier.fillMaxWidth().padding(top = ShellGap).card().padding(horizontal = 20.dp, vertical = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(Icons.Default.GraphicEq, contentDescription = null, tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(40.dp))
+        TwoLines("Nothing playing", "Choose a song and it appears here")
+    }
 }
 
 @Composable
@@ -185,6 +217,8 @@ fun PlayerBarLayout(
     onPlayPause: () -> Unit,
     onNext: () -> Unit,
     onQueue: () -> Unit,
+    labelled: Boolean = false,
+    queueCount: Int = 0,
     art: @Composable () -> Unit,
 ) {
     Column(Modifier.fillMaxWidth().padding(top = ShellGap).card()) {
@@ -208,7 +242,12 @@ fun PlayerBarLayout(
                 onClick = onPlayPause,
             )
             IconAction(Icons.Default.SkipNext, "Next", key = "bar-next", tag = "bar-next", onClick = onNext)
-            IconAction(Icons.AutoMirrored.Filled.QueueMusic, "Queue", key = "bar-queue", tag = "bar-queue", onClick = onQueue)
+            if (labelled) {
+                ActionButton("Now playing", primary = false, onClick = onOpen)
+                ActionButton("Queue · $queueCount", Icons.AutoMirrored.Filled.QueueMusic, primary = false, onClick = onQueue)
+            } else {
+                IconAction(Icons.AutoMirrored.Filled.QueueMusic, "Queue", key = "bar-queue", tag = "bar-queue", onClick = onQueue)
+            }
         }
     }
 }

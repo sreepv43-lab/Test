@@ -19,7 +19,7 @@ import androidx.media3.exoplayer.audio.DefaultAudioSink
 data class OutputState(
     /** "DD+ Atmos 5.1", "FLAC 24-bit 96 kHz". */
     val input: String,
-    /** "Bitstream to the receiver (Dolby Atmos)", "Decoded here: stereo PCM". */
+    /** "Passthrough: Dolby Atmos (DD+) sent undecoded to the audio output", "Decoded here: stereo PCM". */
     val output: String,
     val passthrough: Boolean,
     /** Set when Atmos (or surround) is lost on the way, with what to do about it. */
@@ -131,7 +131,7 @@ object AudioOutput {
                 C.ENCODING_DTS, C.ENCODING_DTS_HD -> "DTS"
                 else -> "encoded audio"
             }
-            return OutputState(source, "Bitstream to the receiver: $what", passthrough = true)
+            return OutputState(source, "Passthrough: $what sent undecoded to the audio output", passthrough = true)
         }
         val count = Integer.bitCount(track.channelConfig)
         val output = "Decoded here: ${channels(count) ?: "PCM"} PCM, ${track.sampleRate / 1000.0} kHz".replace(".0 kHz", " kHz")
