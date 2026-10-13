@@ -47,6 +47,7 @@ import io.github.sreepv43.soundhub.ui.components.ListRow
 import io.github.sreepv43.soundhub.ui.components.Note
 import io.github.sreepv43.soundhub.ui.components.TvDialog
 import io.github.sreepv43.soundhub.ui.components.TwoLines
+import io.github.sreepv43.soundhub.ui.components.tvButtonGroup
 import io.github.sreepv43.soundhub.ui.screens.AlbumScreen
 import io.github.sreepv43.soundhub.ui.screens.ArtistsScreen
 import io.github.sreepv43.soundhub.ui.screens.ArtistScreen
@@ -225,8 +226,9 @@ fun PlayerBarLayout(
         Box(Modifier.fillMaxWidth().height(3.dp).background(MaterialTheme.colorScheme.surfaceVariant)) {
             Box(Modifier.fillMaxWidth(progress).height(3.dp).background(Accent))
         }
+        // Entered from the page at its first item (the song), whatever sits nearest in the row.
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+            Modifier.tvButtonGroup().padding(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
