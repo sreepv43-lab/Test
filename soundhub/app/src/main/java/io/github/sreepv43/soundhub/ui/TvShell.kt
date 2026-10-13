@@ -262,6 +262,7 @@ fun TvShell(
     val inputModes = LocalInputModeManager.current
     val shell = remember { TvShellState() }
     val pageFocus = remember { FocusRequester() }
+    val barFocus = remember { FocusRequester() }
     val menuFocus = remember { FocusRequester() }
     var expanded by remember { mutableStateOf(false) }
     var menuActive by remember { mutableStateOf(false) }
@@ -396,6 +397,12 @@ fun TvShell(
                             // The seek bar uses Left/Right to seek.
                             horizontal && shell.horizontalClaim -> false
                             moveFocusSafely(focusManager, direction) -> true
+                            // Nothing further right on the page and no panel: jump to the player bar, so a
+                            // long list needn't be scrolled through to get back to the song playing.
+                            direction == FocusDirection.Right && sidePanel == null && !shell.barHasFocus -> {
+                                runCatching { barFocus.requestFocus() }
+                                true
+                            }
                             direction == FocusDirection.Left -> {
                                 if (event.nativeKeyEvent.repeatCount == 0) openMenu()
                                 true
@@ -410,6 +417,7 @@ fun TvShell(
                         Modifier
                             .fillMaxWidth()
                             .onFocusChanged { shell.barHasFocus = it.hasFocus }
+                            .focusRequester(barFocus)
                             .focusProperties { exit = ::verticalExitOnly }
                             .focusGroup(),
                     ) { bottomBar() }

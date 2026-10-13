@@ -3,6 +3,9 @@ package io.github.sreepv43.soundhub.ui
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Density
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -332,5 +335,12 @@ private val typography = base.copy(
 @Composable
 fun SoundHubTheme(content: @Composable () -> Unit) {
     val palette = currentPalette
-    MaterialTheme(colorScheme = palette.colorScheme(), typography = typography, content = content)
+    // The Simple layout is drawn a little smaller (text, art and spacing together) so more fits.
+    val density = LocalDensity.current
+    val scaled = if (currentLayout == UiLayout.SIMPLE) Density(density.density * SIMPLE_SCALE, density.fontScale) else density
+    CompositionLocalProvider(LocalDensity provides scaled) {
+        MaterialTheme(colorScheme = palette.colorScheme(), typography = typography, content = content)
+    }
 }
+
+private const val SIMPLE_SCALE = 0.85f

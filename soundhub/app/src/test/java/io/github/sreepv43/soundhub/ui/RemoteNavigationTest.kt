@@ -487,6 +487,19 @@ class RemoteNavigationTest {
     }
 
     @Test
+    fun rightOnAPageEdgeJumpsToTheSongInTheSimplePlayerBar() {
+        rule.runOnUiThread {
+            currentLayout = UiLayout.SIMPLE
+            currentPalette = Palettes.SIMPLE_LIGHT
+        }
+        settle(1_000)
+        repeat(6) { if (focused() != "player-bar") press(KeyEvent.KEYCODE_DPAD_RIGHT) }
+        assertEquals("player-bar", focused())
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertTrue(focused(), focused() != "player-bar")
+    }
+
+    @Test
     fun choosingAThemeRecoloursAtOnceAndKeepsTheSelection() {
         rule.runOnUiThread { navigator.open(SettingsPage(SettingsKind.APPEARANCE)) }
         settle(1_000)

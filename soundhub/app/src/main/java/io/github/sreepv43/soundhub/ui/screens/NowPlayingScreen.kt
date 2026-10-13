@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -50,12 +50,14 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
+import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
@@ -160,9 +162,11 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
     val favourite = current.id in collection.favouriteTracks
     val upNext = queue.drop(index + 1).take(UP_NEXT)
 
+    val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberLazyListState(),
+        state = listState,
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
@@ -195,6 +199,8 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
             }
         }
         item(key = "seek") {
+            // The song above isn't selectable, so reaching the first control shows the whole top again.
+            Box(Modifier.onFocusChanged { if (it.hasFocus) scope.launch { listState.animateScrollToItem(0) } }) {
             SeekBar(
                 positionMs = position,
                 durationMs = duration,
@@ -203,6 +209,7 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
                 onSeekBy = playback::seekBy,
                 onClick = playback::togglePlay,
             )
+            }
         }
         item(key = "controls") {
             PlayerControls(
@@ -217,13 +224,13 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
             )
         }
         item(key = "more") {
-            FlowRow(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(Modifier.fillMaxWidth().tvButtonGroup(), horizontalArrangement = Arrangement.SpaceEvenly) {
                 ActionButton(
-                    if (favourite) "Favourite" else "Add to favourites",
+                    if (favourite) "Favourite" else "Favourites",
                     if (favourite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
                     primary = false,
                 ) { container.collection.toggleFavouriteTrack(current.id) }
-                ActionButton("Add to playlist", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false) { showPlaylist = true }
+                ActionButton("Playlist", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false) { showPlaylist = true }
                 ActionButton("Queue (${queue.size})", Icons.AutoMirrored.Filled.QueueMusic, primary = false, onClick = onQueue)
                 ActionButton(sleepLabel(sleep, now), Icons.Default.Bedtime, primary = false) { showSleep = true }
                 ActionButton("Sound", Icons.Default.SurroundSound, primary = false) { onGo(Section.SOUND) }
