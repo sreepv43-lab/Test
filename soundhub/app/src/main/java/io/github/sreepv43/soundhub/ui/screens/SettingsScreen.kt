@@ -454,12 +454,25 @@ private fun AppearanceSettings() {
     val layoutId by settings.layout.flow.collectAsStateWithLifecycle()
     val theme by settings.theme.flow.collectAsStateWithLifecycle()
     val simpleTheme by settings.simpleTheme.flow.collectAsStateWithLifecycle()
+    val cinemaTheme by settings.cinemaTheme.flow.collectAsStateWithLifecycle()
     val layout = UiLayout.byId(layoutId)
-    // Each layout has its own colours: the Panel layout the themes, the Simple layout light or Midnight.
+    // Each layout has its own colours: the Panel layout the themes, Simple light or Midnight, Cinema or Daylight.
     AppearanceLayout(
         palettes = Palettes.forLayout(layout),
-        chosen = Palettes.byId(if (layout == UiLayout.SIMPLE) simpleTheme else theme).id,
-        onChoose = { if (layout == UiLayout.SIMPLE) settings.simpleTheme.set(it) else settings.theme.set(it) },
+        chosen = Palettes.byId(
+            when (layout) {
+                UiLayout.SIMPLE -> simpleTheme
+                UiLayout.CINEMA -> cinemaTheme
+                UiLayout.PANEL -> theme
+            },
+        ).id,
+        onChoose = {
+            when (layout) {
+                UiLayout.SIMPLE -> settings.simpleTheme.set(it)
+                UiLayout.CINEMA -> settings.cinemaTheme.set(it)
+                UiLayout.PANEL -> settings.theme.set(it)
+            }
+        },
         layout = layout,
         onLayout = { settings.layout.set(it.id) },
     )

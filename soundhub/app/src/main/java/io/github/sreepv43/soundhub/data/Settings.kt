@@ -73,6 +73,9 @@ class Settings(context: Context) {
     /** The Simple layout's colours: "simple-light" or "simple-dark". */
     val simpleTheme = string("simple_theme", "simple-light")
 
+    /** The Cinema layout's colours: "cinema-dark" or "cinema-light". */
+    val cinemaTheme = string("cinema_theme", "cinema-dark")
+
     /** When GitHub was last asked for a newer SoundHub build. */
     val updateCheckedAt = long("update_checked_at", 0L)
 
@@ -83,7 +86,13 @@ class Settings(context: Context) {
     fun applyAppearance() {
         val chosen = UiLayout.byId(layout.value)
         currentLayout = chosen
-        currentPalette = Palettes.byId(if (chosen == UiLayout.SIMPLE) simpleTheme.value else theme.value)
+        currentPalette = Palettes.byId(
+            when (chosen) {
+                UiLayout.SIMPLE -> simpleTheme.value
+                UiLayout.CINEMA -> cinemaTheme.value
+                UiLayout.PANEL -> theme.value
+            },
+        )
     }
 
     fun addRecentSearch(query: String) {

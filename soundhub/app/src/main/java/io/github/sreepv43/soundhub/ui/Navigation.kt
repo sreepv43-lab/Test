@@ -134,6 +134,22 @@ class Navigator(start: Section, private val home: Section = Section.HOME) {
 
 private val menu = Section.entries.map { MenuEntry(it.name, it.label, it.icon, it.title) }
 
+/** The Cinema layout's top bar: three places to go, and Settings at the right. */
+private val cinemaMenu = listOf(
+    MenuEntry(Section.HOME.name, "Listen", Section.HOME.icon, "Listen"),
+    MenuEntry(Section.SEARCH.name, "Discover", Section.SEARCH.icon, "Discover"),
+    MenuEntry(Section.LIBRARY.name, "My Music", Section.LIBRARY.icon, "My Music"),
+    MenuEntry(Section.SETTINGS.name, "Settings", Section.SETTINGS.icon, "Settings"),
+)
+
+/** The top-bar entry a section sits under in the Cinema layout (Artists and Atmos under Discover, Transfers under My Music). */
+internal fun cinemaRoot(section: Section): Section = when (section) {
+    Section.HOME, Section.NOW_PLAYING -> Section.HOME
+    Section.SEARCH, Section.ARTISTS, Section.SOUND -> Section.SEARCH
+    Section.LIBRARY, Section.TRANSFERS -> Section.LIBRARY
+    Section.SETTINGS -> Section.SETTINGS
+}
+
 /**
  * The TV shell around the page on top of [navigator]'s stack: side menu, Back, the player bar or
  * panel, and each page keeping its scroll position, filters and open album while other pages are
@@ -154,9 +170,10 @@ fun SoundHubShell(
     }
     BackHandler(enabled = navigator.canGoBack) { navigator.back() }
     val page = navigator.current
+    val cinema = currentLayout == UiLayout.CINEMA
     TvShell(
-        entries = menu,
-        selectedKey = page.section.name,
+        entries = if (cinema) cinemaMenu else menu,
+        selectedKey = (if (cinema) cinemaRoot(page.section) else page.section).name,
         pageKey = page.key,
         onSelect = { navigator.select(Section.valueOf(it.key)) },
         bottomBar = bottomBar,

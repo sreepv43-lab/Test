@@ -89,7 +89,8 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
 
     val loaded by container.playback.current.collectAsStateWithLifecycle()
     val panel: @Composable () -> Unit = { PlayerPanel(onOpen = showPlayer, onViewQueue = { navigator.open(QueuePage) }) }
-    val simple = currentLayout == UiLayout.SIMPLE
+    // Simple and Cinema have one player bar along the bottom; only Panel puts the player beside the page.
+    val simple = currentLayout != UiLayout.PANEL
 
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
@@ -110,7 +111,7 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
                 sidePanelFocusable = loaded != null,
             ) { page ->
                 when (page) {
-                    is SectionPage -> when (page.section) {
+                    is SectionPage -> CinemaTabs(page.section, onSelect = { navigator.select(it) }) { when (page.section) {
                         Section.HOME -> HomeScreen(
                             onOpenAlbum = openAlbum,
                             onGo = go,
@@ -140,7 +141,7 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
                             onOpen = { navigator.open(SettingsPage(it)) },
                             onSound = { go(Section.SOUND) },
                         )
-                    }
+                    } }
                     is ReleasePage -> ReleaseScreen(page.release, onPlaying = showPlayer)
                     is AlbumPage -> AlbumScreen(page.albumKey, onPlaying = showPlayer, onGone = { navigator.back() }, onOpenArtist = openArtist)
                     is ArtistPage -> ArtistScreen(page.name, onOpenAlbum = openAlbum, onPlaying = showPlayer)

@@ -10,7 +10,8 @@ import androidx.compose.runtime.setValue
  */
 enum class UiLayout(val id: String, val label: String, val description: String) {
     PANEL("panel", "Panel", "Icon menu, pages on cards, and Up Next with the player beside the page"),
-    SIMPLE("simple", "Simple", "Labelled menu, a large Continue listening card and one player bar along the bottom");
+    SIMPLE("simple", "Simple", "Labelled menu, a large Continue listening card and one player bar along the bottom"),
+    CINEMA("cinema", "Cinema", "Listen, Discover and My Music along the top, Settings at the right and one player along the bottom");
 
     companion object {
         fun byId(id: String): UiLayout = entries.firstOrNull { it.id == id } ?: PANEL

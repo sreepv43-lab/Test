@@ -62,7 +62,7 @@ class SoundHubApp : Application() {
         // The chosen layout and its colours from the first frame on, and whenever they change.
         container.settings.applyAppearance()
         container.appScope.launch {
-            combine(container.settings.layout.flow, container.settings.theme.flow, container.settings.simpleTheme.flow) { _, _, _ -> }
+            combine(container.settings.layout.flow, container.settings.theme.flow, container.settings.simpleTheme.flow, container.settings.cinemaTheme.flow) { _, _, _, _ -> }
                 .collect { container.settings.applyAppearance() }
         }
         container.start()

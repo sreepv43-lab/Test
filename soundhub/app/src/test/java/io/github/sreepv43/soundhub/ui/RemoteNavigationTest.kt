@@ -487,6 +487,30 @@ class RemoteNavigationTest {
     }
 
     @Test
+    fun theCinemaLayoutHasATopBarReachedWithUpAndLeftWithDown() {
+        rule.runOnUiThread {
+            currentLayout = UiLayout.CINEMA
+            currentPalette = Palettes.CINEMA_DARK
+        }
+        settle(1_000)
+        rule.onNodeWithText("Discover").assertExists()
+        rule.onNodeWithText("My Music").assertExists()
+        val start = focused()
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals("Left stays in the page: there is no side menu", start, focused())
+        repeat(8) { if (!focused().startsWith("menu-")) press(KeyEvent.KEYCODE_DPAD_UP) }
+        assertEquals("the page's own entry is the one selected", "menu-SEARCH", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("menu-LIBRARY", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("menu-SETTINGS", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Right at the end stays on Settings", "menu-SETTINGS", focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertTrue(focused(), !focused().startsWith("menu-"))
+    }
+
+    @Test
     fun rightOnAPageEdgeJumpsToTheSongInTheSimplePlayerBar() {
         rule.runOnUiThread {
             currentLayout = UiLayout.SIMPLE
@@ -939,7 +963,7 @@ private fun FakeApp(
         )
     }
     // As AppRoot lays it out: the panel beside the page (Panel layout), or one player bar under it (Simple).
-    val simple = currentLayout == UiLayout.SIMPLE
+    val simple = currentLayout != UiLayout.PANEL
     val notPlayingPage = navigator.current != SectionPage(Section.NOW_PLAYING)
     SoundHubShell(
         navigator,

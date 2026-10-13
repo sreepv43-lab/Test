@@ -252,15 +252,84 @@ object Palettes {
         favourite = Color(0xFF3DDC97),
     )
 
+    /** The Cinema layout's dark colours. */
+    val CINEMA_DARK = Palette(
+        id = "cinema-dark",
+        name = "Cinema",
+        description = "Deep green-black with lime accents",
+        dark = true,
+        background = Color(0xFF111918),
+        backgroundEnd = Color(0xFF111918),
+        rail = Color(0xFF111918),
+        railEnd = Color(0xFF111918),
+        onRail = Color(0xFFF4F7EE),
+        railSelected = Color(0xFF202B27),
+        onRailSelected = Color(0xFFD1EE92),
+        panel = Color(0xFF111918),
+        row = Color(0xFF202B27),
+        rowFocused = Color(0xFF2B3931),
+        surfaceVariant = Color(0xFF2B3931),
+        text = Color(0xFFF4F7EE),
+        textDim = Color(0xFFB2C1B6),
+        onText = Color(0xFF172715),
+        accent = Color(0xFFD1EE92),
+        onAccent = Color(0xFF172715),
+        focus = Color.White,
+        atmos = Color(0xFF8FC7FF),
+        hiRes = Color(0xFFFFC857),
+        lossless = Color(0xFF5ED3B5),
+        warning = Color(0xFFFFB86B),
+        error = Color(0xFFFF6B6B),
+        favourite = Color(0xFFD1EE92),
+    )
+
+    /** The Cinema layout's light colours. */
+    val CINEMA_LIGHT = Palette(
+        id = "cinema-light",
+        name = "Daylight",
+        description = "Warm paper with deep green",
+        dark = false,
+        background = Color(0xFFF3F0E8),
+        backgroundEnd = Color(0xFFF3F0E8),
+        rail = Color(0xFFF3F0E8),
+        railEnd = Color(0xFFF3F0E8),
+        onRail = Color(0xFF1B332C),
+        railSelected = Color(0xFFE7E7DB),
+        onRailSelected = Color(0xFF365739),
+        panel = Color(0xFFF3F0E8),
+        row = Color(0xFFFFFDF8),
+        rowFocused = Color(0xFFDDE5CB),
+        surfaceVariant = Color(0xFFE7E7DB),
+        text = Color(0xFF1B332C),
+        textDim = Color(0xFF52655B),
+        onText = Color(0xFFFFFDF6),
+        accent = Color(0xFF365739),
+        onAccent = Color(0xFFFFFDF6),
+        focus = Color(0xFF1B332C),
+        atmos = Color(0xFF2F5BD3),
+        hiRes = Color(0xFF9A6400),
+        lossless = Color(0xFF00796B),
+        warning = Color(0xFFB45309),
+        error = Color(0xFFC62828),
+        favourite = Color(0xFF365739),
+    )
+
     /** The colour themes of the Panel layout. */
     val all = listOf(SKY, TEAL, OCEAN, VIOLET, AMBER, CRIMSON, BLACK, LIGHT)
 
     /** The colour sets of the Simple layout. */
     val simple = listOf(SIMPLE_LIGHT, SIMPLE_DARK)
 
-    fun forLayout(layout: UiLayout): List<Palette> = if (layout == UiLayout.SIMPLE) simple else all
+    /** The colour sets of the Cinema layout. */
+    val cinema = listOf(CINEMA_DARK, CINEMA_LIGHT)
 
-    fun byId(id: String): Palette = (all + simple).firstOrNull { it.id == id } ?: SKY
+    fun forLayout(layout: UiLayout): List<Palette> = when (layout) {
+        UiLayout.SIMPLE -> simple
+        UiLayout.CINEMA -> cinema
+        UiLayout.PANEL -> all
+    }
+
+    fun byId(id: String): Palette = (all + simple + cinema).firstOrNull { it.id == id } ?: SKY
 }
 
 /**
@@ -337,7 +406,7 @@ fun SoundHubTheme(content: @Composable () -> Unit) {
     val palette = currentPalette
     // The Simple layout is drawn a little smaller (text, art and spacing together) so more fits.
     val density = LocalDensity.current
-    val scaled = if (currentLayout == UiLayout.SIMPLE) Density(density.density * SIMPLE_SCALE, density.fontScale) else density
+    val scaled = if (currentLayout != UiLayout.PANEL) Density(density.density * SIMPLE_SCALE, density.fontScale) else density
     CompositionLocalProvider(LocalDensity provides scaled) {
         MaterialTheme(colorScheme = palette.colorScheme(), typography = typography, content = content)
     }

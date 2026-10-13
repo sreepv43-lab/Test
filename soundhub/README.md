@@ -18,6 +18,10 @@ There are two **layouts**, chosen under **Settings → Appearance**, each with i
   **Continue listening** card on Home, and one player bar along the bottom (Now playing and Queue
   as buttons) instead of the side panel. Its colours are Light (pale blue, white cards) or Midnight
   (deep navy).
+- **Cinema**: a top bar with **Listen**, **Discover** and **My Music** (Settings at the right), no
+  side menu, and one player bar along the bottom. Discover holds Search, Artists and Atmos; My Music
+  holds the Library and Downloads. Up from the top of a page reaches the bar, Down returns. Its
+  colours are Cinema (dark green) or Daylight.
 
 ## Features
 

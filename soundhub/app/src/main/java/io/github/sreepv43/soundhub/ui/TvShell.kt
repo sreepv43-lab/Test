@@ -51,6 +51,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -330,14 +331,15 @@ fun TvShell(
     }
 
     val simple = currentLayout == UiLayout.SIMPLE
-    Column(modifier.fillMaxSize().background(AppColors.backdrop).padding(ShellGap)) {
-        if (simple) ShellHeader(entries.firstOrNull { it.key == selectedKey }?.title.orEmpty())
-        Row(Modifier.weight(1f).fillMaxWidth()) {
+    val cinema = currentLayout == UiLayout.CINEMA
+    val menuBox: @Composable () -> Unit = {
         val selectedIndex = entries.indexOfFirst { it.key == selectedKey }.coerceAtLeast(0)
         Box(
             Modifier
                 .then(
-                    if (simple) {
+                    if (cinema) {
+                        Modifier.fillMaxWidth().height(CinemaNavHeight)
+                    } else if (simple) {
                         Modifier.width(SimpleMenuWidth).fillMaxHeight()
                     } else {
                         Modifier.width(RailWidth).fillMaxHeight().shadow(6.dp, RailShape).clip(RailShape).background(AppColors.railBrush)
@@ -351,12 +353,38 @@ fun TvShell(
                         expanded = false
                     }
                 }
+                .focusProperties { if (cinema) exit = ::verticalExitOnlyReverse }
                 .focusGroup()
-                .onKeyEvent { event -> handleMenuKey(event, expanded, onExpand = { expanded = true }, onClose = ::closeMenu) }
+                .onKeyEvent { event -> handleMenuKey(event, expanded, cinema, onExpand = { expanded = true }, onClose = ::closeMenu) }
                 .testTag("menu"),
-            contentAlignment = Alignment.Center,
+            contentAlignment = if (cinema) Alignment.CenterStart else Alignment.Center,
         ) {
-            Column(
+            if (cinema) {
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(Icons.Default.GraphicEq, contentDescription = null, tint = Accent, modifier = Modifier.size(28.dp))
+                    Text("SoundHub", style = MaterialTheme.typography.titleLarge, color = AppColors.text, modifier = Modifier.padding(end = 28.dp))
+                    entries.forEachIndexed { index, entry ->
+                        if (index == entries.lastIndex) Spacer(Modifier.weight(1f))
+                        MenuItem(
+                            entry = entry,
+                            selected = entry.key == selectedKey,
+                            simple = false,
+                            cinema = true,
+                            focusable = { menuActive },
+                            modifier = if (index == selectedIndex) Modifier.focusRequester(menuFocus) else Modifier,
+                            onClick = {
+                                expanded = false
+                                onSelect(entry)
+                                refocus++
+                            },
+                        )
+                    }
+                }
+            } else Column(
                 Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
@@ -368,6 +396,7 @@ fun TvShell(
                         entry = entry,
                         selected = entry.key == selectedKey,
                         simple = simple,
+                        cinema = false,
                         focusable = { menuActive },
                         modifier = if (index == selectedIndex) Modifier.focusRequester(menuFocus) else Modifier,
                         onClick = {
@@ -379,6 +408,12 @@ fun TvShell(
                 }
             }
         }
+    }
+    Column(modifier.fillMaxSize().background(AppColors.backdrop).padding(ShellGap)) {
+        if (simple) ShellHeader(entries.firstOrNull { it.key == selectedKey }?.title.orEmpty())
+        if (cinema) menuBox()
+        Row(Modifier.weight(1f).fillMaxWidth()) {
+        if (!cinema) menuBox()
 
         CompositionLocalProvider(LocalTvShell provides shell, LocalBringIntoViewSpec provides TvScrolling.Edge) {
             // The page card with the player bar under it, and the player panel beside them.
@@ -386,7 +421,7 @@ fun TvShell(
                 Modifier
                     .weight(1f)
                     .fillMaxHeight()
-                    .padding(start = ShellGap)
+                    .padding(start = if (cinema) 0.dp else ShellGap)
                     .focusRequester(pageFocus)
                     .focusGroup()
                     .onPreviewKeyEvent { event ->
@@ -399,12 +434,17 @@ fun TvShell(
                             moveFocusSafely(focusManager, direction) -> true
                             // Nothing further right on the page and no panel: jump to the player bar, so a
                             // long list needn't be scrolled through to get back to the song playing.
-                            direction == FocusDirection.Right && sidePanel == null && !shell.barHasFocus -> {
+                            direction == FocusDirection.Right && sidePanel == null && !cinema && !shell.barHasFocus -> {
                                 runCatching { barFocus.requestFocus() }
                                 true
                             }
-                            direction == FocusDirection.Left -> {
+                            // Cinema: the menu is the top bar, reached with Up; Left stays in the page.
+                            cinema && direction == FocusDirection.Up -> {
                                 if (event.nativeKeyEvent.repeatCount == 0) openMenu()
+                                true
+                            }
+                            direction == FocusDirection.Left -> {
+                                if (!cinema && event.nativeKeyEvent.repeatCount == 0) openMenu()
                                 true
                             }
                             else -> false
@@ -412,7 +452,7 @@ fun TvShell(
                     },
             ) {
                 Column(Modifier.weight(1f).fillMaxHeight()) {
-                    Box(Modifier.weight(1f).fillMaxWidth().card()) { content(Modifier.fillMaxSize()) }
+                    Box(Modifier.weight(1f).fillMaxWidth().then(if (cinema) Modifier else Modifier.card())) { content(Modifier.fillMaxSize()) }
                     Box(
                         Modifier
                             .fillMaxWidth()
@@ -497,6 +537,13 @@ private fun moveFocusSafely(focusManager: FocusManager, direction: FocusDirectio
     true
 }
 
+/** The top bar is left only with Down (handled by the shell); Left/Right never leave it. */
+@OptIn(ExperimentalComposeUiApi::class)
+private fun verticalExitOnlyReverse(direction: FocusDirection): FocusRequester =
+    if (direction == FocusDirection.Left || direction == FocusDirection.Right) FocusRequester.Cancel else FocusRequester.Default
+
+private val CinemaNavHeight = 64.dp
+
 /** Page and player bar are left only with Up/Down. */
 @OptIn(ExperimentalComposeUiApi::class)
 private fun verticalExitOnly(direction: FocusDirection): FocusRequester =
@@ -513,8 +560,23 @@ private fun arrowDirection(event: KeyEvent): FocusDirection? {
     }
 }
 
-private fun handleMenuKey(event: KeyEvent, expanded: Boolean, onExpand: () -> Unit, onClose: () -> Unit): Boolean {
+private fun handleMenuKey(event: KeyEvent, expanded: Boolean, top: Boolean, onExpand: () -> Unit, onClose: () -> Unit): Boolean {
     val down = event.type == KeyEventType.KeyDown
+    if (top) {
+        // The top bar: Left/Right move along it, Down goes back into the page, Up stays.
+        return when (event.key) {
+            Key.DirectionDown -> {
+                if (down) onClose()
+                true
+            }
+            Key.DirectionUp -> true
+            Key.Back, Key.Escape -> {
+                if (expanded && !down) onClose()
+                expanded
+            }
+            else -> false
+        }
+    }
     return when (event.key) {
         Key.DirectionRight -> {
             if (down) onClose()
@@ -547,12 +609,13 @@ private fun MenuItem(
     entry: MenuEntry,
     selected: Boolean,
     simple: Boolean,
+    cinema: Boolean,
     focusable: () -> Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
 ) {
     var focused by remember { mutableStateOf(false) }
-    val shape = RoundedCornerShape(if (simple) 14.dp else 18.dp)
+    val shape = RoundedCornerShape(if (simple || cinema) 14.dp else 18.dp)
     val tint = when {
         focused -> AppColors.onText
         selected -> AppColors.onRailSelected
@@ -560,7 +623,7 @@ private fun MenuItem(
     }
     val marker = AppColors.onRailSelected
     val base = modifier
-        .fillMaxWidth()
+        .then(if (cinema) Modifier else Modifier.fillMaxWidth())
         .testTag("menu-${entry.key}")
         // Unreachable with the remote while the menu is closed; taps still work on tablets.
         .focusProperties { canFocus = focusable() }
@@ -574,7 +637,31 @@ private fun MenuItem(
             },
             shape,
         )
-    if (simple) {
+    if (cinema) {
+        // Top bar tab: the page you are on is underlined; the tab the remote is on is filled.
+        val iconOnly = entry.key == Section.SETTINGS.name
+        Row(
+            base
+                .drawBehind {
+                    if (selected && !focused) drawRect(marker, topLeft = Offset(size.width / 2 - 11.dp.toPx(), size.height - 5.dp.toPx()), size = Size(22.dp.toPx(), 3.dp.toPx()))
+                }
+                .clickable(onClick = onClick)
+                .padding(horizontal = 18.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (iconOnly) {
+                Icon(entry.icon, contentDescription = entry.label, tint = tint, modifier = Modifier.size(24.dp))
+            } else {
+                Text(
+                    entry.label,
+                    style = MaterialTheme.typography.titleLarge,
+                    color = tint,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    } else if (simple) {
         Row(
             base
                 .drawBehind { if (selected && !focused) drawRect(marker, size = Size(4.dp.toPx(), size.height)) }
