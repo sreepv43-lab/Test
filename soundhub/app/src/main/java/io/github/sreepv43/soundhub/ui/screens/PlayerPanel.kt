@@ -7,6 +7,14 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -191,7 +199,7 @@ fun PlayerPanelLayout(
                 Spacer(Modifier.weight(1f))
             } else {
                 LazyColumn(
-                    Modifier.weight(1f).fillMaxWidth().testTag("up-next"),
+                    Modifier.weight(1f).fillMaxWidth().fadeBottom().testTag("up-next"),
                     state = rememberLazyListState(),
                     verticalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
@@ -215,6 +223,7 @@ fun PlayerPanelLayout(
                     }
                 }
             }
+            Spacer(Modifier.height(2.dp))
             TextAction("View queue", tag = "panel-queue", onClick = onViewQueue)
         }
         Column(
@@ -335,3 +344,17 @@ private fun TextAction(text: String, tag: String, onClick: () -> Unit) {
             .testTag(tag),
     )
 }
+
+/** Fades the last bit of a list out, so a row cut off by the list's end reads as scrolling on rather than as clipped. */
+private fun Modifier.fadeBottom(height: Dp = 28.dp): Modifier = this
+    .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val h = height.toPx()
+        drawRect(
+            Brush.verticalGradient(listOf(Color.Transparent, Color.Black), startY = size.height - h, endY = size.height),
+            topLeft = Offset(0f, size.height - h),
+            size = Size(size.width, h),
+            blendMode = BlendMode.DstOut,
+        )
+    }

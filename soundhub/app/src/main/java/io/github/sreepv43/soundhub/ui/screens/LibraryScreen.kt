@@ -52,6 +52,7 @@ import io.github.sreepv43.soundhub.library.LibrarySort
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.library.LibraryTrack
 import io.github.sreepv43.soundhub.library.LibraryViews
+import io.github.sreepv43.soundhub.ui.fullBleed
 import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.FavouriteColor
 import io.github.sreepv43.soundhub.ui.WarningColor
@@ -143,9 +144,9 @@ fun LibraryScreen(
         }
         item(key = "tabs") {
             LazyRow(
-                Modifier.tvRow().tvEnterAt { "tab-${tab.name}" }.testTag("tabs"),
+                Modifier.fullBleed().tvRow().tvEnterAt { "tab-${tab.name}" }.testTag("tabs"),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 6.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
             ) {
                 items(LibraryTab.entries, key = { it.name }) { entry ->
                     Chip(entry.label, entry == tab, key = "tab-${entry.name}") { tab = entry }
@@ -154,9 +155,9 @@ fun LibraryScreen(
         }
         item(key = "tools") {
             LazyRow(
-                Modifier.tvRow().tvEnterAt { null }.testTag("tools"),
+                Modifier.fullBleed().tvRow().tvEnterAt { null }.testTag("tools"),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 6.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
             ) {
                 item(key = "find") {
                     Chip(if (query.isEmpty()) "Find in library" else "Find: $query", query.isNotEmpty(), key = "find") {

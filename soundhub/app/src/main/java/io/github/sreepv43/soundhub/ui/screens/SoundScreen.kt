@@ -34,6 +34,7 @@ import io.github.sreepv43.soundhub.container
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.player.AudioOutput
 import io.github.sreepv43.soundhub.player.OutputReport
+import io.github.sreepv43.soundhub.ui.fullBleed
 import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.AtmosColor
 import io.github.sreepv43.soundhub.ui.LosslessColor
@@ -85,9 +86,9 @@ fun SoundScreen(onOpenAlbum: (String) -> Unit, onFindAtmos: () -> Unit) {
         item(key = "title") { ScreenTitle("Atmos & sound") }
         item(key = "tabs") {
             LazyRow(
-                Modifier.tvRow().tvEnterAt { "sound-tab-${tab.name}" },
+                Modifier.fullBleed().tvRow().tvEnterAt { "sound-tab-${tab.name}" },
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
-                contentPadding = PaddingValues(vertical = 6.dp),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 6.dp),
             ) {
                 items(SoundTab.entries, key = { it.name }) { entry ->
                     Chip(entry.label, entry == tab, key = "sound-tab-${entry.name}") { tab = entry }

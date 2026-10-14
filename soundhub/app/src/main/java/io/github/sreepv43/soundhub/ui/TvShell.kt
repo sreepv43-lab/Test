@@ -30,6 +30,9 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.composed
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -54,6 +57,7 @@ import androidx.compose.ui.focus.focusProperties
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -69,6 +73,7 @@ import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
@@ -85,6 +90,17 @@ val ShellGap = 12.dp
 
 /** The rounded white card each page sits on (and the player panel's cards). */
 val CardShape = RoundedCornerShape(24.dp)
+
+/**
+ * A row inside a page list that runs out to the card's edges instead of stopping at the page's side
+ * padding ([extra]), so tiles scroll off the card cleanly and a focused tile's outline isn't cut.
+ * Give the row [extra] of horizontal contentPadding.
+ */
+fun Modifier.fullBleed(extra: Dp = 24.dp): Modifier = layout { measurable, constraints ->
+    val pad = extra.roundToPx()
+    val placeable = measurable.measure(constraints.copy(minWidth = 0, maxWidth = constraints.maxWidth + 2 * pad))
+    layout(constraints.maxWidth, placeable.height) { placeable.place(-pad, 0) }
+}
 
 /** A card: rounded, lifted a little off the backdrop. */
 fun Modifier.card(): Modifier = shadow(4.dp, CardShape).clip(CardShape).background(AppColors.panel)
@@ -751,3 +767,9 @@ private const val RESTORE_WAIT_MS = 300L
 private const val PARK_AFTER_MS = 2_000L
 private const val MAX_PAGES = 64
 private const val GIVE_UP_MS = 30_000L
+
+/** Brings the page back to its top whenever this (near the top of the list) is selected, so the header above it shows in full. */
+fun Modifier.revealTopWhenFocused(state: LazyListState): Modifier = composed {
+    val scope = rememberCoroutineScope()
+    onFocusChanged { if (it.hasFocus) scope.launch { state.animateScrollToItem(0) } }
+}

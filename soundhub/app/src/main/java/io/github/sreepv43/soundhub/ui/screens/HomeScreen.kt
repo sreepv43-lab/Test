@@ -46,7 +46,9 @@ import io.github.sreepv43.soundhub.library.Album
 import io.github.sreepv43.soundhub.library.LibraryStore
 import io.github.sreepv43.soundhub.library.LibraryViews
 import io.github.sreepv43.soundhub.slsk.ConnectionState
+import io.github.sreepv43.soundhub.ui.fullBleed
 import io.github.sreepv43.soundhub.ui.rememberPageListState
+import io.github.sreepv43.soundhub.ui.revealTopWhenFocused
 import io.github.sreepv43.soundhub.ui.AppColors
 import io.github.sreepv43.soundhub.ui.LosslessColor
 import io.github.sreepv43.soundhub.ui.Section
@@ -94,9 +96,10 @@ fun HomeScreen(
     val hero = playing?.let { Hero(it.title, it.artist, it.album, it.albumKey, now = true) }
         ?: resumeTrack?.let { Hero(it.title, it.artist, it.album, LibraryViews.albumKeyOf(it.path), now = false) }
 
+    val listState = rememberPageListState()
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
-        state = rememberPageListState(),
+        state = listState,
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 20.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -109,7 +112,7 @@ fun HomeScreen(
         }
         (update as? UpdateState.Available)?.let { available ->
             item(key = "update") {
-                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.revealTopWhenFocused(listState).tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Note(
                         "A new SoundHub is ready: build ${available.update.build}" +
                             available.update.notes.lineSequence().firstOrNull { it.isNotBlank() }?.let { " · $it" }.orEmpty(),
@@ -122,7 +125,7 @@ fun HomeScreen(
         }
         if (!signedIn && state !is ConnectionState.Connecting) {
             item(key = "sign-in") {
-                Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.revealTopWhenFocused(listState).tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalAlignment = Alignment.CenterVertically) {
                     Note(
                         (state as? ConnectionState.Failed)?.let { "Not connected to Soulseek: ${it.message}" }
                             ?: "Sign in to Soulseek to search and stream music. Your library plays without it.",
@@ -135,7 +138,7 @@ fun HomeScreen(
         if (hero != null) {
             item(key = "hero") {
                 Row(
-                    Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp)).background(AppColors.surfaceVariant).padding(18.dp),
+                    Modifier.fillMaxWidth().revealTopWhenFocused(listState).clip(RoundedCornerShape(20.dp)).background(AppColors.surfaceVariant).padding(18.dp),
                     horizontalArrangement = Arrangement.spacedBy(22.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -176,7 +179,7 @@ fun HomeScreen(
         val starting = hero == null
         if (starting || favouriteSongs.isNotEmpty()) {
             item(key = "actions") {
-                FlowRow(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                FlowRow(Modifier.revealTopWhenFocused(listState).tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     if (starting) {
                         ActionButton("Search", Icons.Default.Search, pageDefault = signedIn) { onGo(Section.SEARCH) }
                         ActionButton("Browse artists", Icons.Default.Star, primary = false) { onGo(Section.ARTISTS) }
@@ -217,9 +220,9 @@ private fun LazyListScope.shelf(title: String, key: String, albums: List<Album>,
     item(key = "$key-title") { SectionHeader(title) }
     item(key = key) {
         LazyRow(
-            Modifier.tvRow().focusGroup().testTag("shelf-$key"),
+            Modifier.fullBleed().tvRow().focusGroup().testTag("shelf-$key"),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
-            contentPadding = PaddingValues(vertical = 6.dp),
+            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 10.dp),
         ) {
             items(albums, key = { it.key }) { album ->
                 AlbumCard(album.title, album.artist, album.key, key = "$key:${album.key}") { onOpen(album.key) }

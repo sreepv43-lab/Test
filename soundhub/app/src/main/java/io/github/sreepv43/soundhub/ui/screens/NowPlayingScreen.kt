@@ -57,6 +57,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.platform.LocalConfiguration
 import kotlinx.coroutines.launch
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -173,7 +174,8 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
     ) {
         item(key = "song") {
             BoxWithConstraints {
-                val art = if (maxWidth > 640.dp) 220.dp else 140.dp
+                val short = LocalConfiguration.current.screenHeightDp < 620
+                val art = if (maxWidth <= 640.dp) 140.dp else if (short) 150.dp else 220.dp
                 Row(horizontalArrangement = Arrangement.spacedBy(24.dp), verticalAlignment = Alignment.CenterVertically) {
                     AlbumCover(current.albumKey, current.album, art)
                     Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {

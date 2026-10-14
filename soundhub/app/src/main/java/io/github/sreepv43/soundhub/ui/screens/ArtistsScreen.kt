@@ -48,6 +48,7 @@ import io.github.sreepv43.soundhub.library.ArtistGenre
 import io.github.sreepv43.soundhub.library.FamousArtist
 import io.github.sreepv43.soundhub.library.FamousArtists
 import io.github.sreepv43.soundhub.library.MyArtists
+import io.github.sreepv43.soundhub.ui.fullBleed
 import io.github.sreepv43.soundhub.ui.rememberPageListState
 import io.github.sreepv43.soundhub.ui.AppColors
 import io.github.sreepv43.soundhub.ui.Section
@@ -157,9 +158,9 @@ fun ArtistsLayout(
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Note("Search for", modifier = Modifier.padding(end = 12.dp))
                     LazyRow(
-                        Modifier.focusRequester(modeRow).tvRow().tvEnterAt { "mode-${mode.name}" }.testTag("artist-mode"),
+                        Modifier.fullBleed().focusRequester(modeRow).tvRow().tvEnterAt { "mode-${mode.name}" }.testTag("artist-mode"),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        contentPadding = PaddingValues(vertical = 4.dp),
+                        contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
                     ) {
                         items(ArtistSearch.entries, key = { it.name }) { entry ->
                             Chip(
@@ -174,9 +175,9 @@ fun ArtistsLayout(
             }
             item(key = "genres") {
                 LazyRow(
-                    Modifier.focusRequester(genreRow).tvRow().tvEnterAt { "genre-$genre" }.testTag("genres"),
+                    Modifier.fullBleed().focusRequester(genreRow).tvRow().tvEnterAt { "genre-$genre" }.testTag("genres"),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 4.dp),
+                    contentPadding = PaddingValues(horizontal = 24.dp, vertical = 4.dp),
                 ) {
                     itemsIndexed(genres, key = { _, it -> it.name }) { index, entry ->
                         // The page starts here: one press down reaches the artists.
