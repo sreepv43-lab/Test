@@ -71,6 +71,7 @@ fun SoundScreen(onOpenAlbum: (String) -> Unit, onFindAtmos: () -> Unit) {
     var tab by rememberSaveable { mutableStateOf(SoundTab.ATMOS) }
     val library by container.library.tracks.collectAsStateWithLifecycle()
     val mode by container.settings.outputMode.flow.collectAsStateWithLifecycle()
+    val level by container.settings.levelMatch.flow.collectAsStateWithLifecycle()
     val output by container.playback.output.collectAsStateWithLifecycle()
     var refresh by remember { mutableIntStateOf(0) }
     val report = remember(refresh) { AudioOutput.report(context, AudioOutput.MODE_AUTO) }
@@ -174,6 +175,22 @@ fun SoundScreen(onOpenAlbum: (String) -> Unit, onFindAtmos: () -> Unit) {
                     }
                 }
                 item(key = "mode-note") { Note(modeNote(mode)) }
+                item(key = "level-title") { SectionHeader("Level matching") }
+                LEVELS.forEach { (value, title, subtitle) ->
+                    item(key = "level-$value") {
+                        ChoiceRow(title, subtitle, selected = level == value, key = "level-$value") {
+                            container.settings.levelMatch.set(value)
+                            container.playback.applyLevel()
+                        }
+                    }
+                }
+                item(key = "level-note") {
+                    Note(
+                        "Dolby Atmos is sent to the receiver undecoded and plays at the receiver's level, which is often lower than " +
+                            "songs SoundHub decodes itself (FLAC, MP3, AAC). This turns the decoded ones down so changing format " +
+                            "doesn't change the volume. Atmos itself is never changed.",
+                    )
+                }
                 item(key = "help") {
                     ListRow(onClick = { showHelp = true }, key = "help") {
                         TwoLines("How to get Atmos to your receiver", "Connections, TV and box settings", Modifier.weight(1f))
@@ -201,6 +218,13 @@ fun SoundScreen(onOpenAlbum: (String) -> Unit, onFindAtmos: () -> Unit) {
         }
     }
 }
+
+private val LEVELS = listOf(
+    Triple("0", "Off", "Every format at its own level"),
+    Triple("3", "Slightly quieter (−3 dB)", "For a small difference"),
+    Triple("6", "Quieter (−6 dB, recommended)", "Roughly matches Atmos from Apple Music"),
+    Triple("9", "Much quieter (−9 dB)", "For loud, modern masters"),
+)
 
 private val MODES = listOf(
     Triple(AudioOutput.MODE_AUTO, "Automatic (recommended)", "Send what this device reports its output takes"),

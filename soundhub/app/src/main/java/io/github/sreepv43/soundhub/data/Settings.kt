@@ -55,6 +55,9 @@ class Settings(context: Context) {
     /** How Dolby/DTS audio reaches the receiver: "auto", "hdmi" or "arc" (see AudioOutput). */
     val outputMode = string("output_mode", "auto")
 
+    /** How many dB songs the app decodes itself (FLAC, MP3, …) are turned down, so they match Dolby bitstreams the receiver decodes: "0", "3", "6", "9". */
+    val levelMatch = string("level_match", "6")
+
     /** The last searches, newest first, one per line (typing on a TV is slow). */
     val recentSearches = string("recent_searches", "")
 

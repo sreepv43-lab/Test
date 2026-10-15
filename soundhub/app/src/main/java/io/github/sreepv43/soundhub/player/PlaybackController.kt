@@ -189,6 +189,7 @@ class PlaybackController(private val context: Context, private val container: Ap
 
             override fun onAudioTrackInitialized(eventTime: AnalyticsListener.EventTime, audioTrackConfig: AudioSink.AudioTrackConfig) {
                 trackConfig = audioTrackConfig
+                applyLevel()
                 updateOutput()
             }
         })
@@ -354,6 +355,20 @@ class PlaybackController(private val context: Context, private val container: Ap
         }
         _player.value = fresh
         old.release()
+        applyLevel()
+    }
+
+    /**
+     * Songs the app decodes itself play at full scale, while Dolby bitstreams (Atmos) are decoded by the
+     * receiver, usually quieter. Turn the decoded ones down by the chosen amount so the volume stays
+     * about the same when the format changes. Bitstreams are untouched (the player's volume can't reach them).
+     */
+    fun applyLevel() {
+        val config = trackConfig
+        val decoded = config != null && androidx.media3.common.util.Util.isEncodingLinearPcm(config.encoding) &&
+            inputFormat?.sampleMimeType != MimeTypes.AUDIO_E_AC3_JOC
+        val db = container.settings.levelMatch.value.toIntOrNull() ?: 0
+        player.volume = if (decoded && db > 0) Math.pow(10.0, -db / 20.0).toFloat() else 1f
     }
 
     /** Current format info: the library's or the download's (both learn from the file header). */
