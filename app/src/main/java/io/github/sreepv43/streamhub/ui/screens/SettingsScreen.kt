@@ -304,6 +304,18 @@ private fun PlaybackSettings() {
         style = MaterialTheme.typography.bodySmall,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
+    val decodedVolume by settings.decodedVolumePercent.flow.collectAsStateWithLifecycle()
+    ChoiceRow(
+        "Volume of stereo / AAC / other audio the app decodes itself (to match Dolby and DTS sent to the receiver)",
+        listOf(100 to "Full", 70 to "Slightly lower", 50 to "Half", 35 to "Much lower"),
+        decodedVolume,
+    ) { settings.decodedVolumePercent.set(it) }
+    Text(
+        "Dolby Atmos / DD+ / DTS sent undecoded is played at the receiver's own level, which is often quieter than " +
+            "audio the app decodes. If normal audio is louder, lower it here; this never changes the sound sent undecoded.",
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
     ChoiceRow("Play the next episode automatically", listOf(true to "On", false to "Off"), autoplay) { settings.autoplayNext.set(it) }
     ChoiceRow("\"Skip intro\" jumps ahead by", listOf(60, 75, 85, 90, 105, 120).map { it to "$it s" }, skip) {
         settings.introSkipSeconds.set(it)

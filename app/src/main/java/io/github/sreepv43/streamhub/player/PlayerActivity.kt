@@ -344,6 +344,7 @@ class PlayerActivity : ComponentActivity() {
         })
         player = exo
         playerView.player = exo
+        exo.volume = settings.decodedVolumePercent.value / 100f
 
         val start = savedPosition ?: request.videoId?.let { container.history.positionFor(it) } ?: 0L
         exo.playWhenReady = true

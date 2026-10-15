@@ -85,6 +85,8 @@ class Settings(context: Context) {
     val seekAcceleration = string("seek_acceleration", "normal")
     /** Left/Right seek while the player controls are hidden (otherwise they show the controls). */
     val dpadSeeks = bool("dpad_seeks", true)
+    /** Volume (%) of audio the app decodes itself; Dolby/DTS sent undecoded to a receiver is not affected. */
+    val decodedVolumePercent = int("decoded_volume_percent", 100)
 
     /** TV home screen "Continue watching" row: "continue", "continue-list" (also My List) or "off". */
     val homeScreenRow = string("home_screen_row", "continue")
