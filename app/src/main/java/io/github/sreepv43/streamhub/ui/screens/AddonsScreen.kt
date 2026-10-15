@@ -56,7 +56,7 @@ import io.github.sreepv43.streamhub.ui.components.DialogShape
 import io.github.sreepv43.streamhub.ui.components.FlatIconButton
 import io.github.sreepv43.streamhub.ui.components.panel
 import io.github.sreepv43.streamhub.ui.components.FlatButton
-import io.github.sreepv43.streamhub.ui.components.TvTextField
+import io.github.sreepv43.streamhub.ui.components.flatTextFieldColors
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 import kotlinx.coroutines.launch
 
@@ -100,16 +100,17 @@ fun AddonsScreen(initialUrl: String?) {
                 modifier = Modifier.padding(vertical = 8.dp),
             )
             Row(verticalAlignment = Alignment.CenterVertically) {
-                TvTextField(
+                OutlinedTextField(
+                    colors = flatTextFieldColors(),
                     value = url,
                     onValueChange = { url = it },
-                    label = "Addon URLs",
-                    placeholder = "Press OK to paste or type the addon link",
-                    keyboardType = KeyboardType.Uri,
-                    singleLine = false,
+                    label = { Text("Addon URLs (several can be separated by spaces)") },
+                    maxLines = 4,
                     isError = error != null,
-                    supportingText = error,
-                    modifier = Modifier.weight(1f),
+                    supportingText = error?.let { message -> @Composable { Text(message) } },
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { install() }),
+                    modifier = Modifier.weight(1f).tvFocus(),
                 )
                 FlatButton(
                     text = if (installing) "Installing…" else "Install",
