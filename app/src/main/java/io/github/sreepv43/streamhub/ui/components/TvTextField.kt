@@ -23,6 +23,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
@@ -49,13 +53,64 @@ fun TvTextField(
     singleLine: Boolean = true,
     isError: Boolean = false,
     supportingText: String? = null,
+    /** Type in the field itself (no editor window); [onDone] runs when the keyboard's Done / Enter is pressed. */
+    inline: Boolean = false,
+    onDone: (() -> Unit)? = null,
 ) {
     var editing by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
+    val displayFocus = remember { FocusRequester() }
+    val inlineFocus = remember { FocusRequester() }
+    val wasEditing = remember { BooleanArray(1) }
+    if (inline && editing) {
+        Column(modifier) {
+            OutlinedTextField(
+                value = value,
+                onValueChange = onValueChange,
+                label = { Text(label) },
+                placeholder = placeholder?.let { hint -> @Composable { Text(hint) } },
+                singleLine = singleLine,
+                maxLines = if (singleLine) 1 else 4,
+                isError = isError,
+                colors = flatTextFieldColors(),
+                visualTransformation = if (password) PasswordVisualTransformation() else VisualTransformation.None,
+                keyboardOptions = KeyboardOptions(keyboardType = keyboardType, imeAction = ImeAction.Done),
+                keyboardActions = KeyboardActions(onDone = {
+                    editing = false
+                    onDone?.invoke()
+                }),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(inlineFocus)
+                    // Back leaves typing mode (the first Back may only close the keyboard).
+                    .onPreviewKeyEvent { event ->
+                        if (event.key == Key.Back && event.type == KeyEventType.KeyUp) {
+                            editing = false
+                            true
+                        } else false
+                    },
+            )
+        }
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            runCatching { inlineFocus.requestFocus() }
+        }
+        wasEditing[0] = true
+        return
+    }
+    if (inline && wasEditing[0]) {
+        // Back from typing: the highlight returns to the box.
+        LaunchedEffect(Unit) {
+            withFrameNanos { }
+            runCatching { displayFocus.requestFocus() }
+        }
+        wasEditing[0] = false
+    }
     Column(modifier) {
         Column(
             Modifier
                 .fillMaxWidth()
+                .focusRequester(displayFocus)
                 .tvFocus(shape)
                 .clip(shape)
                 .panel(shape)
@@ -82,7 +137,7 @@ fun TvTextField(
             )
         }
     }
-    if (editing) {
+    if (editing && !inline) {
         TextEditorDialog(
             label = label,
             initial = value,
