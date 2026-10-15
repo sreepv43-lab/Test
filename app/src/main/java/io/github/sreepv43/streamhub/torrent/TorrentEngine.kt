@@ -178,7 +178,7 @@ class TorrentEngine(
             val end = minOf(piece + ahead, lastPiece + 1)
             for (i in first..lastPiece) {
                 if (i >= pieces.size) break
-                pieces[i] = if (i in piece until end) Priority.SEVEN else Priority.DEFAULT
+                pieces[i] = if (i in piece until end) Priority.TOP_PRIORITY else Priority.DEFAULT
             }
             entry.handle.prioritizePieces(pieces)
             topEnd = end
