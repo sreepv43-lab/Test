@@ -99,6 +99,50 @@ private fun darkPalette(
     favourite = Color(0xFF3DDC97),
 )
 
+/** A dark colour set for the flat layouts (Simple, Cinema): one background, cards a step lighter. */
+private class FlatSpec(
+    val id: String,
+    val name: String,
+    val description: String,
+    val background: Long,
+    val card: Long,
+    val cardFocused: Long,
+    val variant: Long,
+    val accent: Long,
+    val text: Long,
+    val textDim: Long,
+)
+
+private fun flat(prefix: String, spec: FlatSpec) = Palette(
+    id = prefix + spec.id,
+    name = spec.name,
+    description = spec.description,
+    dark = true,
+    background = Color(spec.background),
+    backgroundEnd = Color(spec.background),
+    rail = Color(spec.background),
+    railEnd = Color(spec.background),
+    onRail = Color(spec.text),
+    railSelected = Color(spec.card),
+    onRailSelected = Color(spec.accent),
+    panel = Color(spec.card),
+    row = Color(spec.card),
+    rowFocused = Color(spec.cardFocused),
+    surfaceVariant = Color(spec.variant),
+    text = Color(spec.text),
+    textDim = Color(spec.textDim),
+    onText = Color(spec.background),
+    accent = Color(spec.accent),
+    onAccent = Color(spec.background),
+    focus = Color.White,
+    atmos = Color(0xFF8FB4FF),
+    hiRes = Color(0xFFFFC857),
+    lossless = Color(0xFF5ED3B5),
+    warning = Color(0xFFFFB86B),
+    error = Color(0xFFFF6B6B),
+    favourite = Color(0xFF3DDC97),
+)
+
 object Palettes {
     /** Light blue with white cards and a blue side menu (the default). */
     val SKY = Palette(
@@ -144,6 +188,41 @@ object Palettes {
         "violet", "Violet", "Dark plum with lavender",
         background = 0xFF100C18, rail = 0xFF140F1F, panel = 0xFF1A1428, row = 0xFF211930, rowFocused = 0xFF35284F,
         surfaceVariant = 0xFF2A2040, accent = 0xFFB388FF,
+    )
+    val PLUM = darkPalette(
+        "plum", "SoundHub plum", "Deep plum with coral, like the app icon",
+        background = 0xFF1F0A28, rail = 0xFF260D31, panel = 0xFF301240, row = 0xFF371748, rowFocused = 0xFF4D2663,
+        surfaceVariant = 0xFF3F1C55, accent = 0xFFFF5A47, text = 0xFFFDF4E6, textDim = 0xFFCBB5D6,
+    )
+    val INDIGO = darkPalette(
+        "indigo", "Indigo", "Rich blue-violet with gold",
+        background = 0xFF14123A, rail = 0xFF191648, panel = 0xFF221F5A, row = 0xFF29266A, rowFocused = 0xFF3E3A92,
+        surfaceVariant = 0xFF312E7C, accent = 0xFFFFC857, text = 0xFFF1F0FF, textDim = 0xFFB8B6E6,
+    )
+    val FOREST = darkPalette(
+        "forest", "Forest", "Deep green with mint",
+        background = 0xFF0B1A14, rail = 0xFF0E211A, panel = 0xFF133026, row = 0xFF173A2E, rowFocused = 0xFF245244,
+        surfaceVariant = 0xFF1D4538, accent = 0xFF7DE3A1, text = 0xFFEAF6EE, textDim = 0xFFA9C7B5,
+    )
+    val SLATE = darkPalette(
+        "slate", "Slate", "Medium blue-grey with sky blue",
+        background = 0xFF1B2330, rail = 0xFF202A39, panel = 0xFF283446, row = 0xFF2E3C50, rowFocused = 0xFF44577A,
+        surfaceVariant = 0xFF364560, accent = 0xFF8AB4FF, text = 0xFFEDF2FA, textDim = 0xFFAEBBCF,
+    )
+    val ESPRESSO = darkPalette(
+        "espresso", "Espresso", "Coffee brown with orange",
+        background = 0xFF1E1410, rail = 0xFF261A15, panel = 0xFF33241C, row = 0xFF3B2A21, rowFocused = 0xFF553D2F,
+        surfaceVariant = 0xFF45322A, accent = 0xFFFF9E64, text = 0xFFF6EBE0, textDim = 0xFFC7B3A3,
+    )
+    val BURGUNDY = darkPalette(
+        "burgundy", "Burgundy", "Wine red with rose",
+        background = 0xFF2A0D16, rail = 0xFF33101B, panel = 0xFF42172A, row = 0xFF4A1B2C, rowFocused = 0xFF6B2A41,
+        surfaceVariant = 0xFF55202F, accent = 0xFFFF8FA3, text = 0xFFFCEDF0, textDim = 0xFFD2AAB4,
+    )
+    val GRAPHITE = darkPalette(
+        "graphite", "Graphite", "Charcoal with warm gold",
+        background = 0xFF16181C, rail = 0xFF1B1E23, panel = 0xFF22262C, row = 0xFF292E35, rowFocused = 0xFF3D444F,
+        surfaceVariant = 0xFF2F353D, accent = 0xFFE5C07B, text = 0xFFECEEF1, textDim = 0xFFA9AFB8,
     )
     val AMBER = darkPalette(
         "amber", "Amber", "Warm brown-black with gold, like valve amplifiers",
@@ -315,13 +394,24 @@ object Palettes {
     )
 
     /** The colour themes of the Panel layout. */
-    val all = listOf(SKY, TEAL, OCEAN, VIOLET, AMBER, CRIMSON, BLACK, LIGHT)
+    val all = listOf(SKY, TEAL, OCEAN, VIOLET, PLUM, INDIGO, FOREST, SLATE, ESPRESSO, BURGUNDY, GRAPHITE, AMBER, CRIMSON, BLACK, LIGHT)
 
     /** The colour sets of the Simple layout. */
-    val simple = listOf(SIMPLE_LIGHT, SIMPLE_DARK)
+    private val flatDarks = listOf(
+        FlatSpec("plum", "SoundHub plum", "Deep plum with coral", 0xFF24082F, 0xFF341248, 0xFF4B2263, 0xFF3F1A58, 0xFFFF6A57, 0xFFFDF4E6, 0xFFCBB5D6),
+        FlatSpec("indigo", "Indigo", "Blue-violet with gold", 0xFF14123A, 0xFF221F5A, 0xFF37338A, 0xFF2D2A78, 0xFFFFC857, 0xFFF1F0FF, 0xFFB8B6E6),
+        FlatSpec("forest", "Forest", "Deep green with mint", 0xFF0B1A14, 0xFF133026, 0xFF225040, 0xFF1B4235, 0xFF7DE3A1, 0xFFEAF6EE, 0xFFA9C7B5),
+        FlatSpec("slate", "Slate", "Blue-grey with sky blue", 0xFF1B2330, 0xFF283446, 0xFF41537A, 0xFF34425C, 0xFF8AB4FF, 0xFFEDF2FA, 0xFFAEBBCF),
+        FlatSpec("espresso", "Espresso", "Coffee brown with orange", 0xFF1E1410, 0xFF33241C, 0xFF4F3A2D, 0xFF42302A, 0xFFFF9E64, 0xFFF6EBE0, 0xFFC7B3A3),
+        FlatSpec("burgundy", "Burgundy", "Wine red with rose", 0xFF2A0D16, 0xFF42172A, 0xFF65283E, 0xFF51202F, 0xFFFF8FA3, 0xFFFCEDF0, 0xFFD2AAB4),
+        FlatSpec("graphite", "Graphite", "Charcoal with gold", 0xFF16181C, 0xFF22262C, 0xFF3A414B, 0xFF2D323A, 0xFFE5C07B, 0xFFECEEF1, 0xFFA9AFB8),
+    )
+
+    /** The Simple layout's colour sets: its own light and Midnight, then the dark ones. */
+    val simple = listOf(SIMPLE_LIGHT, SIMPLE_DARK) + flatDarks.map { flat("simple-", it) }
 
     /** The colour sets of the Cinema layout. */
-    val cinema = listOf(CINEMA_DARK, CINEMA_LIGHT)
+    val cinema = listOf(CINEMA_DARK, CINEMA_LIGHT) + flatDarks.map { flat("cinema-", it) }
 
     fun forLayout(layout: UiLayout): List<Palette> = when (layout) {
         UiLayout.SIMPLE -> simple

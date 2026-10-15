@@ -12,8 +12,9 @@ card, and (on TVs and tablets held sideways) **Up Next** and the song playing in
 page, with a big round play button.
 
 There are two **layouts**, chosen under **Settings → Appearance**, each with its own colours:
-- **Panel** (the default): the above, with the colour themes Sky, Teal, Ocean, Violet, Amber,
-  Crimson, Pure black and Light.
+- **Panel** (the default): the above, with the colour themes Sky, Teal, Ocean, Violet, SoundHub plum,
+  Indigo, Forest, Slate, Espresso, Burgundy, Graphite, Amber, Crimson, Pure black and Light. Simple
+  and Cinema also offer the dark ones (plum, indigo, forest, slate, espresso, burgundy, graphite).
 - **Simple**: a labelled menu list with the SoundHub name and where you are along the top, a large
   **Continue listening** card on Home, and one player bar along the bottom (Now playing and Queue
   as buttons) instead of the side panel. Its colours are Light (pale blue, white cards) or Midnight
