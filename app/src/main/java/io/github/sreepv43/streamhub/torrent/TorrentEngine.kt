@@ -97,6 +97,8 @@ class TorrentEngine(
         private var windowStart = -1
         /** Last piece that has a deadline set; the window only grows by the pieces that entered it. */
         private var deadlineEnd = -1
+        /** End (exclusive) of the pieces currently raised to top priority. */
+        private var topEnd = -1
         /**
          * Pieces known to be downloaded (they never go missing). Asking libtorrent is a call that
          * waits for its busy network thread, so doing it for every 256 KB read would throttle playback.
@@ -160,7 +162,26 @@ class TorrentEngine(
                     if (!hasPiece(p)) entry.handle.setPieceDeadline(p, 100 + (p - piece) * 150)
                 }
                 deadlineEnd = maxOf(to, if (jump) to else deadlineEnd)
+                raiseWindow(piece, jump)
             }
+        }
+
+        /**
+         * Puts the next stretch of the file ahead of everything else, so the peers' bandwidth goes to
+         * what will be played next and not to far-away parts. Called with [lock] held.
+         */
+        private fun raiseWindow(piece: Int, jump: Boolean) {
+            val ahead = maxOf(MIN_READAHEAD_PIECES * 2, (TOP_PRIORITY_BYTES / pieceLength).toInt())
+            if (!jump && piece + ahead / 2 < topEnd) return
+            val pieces = entry.handle.piecePriorities()
+            val first = pieceAt(0)
+            val end = minOf(piece + ahead, lastPiece + 1)
+            for (i in first..lastPiece) {
+                if (i >= pieces.size) break
+                pieces[i] = if (i in piece until end) Priority.SEVEN else Priority.DEFAULT
+            }
+            entry.handle.prioritizePieces(pieces)
+            topEnd = end
         }
 
         fun progress(): Float = synchronized(lock) {
@@ -497,6 +518,7 @@ class TorrentEngine(
     companion object {
         private const val READAHEAD_BYTES = 24L * 1024 * 1024
         private const val MIN_READAHEAD_PIECES = 4
+        private const val TOP_PRIORITY_BYTES = 96L * 1024 * 1024
         private const val PREFETCH_BYTES = 8L * 1024 * 1024
         private const val MAX_PREFETCHED = 6
         private const val PREFETCH_METADATA_TIMEOUT_MS = 90_000L
