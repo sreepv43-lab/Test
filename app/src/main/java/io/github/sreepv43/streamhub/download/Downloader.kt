@@ -361,6 +361,7 @@ class Downloader(
                         val buffer = ByteArray(BUFFER_SIZE)
                         var lastUiUpdate = 0L
                         var lastPersist = SystemClock.elapsedRealtime()
+                        var lastSync = lastPersist
                         var windowStart = lastPersist
                         var windowBytes = 0L
                         while (true) {
@@ -387,7 +388,11 @@ class Downloader(
                                 var shown = done
                                 if (persist) {
                                     lastPersist = now
-                                    storage.sync(out)
+                                    // Flushing to the drive stalls other apps' storage too: rarely.
+                                    if (now - lastSync > SYNC_MS) {
+                                        lastSync = now
+                                        storage.sync(out)
+                                    }
                                     // What the drive really holds is the progress that counts.
                                     val saved = runCatching { storage.length(fileUri) }.getOrDefault(done)
                                     if (saved in 1 until done) {
@@ -483,6 +488,7 @@ class Downloader(
         const val BUFFER_SIZE = 256 * 1024
         const val SPEED_WINDOW_MS = 15_000L
         const val PERSIST_MS = 3_000L
+        const val SYNC_MS = 60_000L
         const val LOSS_TOLERANCE = 32L * 1024 * 1024
         const val TOO_BIG_FOR_DRIVE = "%s is formatted as FAT32, which can't hold files over 4 GB. " +
             "Choose another location, or format the drive as exFAT."

@@ -1,6 +1,10 @@
 package io.github.sreepv43.streamhub
 
+import android.app.Activity
 import android.app.Application
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.content.Context
 import android.net.Uri
 import android.os.SystemClock
@@ -47,6 +51,34 @@ class StreamHubApp : Application(), ImageLoaderFactory {
         super.onCreate()
         CrashReports.install(this)
         container = AppContainer(this)
+        registerActivityLifecycleCallbacks(BackgroundWatcher())
+    }
+
+    /** Lets the torrent engine rest once no StreamHub screen has been visible for a while. */
+    private inner class BackgroundWatcher : ActivityLifecycleCallbacks {
+        private var started = 0
+        private val handler = Handler(Looper.getMainLooper())
+        private val release = Runnable { if (started == 0) container.torrents.releaseIdle() }
+
+        override fun onActivityStarted(activity: Activity) {
+            started++
+            handler.removeCallbacks(release)
+        }
+
+        override fun onActivityStopped(activity: Activity) {
+            started = (started - 1).coerceAtLeast(0)
+            if (started == 0) handler.postDelayed(release, BACKGROUND_RELEASE_MS)
+        }
+
+        override fun onActivityCreated(activity: Activity, savedInstanceState: Bundle?) {}
+        override fun onActivityResumed(activity: Activity) {}
+        override fun onActivityPaused(activity: Activity) {}
+        override fun onActivitySaveInstanceState(activity: Activity, outState: Bundle) {}
+        override fun onActivityDestroyed(activity: Activity) {}
+    }
+
+    private companion object {
+        const val BACKGROUND_RELEASE_MS = 30_000L
     }
 
     /** Poster/backdrop loading tuned for TV boxes with little RAM and slow storage. */

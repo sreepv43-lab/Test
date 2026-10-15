@@ -251,6 +251,11 @@ class TorrentEngine(
      * unused torrent.
      */
     fun prefetch(source: String, fileIdx: Int = -1, warmStart: Boolean = false) {
+        // Called from the UI thread: everything, even taking the lock, happens in the background.
+        prefetcher.execute { prefetchNow(source, fileIdx, warmStart) }
+    }
+
+    private fun prefetchNow(source: String, fileIdx: Int, warmStart: Boolean) {
         synchronized(lock) {
             if (source in prefetching || sourcesToHash[source]?.let { torrents[it] } != null) return
             prefetching += source
@@ -264,7 +269,7 @@ class TorrentEngine(
                     ?.let(::removeLocked)
             }
         }
-        prefetcher.execute {
+        run {
             var entry: Entry? = null
             try {
                 val acquired = acquire(source).also { entry = it }
@@ -276,10 +281,10 @@ class TorrentEngine(
                 val wanted = Array(files.numFiles()) { if (warmStart && it == index) Priority.DEFAULT else Priority.IGNORE }
                 synchronized(lock) {
                     // Once someone reads the torrent, open() has set its own priorities.
-                    if (acquired.openFiles.isNotEmpty() || !acquired.handle.isValid) return@execute
+                    if (acquired.openFiles.isNotEmpty() || !acquired.handle.isValid) return
                     acquired.handle.prioritizeFiles(wanted)
                 }
-                if (!warmStart) return@execute
+                if (!warmStart) return
                 // File priorities are applied later (on libtorrent's disk thread) and then reset the
                 // piece priorities, so wait for them first.
                 val until = System.currentTimeMillis() + 5_000
@@ -287,7 +292,7 @@ class TorrentEngine(
                     Thread.sleep(20)
                 }
                 synchronized(lock) {
-                    if (acquired.openFiles.isNotEmpty() || !acquired.handle.isValid) return@execute
+                    if (acquired.openFiles.isNotEmpty() || !acquired.handle.isValid) return
                     val first = files.pieceIndexAtFile(index)
                     val last = files.lastPieceIndexAtFile(index)
                     val count = maxOf(MIN_READAHEAD_PIECES, (PREFETCH_BYTES / info.pieceLength()).toInt())
@@ -352,6 +357,27 @@ class TorrentEngine(
             sourcesToHash.clear()
             session?.stop()
             session = null
+        }
+    }
+
+    /**
+     * The app went to the background: drops the torrents nobody is reading (prepared ones, ones
+     * just watched) and, when none is left, stops the BitTorrent session so nothing keeps using the
+     * TV's processor, network and storage. A running download keeps its torrent.
+     */
+    fun releaseIdle() {
+        janitor.execute {
+            synchronized(lock) {
+                torrents.values.filter { it.refs == 0 }.toList().forEach(::removeLocked)
+                prefetched.clear()
+            }
+            val stopped = synchronized(sessionLock) {
+                synchronized(lock) {
+                    if (torrents.isNotEmpty() || prefetching.isNotEmpty()) null
+                    else session.also { session = null }
+                }
+            }
+            stopped?.let { runCatching { it.stop() }.onFailure { e -> log.log(Level.WARNING, "stop failed", e) } }
         }
     }
 
@@ -479,9 +505,11 @@ class TorrentEngine(
                 }
                 if (stale.isNotEmpty()) janitor.execute { stale.forEach { runCatching { it.deleteRecursively() } } }
                 val settings = SettingsPack()
-                    .connectionsLimit(100)
-                    .activeDownloads(8)
-                    .activeSeeds(8)
+                    // Modest limits: TVs have slow processors and storage, and one stream needs few peers.
+                    .connectionsLimit(60)
+                    .activeDownloads(4)
+                    .activeSeeds(2)
+                    .uploadRateLimit(2_000_000)
                 settings.setInteger(settings_pack.int_types.request_timeout.swigValue(), 10)
                 settings.setInteger(settings_pack.int_types.piece_timeout.swigValue(), 10)
                 settings.setEnableDht(true)
