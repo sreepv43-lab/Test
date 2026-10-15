@@ -30,6 +30,7 @@ import okhttp3.Request
 import java.io.IOException
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.TimeUnit
 import kotlin.coroutines.coroutineContext
 
@@ -349,7 +350,12 @@ class Downloader(
                     )
                 }
 
-                storage.openOutput(fileUri, append).use { out ->
+                // Torrent data arrives in bursts (a burst of cached data, then a wait for peers), so the
+                // speed is averaged over the last seconds, and keeps updating while waiting for data.
+                val written = AtomicLong(done)
+                val ticker = scope.launch { trackSpeed(id, written) }
+                try {
+                  storage.openOutput(fileUri, append).use { out ->
                     try {
                         val input = body.byteStream()
                         val buffer = ByteArray(BUFFER_SIZE)
@@ -357,15 +363,13 @@ class Downloader(
                         var lastPersist = SystemClock.elapsedRealtime()
                         var windowStart = lastPersist
                         var windowBytes = 0L
-                        var speedStart = lastPersist
-                        var speedBytes = 0L
                         while (true) {
                             coroutineContext.ensureActive()
                             val read = input.read(buffer)
                             if (read < 0) break
                             out.write(buffer, 0, read)
                             done += read
-                            speedBytes += read
+                            written.set(done)
                             // Speed limit (shared by the downloads running at the same time).
                             val limit = settings.downloadSpeedLimitKb.value * 1024L / activeCount.value.coerceAtLeast(1)
                             if (limit > 0) {
@@ -378,12 +382,6 @@ class Downloader(
                                 }
                             }
                             val now = SystemClock.elapsedRealtime()
-                            if (now - speedStart >= SPEED_WINDOW_MS) {
-                                val speed = speedBytes * 1000 / (now - speedStart)
-                                _speeds.update { it + (id to speed) }
-                                speedStart = now
-                                speedBytes = 0
-                            }
                             if (now - lastUiUpdate > 500) {
                                 val persist = now - lastPersist > PERSIST_MS
                                 var shown = done
@@ -417,6 +415,9 @@ class Downloader(
                         }
                         throw e
                     }
+                  }
+                } finally {
+                    ticker.cancel()
                 }
                 if (total > 0 && done < total) throw IOException("Connection closed early ($done of $total bytes)")
                 // The drive must really hold what was written (some storage silently drops data).
@@ -446,6 +447,19 @@ class Downloader(
         if (actual != item.downloadedBytes) repository.update(id) { it.copy(downloadedBytes = actual) }
     }
 
+    /** Publishes the average speed over the last [SPEED_WINDOW_MS] every second, as long as the job runs. */
+    private suspend fun trackSpeed(id: String, written: AtomicLong) {
+        val samples = ArrayDeque<Pair<Long, Long>>()
+        while (true) {
+            val now = SystemClock.elapsedRealtime()
+            samples.addLast(now to written.get())
+            while (samples.size > 2 && now - samples.first().first > SPEED_WINDOW_MS) samples.removeFirst()
+            val (then, before) = samples.first()
+            if (now > then) _speeds.update { it + (id to (written.get() - before) * 1000 / (now - then)) }
+            delay(1_000)
+        }
+    }
+
     private fun refreshActive() {
         _activeCount.value = synchronized(jobs) { jobs.size }
     }
@@ -467,7 +481,7 @@ class Downloader(
         const val MAX_PARALLEL = 2
         const val MAX_ATTEMPTS = 6
         const val BUFFER_SIZE = 256 * 1024
-        const val SPEED_WINDOW_MS = 1_000L
+        const val SPEED_WINDOW_MS = 15_000L
         const val PERSIST_MS = 3_000L
         const val LOSS_TOLERANCE = 32L * 1024 * 1024
         const val TOO_BIG_FOR_DRIVE = "%s is formatted as FAT32, which can't hold files over 4 GB. " +
