@@ -95,6 +95,18 @@ class TorrentEngine(
         private var raf: RandomAccessFile? = null
         private var closed = false
         private var windowStart = -1
+        /** Last piece that has a deadline set; the window only grows by the pieces that entered it. */
+        private var deadlineEnd = -1
+        /**
+         * Pieces known to be downloaded (they never go missing). Asking libtorrent is a call that
+         * waits for its busy network thread, so doing it for every 256 KB read would throttle playback.
+         */
+        private val have = java.util.BitSet()
+
+        private fun hasPiece(piece: Int): Boolean {
+            if (have.get(piece)) return true
+            return entry.handle.havePiece(piece).also { if (it) have.set(piece) }
+        }
 
         val infoHash: String get() = entry.hash
 
@@ -124,7 +136,7 @@ class TorrentEngine(
             prioritizeWindow(piece)
             val deadline = System.currentTimeMillis() + timeoutMs
             while (!closed) {
-                if (entry.handle.havePiece(piece)) return true
+                if (hasPiece(piece)) return true
                 if (System.currentTimeMillis() > deadline) return false
                 Thread.sleep(50)
             }
@@ -139,12 +151,15 @@ class TorrentEngine(
             val count = maxOf(MIN_READAHEAD_PIECES, (READAHEAD_BYTES / pieceLength).toInt())
             synchronized(lock) {
                 if (!entry.handle.isValid) return
-                if (jump) entry.handle.clearPieceDeadlines()
-                for (i in 0 until count) {
-                    val p = piece + i
-                    if (p > lastPiece) break
-                    if (!entry.handle.havePiece(p)) entry.handle.setPieceDeadline(p, 100 + i * 150)
+                val from = if (jump) {
+                    entry.handle.clearPieceDeadlines()
+                    piece
+                } else maxOf(piece, deadlineEnd + 1)
+                val to = minOf(piece + count - 1, lastPiece)
+                for (p in from..to) {
+                    if (!hasPiece(p)) entry.handle.setPieceDeadline(p, 100 + (p - piece) * 150)
                 }
+                deadlineEnd = maxOf(to, if (jump) to else deadlineEnd)
             }
         }
 
@@ -443,7 +458,7 @@ class TorrentEngine(
                 }
                 if (stale.isNotEmpty()) janitor.execute { stale.forEach { runCatching { it.deleteRecursively() } } }
                 val settings = SettingsPack()
-                    .connectionsLimit(200)
+                    .connectionsLimit(100)
                     .activeDownloads(8)
                     .activeSeeds(8)
                 settings.setInteger(settings_pack.int_types.request_timeout.swigValue(), 10)
