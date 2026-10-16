@@ -133,6 +133,8 @@ class AppContainer(context: Context) {
         fetchTorrentFile = { url -> fetchBytes(context, url) },
         chooseCache = { chooseTorrentCache() },
         cacheRules = { dir -> torrentCacheRules(dir) },
+        // Shown like a crash report on the next start, so the cause can be found.
+        onStall = { report -> CrashReports.record(context, report) },
     )
 
     /** Where new torrent data goes now (see [CachePolicy.choose]). */

@@ -22,6 +22,8 @@ import java.io.RandomAccessFile
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
 import java.util.concurrent.atomic.AtomicLong
+import java.util.concurrent.locks.ReentrantLock
+import kotlin.concurrent.withLock
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -79,9 +81,15 @@ class TorrentEngine(
     /** Extra listen settings, e.g. for tests. */
     private val configure: (SettingsPack) -> Unit = {},
     storageCheckSeconds: Long = 10,
+    /** Told (once per occurrence) when the engine's lock has been held far too long, with the threads' stacks. */
+    private val onStall: (String) -> Unit = {},
 ) {
     private val log = Logger.getLogger("TorrentEngine")
-    private val lock = Any()
+    /**
+     * Guards the torrents and libtorrent calls. Held only briefly: never across file deletions or
+     * waits. Calls from the UI only wait [UI_WAIT_MS] for it, so a busy engine can't freeze the screen.
+     */
+    private val lock = EngineLock()
     @Volatile private var session: SessionManager? = null
     /** Starting the session is slow; it has its own lock so it never holds up readers and the UI. */
     private val sessionLock = Any()
@@ -119,6 +127,7 @@ class TorrentEngine(
         private set
 
     init {
+        Thread({ watchLock() }, "torrent-watchdog").apply { isDaemon = true }.start()
         janitor.scheduleWithFixedDelay({ runCatching { trimCache() } }, 1, 1, TimeUnit.MINUTES)
         janitor.scheduleWithFixedDelay({ runCatching { checkStorage() } }, storageCheckSeconds, storageCheckSeconds, TimeUnit.SECONDS)
         janitor.scheduleWithFixedDelay({ runCatching { tick() } }, TICK_MS, TICK_MS, TimeUnit.MILLISECONDS)
@@ -267,7 +276,7 @@ class TorrentEngine(
         private fun moveTo(piece: Int) {
             val jump = currentPiece < 0 || piece < currentPiece || piece > currentPiece + 2
             currentPiece = piece
-            synchronized(lock) {
+            lock.withLock {
                 schedule.readers[readerId] = ReaderWindow(readerId, piece, lastPiece, startedAt, lastActive)
                 replanLocked(entry, schedule, force = jump)
             }
@@ -277,14 +286,14 @@ class TorrentEngine(
             val deadline = System.currentTimeMillis() + timeoutMs
             while (!closed) {
                 entry.lost?.let { throw TorrentException(it) }
-                if (synchronized(lock) { hasPieceLocked(entry, piece) }) return true
+                if (lock.withLock { hasPieceLocked(entry, piece) }) return true
                 if (System.currentTimeMillis() > deadline) return false
                 Thread.sleep(50)
             }
             return false
         }
 
-        fun progress(): Float = synchronized(lock) {
+        fun progress(): Float = lock.withLock {
             if (!entry.handle.isValid || size == 0L) return 0f
             val done = entry.handle.fileProgress(TorrentHandle.PIECE_GRANULARITY).getOrNull(index) ?: 0L
             (done.toFloat() / size).coerceIn(0f, 1f)
@@ -294,7 +303,7 @@ class TorrentEngine(
             if (closed) return
             closed = true
             runCatching { raf?.close() }
-            synchronized(lock) {
+            lock.withLock {
                 // A closed request (finished, or the player seeked away) stops steering at once.
                 if (schedule.readers.remove(readerId) != null) runCatching { replanLocked(entry, schedule, force = true) }
             }
@@ -316,7 +325,7 @@ class TorrentEngine(
                 storageProblem = problem
                 throw TorrentException(problem)
             }
-            synchronized(lock) {
+            lock.withLock {
                 if (entry.openFiles.add(index)) {
                     val priorities = Array(files.numFiles()) { i ->
                         if (i in entry.openFiles) Priority.DEFAULT else Priority.IGNORE
@@ -336,7 +345,7 @@ class TorrentEngine(
                     entry.handle.setPieceDeadline(last, 500)
                 }
             }
-            val schedule = synchronized(lock) {
+            val schedule = lock.withLock {
                 entry.files.getOrPut(index) {
                     FileSchedule(
                         index = index,
@@ -367,7 +376,7 @@ class TorrentEngine(
     }
 
     private fun prefetchNow(source: String, fileIdx: Int, warmStart: Boolean) {
-        synchronized(lock) {
+        lock.withLock {
             if (source in prefetching || sourcesToHash[source]?.let { torrents[it] } != null) return
             prefetching += source
             // Browsing many titles: drop the oldest prepared torrents nobody went on to play.
@@ -390,7 +399,7 @@ class TorrentEngine(
                 // The file stays wanted (libtorrent keeps pieces of unwanted files in a separate part
                 // file, where the player can't read them); only its pieces are limited.
                 val wanted = Array(files.numFiles()) { if (warmStart && it == index) Priority.DEFAULT else Priority.IGNORE }
-                synchronized(lock) {
+                lock.withLock {
                     // Once someone reads the torrent, open() has set its own priorities.
                     if (acquired.openFiles.isNotEmpty() || !acquired.handle.isValid) return
                     acquired.handle.prioritizeFiles(wanted)
@@ -402,7 +411,7 @@ class TorrentEngine(
                 while (!acquired.handle.filePriorities().contentEquals(wanted) && System.currentTimeMillis() < until) {
                     Thread.sleep(20)
                 }
-                synchronized(lock) {
+                lock.withLock {
                     if (acquired.openFiles.isNotEmpty() || !acquired.handle.isValid) return
                     val first = files.pieceIndexAtFile(index)
                     val last = files.lastPieceIndexAtFile(index)
@@ -417,7 +426,7 @@ class TorrentEngine(
                 log.log(Level.FINE, "prefetch failed for $source", e)
             } finally {
                 entry?.let(::release)
-                synchronized(lock) { prefetching -= source }
+                lock.withLock { prefetching -= source }
             }
         }
     }
@@ -426,13 +435,13 @@ class TorrentEngine(
      * Why [source] can't be played from the torrent cache right now (its drive was disconnected or
      * is full, or the chosen cache location isn't available), or null.
      */
-    fun problemFor(source: String): String? = synchronized(lock) {
+    fun problemFor(source: String): String? = lock.tryLocked(UI_WAIT_MS) {
         val entry = sourcesToHash[source]?.let { torrents[it] }
         entry?.lost ?: if (entry == null) storageProblem else null
     }
 
     /** Stats for a source that is currently open, or null. */
-    fun stats(source: String, fileIdx: Int = -1): TorrentStats? = synchronized(lock) {
+    fun stats(source: String, fileIdx: Int = -1): TorrentStats? = lock.tryLocked(UI_WAIT_MS) {
         val entry = sourcesToHash[source]?.let { torrents[it] } ?: return null
         if (!entry.handle.isValid) return null
         val status = entry.handle.status()
@@ -466,7 +475,7 @@ class TorrentEngine(
      */
     fun reportPlayback(source: String, fileIdx: Int, positionMs: Long, durationMs: Long): Long? {
         val now = System.currentTimeMillis()
-        val (entry, file, pieces) = synchronized(lock) {
+        val (entry, file, pieces) = lock.tryLocked(UI_WAIT_MS) {
             val entry = sourcesToHash[source]?.let { torrents[it] }?.takeIf { it.handle.isValid && it.lost == null } ?: return null
             val file = entry.files[fileIdx] ?: entry.files.values.firstOrNull() ?: return null
             val seeked = file.playheadMs < 0 || kotlin.math.abs(positionMs - file.playheadMs) > SEEK_THRESHOLD_MS
@@ -478,7 +487,7 @@ class TorrentEngine(
             for (p in file.firstPiece..minOf(file.lastPiece, pieces.size() - 1)) if (pieces.getBit(p)) entry.have.set(p)
             replanLocked(entry, file, force = seeked)
             Triple(entry, file, entry.have.clone() as java.util.BitSet)
-        }
+        } ?: return null
         if (file.durationMs <= 0) return null
         val byte = (file.size * (positionMs.toDouble() / file.durationMs)).toLong().coerceIn(0, file.size)
         val bytes = PiecePlanner.contiguousBytes(byte, file.fileOffset, file.size, file.pieceLength.toLong()) { pieces.get(it) }
@@ -492,7 +501,7 @@ class TorrentEngine(
      */
     private fun tick() {
         val now = System.currentTimeMillis()
-        synchronized(lock) {
+        lock.withLock {
             for (entry in torrents.values) {
                 if (!entry.handle.isValid || entry.lost != null) continue
                 val busy = entry.files.values.any { it.readers.isNotEmpty() || now - it.playheadAt < PLAYHEAD_VALID_MS }
@@ -530,7 +539,7 @@ class TorrentEngine(
 
     /** Removes every torrent nobody is reading and deletes its data (also data kept from before). */
     fun clearCache() {
-        val inUse = synchronized(lock) {
+        val inUse = lock.withLock {
             torrents.values.filter { it.refs == 0 }.toList().forEach { removeLocked(it) }
             torrents.keys.toSet()
         }
@@ -541,7 +550,7 @@ class TorrentEngine(
 
     /** Stops the session; the engine can be used again afterwards (it restarts lazily). */
     fun shutdown() {
-        synchronized(lock) {
+        lock.withLock {
             torrents.clear()
             sourcesToHash.clear()
             session?.stop()
@@ -556,7 +565,7 @@ class TorrentEngine(
      */
     fun releaseIdle() {
         janitor.execute {
-            val kept = synchronized(lock) {
+            val kept = lock.withLock {
                 val idle = torrents.values.filter { it.refs == 0 }.toList()
                 idle.forEach { removeLocked(it, keepData = it.files.isNotEmpty()) }
                 prefetched.clear()
@@ -565,7 +574,7 @@ class TorrentEngine(
             // Give libtorrent time to deliver the resume data before the session stops.
             if (kept) Thread.sleep(RESUME_SAVE_WAIT_MS)
             val stopped = synchronized(sessionLock) {
-                synchronized(lock) {
+                lock.withLock {
                     if (torrents.isNotEmpty() || prefetching.isNotEmpty()) null
                     else session.also { session = null }
                 }
@@ -580,7 +589,7 @@ class TorrentEngine(
     fun sizeOf(dir: File): Long = dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
 
     /** Every torrent in the engine, for the storage status screen. */
-    fun summaries(): List<TorrentSummary> = synchronized(lock) {
+    fun summaries(): List<TorrentSummary> = lock.tryLocked(UI_WAIT_MS) {
         torrents.values.mapNotNull { entry ->
             if (!entry.handle.isValid) return@mapNotNull null
             val status = runCatching { entry.handle.status() }.getOrNull() ?: return@mapNotNull null
@@ -594,7 +603,7 @@ class TorrentEngine(
                 problem = entry.lost,
             )
         }
-    }
+    } ?: emptyList()
 
     /**
      * Automatic cleanup: in each cache directory, removes torrents nobody is reading, least
@@ -611,7 +620,7 @@ class TorrentEngine(
             fun over() = (rules.targetBytes > 0 && size > rules.targetBytes) || (rules.reserveBytes > 0 && free < rules.reserveBytes)
             if (!over()) continue
             // Least recently used first: torrents loaded but unused, and data kept from earlier.
-            val candidates = synchronized(lock) {
+            val candidates = lock.withLock {
                 val loaded = torrents.values.filter { it.refs == 0 && it.saveDir.parentFile == dir }
                     .map { it.hash to it.lastReleased }
                 val kept = dir.listFiles().orEmpty()
@@ -622,14 +631,16 @@ class TorrentEngine(
             for (hash in candidates) {
                 if (!over()) break
                 val bytes = keptFiles(dir, hash).sumOf(::sizeOf)
-                val removed = synchronized(lock) {
+                val removed = lock.withLock {
                     val entry = torrents[hash]
                     when {
-                        entry == null -> true.also { keptFiles(dir, hash).forEach { it.deleteRecursively() } }
+                        entry == null -> true
                         entry.refs == 0 -> true.also { removeLocked(entry) }
                         else -> false
                     }
                 }
+                // Deleting gigabytes (on a USB drive) takes a while: never while holding the lock.
+                if (removed && lock.withLock { hash !in torrents }) keptFiles(dir, hash).forEach { it.deleteRecursively() }
                 if (removed) {
                     size -= bytes
                     free += bytes
@@ -643,7 +654,7 @@ class TorrentEngine(
      * nearly full, its torrents stop, readers get a clear error and nothing is written elsewhere.
      */
     private fun checkStorage() {
-        val entries = synchronized(lock) { torrents.values.filter { it.lost == null }.toList() }
+        val entries = lock.withLock { torrents.values.filter { it.lost == null }.toList() }
         if (entries.isEmpty()) return
         val full = HashSet<File>()
         for (entry in entries) {
@@ -665,7 +676,7 @@ class TorrentEngine(
                 else -> null
             } ?: continue
             storageProblem = problem
-            synchronized(lock) {
+            lock.withLock {
                 entry.lost = problem
                 runCatching { if (entry.handle.isValid) entry.handle.pause() }
                 if (entry.refs == 0) removeLocked(entry)
@@ -674,7 +685,7 @@ class TorrentEngine(
     }
 
     private fun acquire(source: String): Entry {
-        val known = synchronized(lock) {
+        val known = lock.withLock {
             sourcesToHash[source]?.let { torrents[it] }?.takeIf { it.handle.isValid && it.lost == null }?.also { it.refs++ }
         }
         if (known != null) return known
@@ -705,7 +716,7 @@ class TorrentEngine(
             runCatching { TorrentInfo(resumeFile.readBytes()) }.getOrNull()
         } else null
         val addInfo = info ?: keptInfo
-        val saveDir = synchronized(lock) {
+        val saveDir = lock.withLock {
             torrents[hash]?.takeIf { it.handle.isValid && it.lost == null }?.let { entry ->
                 sourcesToHash[source] = hash
                 entry.refs++
@@ -731,7 +742,7 @@ class TorrentEngine(
         }
         val added = handle ?: throw TorrentException("Could not add torrent")
 
-        return synchronized(lock) {
+        return lock.withLock {
             val entry = torrents[hash]?.takeIf { it.lost == null }
                 ?: Entry(hash, added, saveDir, choice.volume).also { torrents[hash] = it }
             sourcesToHash[source] = hash
@@ -743,7 +754,7 @@ class TorrentEngine(
     private fun awaitMetadata(entry: Entry, timeoutMs: Long): TorrentInfo {
         val until = System.currentTimeMillis() + timeoutMs
         while (true) {
-            val info = synchronized(lock) {
+            val info = lock.withLock {
                 if (!entry.handle.isValid) throw TorrentException("Torrent was removed")
                 entry.handle.torrentFile()?.takeIf { it.isValid && it.numFiles() > 0 }
             }
@@ -756,14 +767,14 @@ class TorrentEngine(
     }
 
     private fun release(entry: Entry) {
-        synchronized(lock) {
+        lock.withLock {
             entry.refs = (entry.refs - 1).coerceAtLeast(0)
             entry.lastReleased = System.currentTimeMillis()
             // Its drive went away: nothing to keep it for.
             if (entry.refs == 0 && entry.lost != null && torrents[entry.hash] === entry) removeLocked(entry)
         }
         janitor.schedule({
-            synchronized(lock) {
+            lock.withLock {
                 if (entry.refs == 0 && System.currentTimeMillis() - entry.lastReleased >= idleTimeoutMs && torrents[entry.hash] === entry) {
                     // Played titles keep their data on the drive; ones only prepared don't.
                     removeLocked(entry, keepData = entry.files.isNotEmpty())
@@ -786,7 +797,7 @@ class TorrentEngine(
             keepData && dir != null -> {
                 requestResumeLocked(entry)
                 janitor.schedule({
-                    synchronized(lock) {
+                    lock.withLock {
                         // Played again in the meantime: it is in use, not removed.
                         if (!torrents.containsKey(entry.hash)) runCatching { if (entry.handle.isValid) session?.remove(entry.handle) }
                     }
@@ -797,11 +808,9 @@ class TorrentEngine(
                     if (entry.handle.isValid) session?.remove(entry.handle, SessionHandle.DELETE_FILES)
                 }.onFailure { log.log(Level.WARNING, "remove failed", it) }
                 janitor.schedule({
-                    synchronized(lock) {
-                        if (!torrents.containsKey(entry.hash)) {
-                            entry.saveDir.deleteRecursively()
-                            if (dir != null) keptFiles(dir, entry.hash).forEach { it.deleteRecursively() }
-                        }
+                    if (lock.withLock { !torrents.containsKey(entry.hash) }) {
+                        entry.saveDir.deleteRecursively()
+                        if (dir != null) keptFiles(dir, entry.hash).forEach { it.deleteRecursively() }
                     }
                 }, 5, TimeUnit.SECONDS)
             }
@@ -842,6 +851,34 @@ class TorrentEngine(
                 s.start(SessionParams(settings))
                 session = s
             }
+        }
+    }
+
+    /** Reports (once) when one thread keeps the engine's lock for over [STALL_MS]: something is stuck. */
+    private fun watchLock() {
+        var reported: Thread? = null
+        while (true) {
+            Thread.sleep(5_000)
+            val owner = lock.holder
+            val since = lock.heldSince
+            if (owner == null || owner === reported || System.currentTimeMillis() - since < STALL_MS) {
+                if (owner == null) reported = null
+                continue
+            }
+            reported = owner
+            val report = buildString {
+                appendLine("Torrent engine stuck for ${(System.currentTimeMillis() - since) / 1000} s in thread ${owner.name}")
+                // The thread holding the lock first: that is where it is stuck.
+                Thread.getAllStackTraces().filterKeys { it.name.startsWith("torrent") || it === owner || it.name.startsWith("pool") }
+                    .entries.sortedBy { if (it.key === owner) 0 else 1 }
+                    .forEach { (thread, stack) ->
+                        appendLine()
+                        appendLine("${thread.name} (${thread.state})")
+                        stack.take(25).forEach { appendLine("    at $it") }
+                    }
+            }
+            log.warning(report)
+            runCatching { onStall(report) }
         }
     }
 
@@ -893,6 +930,9 @@ class TorrentEngine(
 
     companion object {
         private const val MIN_READAHEAD_PIECES = 4
+        /** How long calls from the screen wait for a busy engine before showing what they have. */
+        private const val UI_WAIT_MS = 300L
+        private const val STALL_MS = 30_000L
         private const val TICK_MS = 2_000L
         /** The full piece priority list is sent at most this often unless a reader comes, goes or jumps. */
         private const val PRIORITY_REFRESH_MS = 2_000L
@@ -921,5 +961,31 @@ class TorrentEngine(
             "udp://exodus.desync.com:6969/announce",
             "udp://tracker.openbittorrent.com:6969/announce",
         )
+    }
+}
+
+/** A lock that knows who holds it and since when (for the stall report), with a timed attempt. */
+private class EngineLock : ReentrantLock() {
+    @Volatile var heldSince = 0L
+        private set
+
+    val holder: Thread? get() = owner
+
+    override fun lock() {
+        super.lock()
+        if (holdCount == 1) heldSince = System.currentTimeMillis()
+    }
+
+    override fun tryLock(timeout: Long, unit: TimeUnit): Boolean =
+        super.tryLock(timeout, unit).also { if (it && holdCount == 1) heldSince = System.currentTimeMillis() }
+
+    /** Runs [block] with the lock if it can be had within [waitMs]; otherwise returns null. */
+    inline fun <T> tryLocked(waitMs: Long, block: () -> T): T? {
+        if (!tryLock(waitMs, TimeUnit.MILLISECONDS)) return null
+        try {
+            return block()
+        } finally {
+            unlock()
+        }
     }
 }

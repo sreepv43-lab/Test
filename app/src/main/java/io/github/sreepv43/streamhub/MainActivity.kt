@@ -166,7 +166,7 @@ private fun CrashReportDialog(report: String, onShare: () -> Unit, onClose: () -
         onDismissRequest = onClose,
         shape = DialogShape,
         containerColor = AppColors.panel,
-        title = { Text("StreamHub closed unexpectedly") },
+        title = { Text(if ("Torrent engine stuck" in report) "StreamHub found a problem" else "StreamHub closed unexpectedly") },
         text = {
             Column {
                 Text(

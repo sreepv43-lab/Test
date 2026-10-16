@@ -77,6 +77,7 @@ import io.github.sreepv43.streamhub.addon.Subtitle
 import io.github.sreepv43.streamhub.data.WatchEntry
 import io.github.sreepv43.streamhub.torrent.TorrentLinks
 import kotlinx.coroutines.Dispatchers
+import io.github.sreepv43.streamhub.torrent.TorrentStats
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -523,6 +524,9 @@ class PlayerActivity : ComponentActivity() {
     private fun showLoadingStatus(exo: ExoPlayer, torrent: Pair<String, Int>?) {
         val engine = container.torrents
         lifecycleScope.launch {
+            // At most one question to the engine at a time, and the screen never waits long for it.
+            var pending: Deferred<Triple<TorrentStats?, Long?, String?>>? = null
+            var lastStats: TorrentStats? = null
             while (isActive && player === exo) {
                 val waiting = exo.playbackState != Player.STATE_READY
                 val line: CharSequence = if (torrent != null) {
@@ -530,12 +534,19 @@ class PlayerActivity : ComponentActivity() {
                     // much video from there is downloaded without gaps.
                     val position = exo.currentPosition
                     val duration = exo.duration.takeIf { it > 0 } ?: -1L
-                    val (stats, readyMs) = withContext(Dispatchers.IO) {
+                    val ask = pending?.takeIf { !it.isCompleted } ?: lifecycleScope.async(Dispatchers.IO) {
                         val ready = runCatching { engine.reportPlayback(torrent.first, torrent.second, position, duration) }.getOrNull()
-                        engine.stats(torrent.first, torrent.second) to ready
+                        val stats = runCatching { engine.stats(torrent.first, torrent.second) }.getOrNull()
+                        Triple(stats, ready, if (stats == null) runCatching { engine.problemFor(torrent.first) }.getOrNull() else null)
                     }
+                    pending = ask
+                    val answer = withTimeoutOrNull(ENGINE_WAIT_MS) { ask.await() }
+                    val stats = answer?.first
+                    val readyMs = answer?.second
+                    lastStats = stats
                     when {
-                        stats == null -> engine.problemFor(torrent.first) ?: "Starting torrent…"
+                        answer == null -> "Waiting for the torrent engine…"
+                        stats == null -> answer.third ?: "Starting torrent…"
                         !stats.hasMetadata -> statsLine("Peers" to "${stats.peers}", "Status" to "Fetching torrent info…")
                         else -> statsLine(
                             "Peers" to "${stats.peers}",
@@ -550,7 +561,7 @@ class PlayerActivity : ComponentActivity() {
                 }
                 if (!firstFrameShown) {
                     loadingStats.text = line
-                    loadingFraction(exo, torrent, engine)?.let(::showLoadingProgress) ?: showConnecting()
+                    loadingFraction(exo, torrent, lastStats)?.let(::showLoadingProgress) ?: showConnecting()
                 } else {
                     statusView.text = line
                     statusView.visibility = if (waiting) View.VISIBLE else View.GONE
@@ -564,11 +575,10 @@ class PlayerActivity : ComponentActivity() {
      * How far loading has got (0..1), or null while still connecting (no torrent peers or data yet,
      * or no answer from the server). Torrents count their first MB, then the player's buffer.
      */
-    private suspend fun loadingFraction(exo: ExoPlayer, torrent: Pair<String, Int>?, engine: TorrentEngine): Float? {
+    private fun loadingFraction(exo: ExoPlayer, torrent: Pair<String, Int>?, stats: TorrentStats?): Float? {
         val buffered = exo.bufferedPosition - exo.currentPosition
         val bufferFraction = if (buffered > 0) buffered.toFloat() / container.settings.startBufferMs.value else 0f
         if (torrent != null) {
-            val stats = withContext(Dispatchers.IO) { engine.stats(torrent.first, torrent.second) }
             if (stats == null || !stats.hasMetadata || (stats.peers == 0 && stats.fileDownloadedBytes == 0L)) return null
             val torrentFraction = stats.fileDownloadedBytes.toFloat() / TORRENT_START_BYTES
             return maxOf(torrentFraction * 0.7f, bufferFraction).coerceAtMost(1f)
@@ -1017,6 +1027,7 @@ class PlayerActivity : ComponentActivity() {
         private const val STATE_POSITION = "position"
         private const val MAX_SUBTITLES = 40
         private const val SUBTITLE_WAIT_MS = 1_000L
+        private const val ENGINE_WAIT_MS = 1_500L
         private const val LATE_SUBTITLES_MAX_MS = 180_000L
         private const val MIN_REBUFFER_MS = 2_000
         private const val AUDIO_INFO_MS = 8_000L

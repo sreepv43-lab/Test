@@ -17,6 +17,21 @@ object CrashReports {
         }
     }
 
+    /** Saves a problem report that isn't a crash (e.g. the torrent engine got stuck), unless one is waiting already. */
+    fun record(context: Context, text: String) {
+        val file = file(context)
+        if (file.exists()) return
+        runCatching {
+            file.writeText(buildString {
+                appendLine("StreamHub ${BuildConfig.VERSION_NAME} (build ${BuildConfig.BUILD_NUMBER})")
+                appendLine("Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT}), ${Build.MANUFACTURER} ${Build.MODEL}")
+                appendLine("Time: ${Date()}")
+                appendLine()
+                append(text)
+            })
+        }
+    }
+
     fun pending(context: Context): String? = file(context).takeIf { it.exists() }?.readText()
 
     fun dismiss(context: Context) {
