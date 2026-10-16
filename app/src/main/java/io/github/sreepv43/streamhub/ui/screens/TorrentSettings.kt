@@ -44,13 +44,19 @@ private class StorageStatus(
 
 private fun storageStatus(container: AppContainer, fresh: Boolean): StorageStatus {
     // Free space changes while downloading: read it live, the slower checks are remembered.
-    val volumes = container.storage.cacheVolumes(fresh).map { volume ->
-        volume.dir?.takeIf { it.exists() }?.let { volume.copy(freeBytes = it.usableSpace) } ?: volume
+    // Every look at a drive is time-limited: a drive that stops answering must not freeze this page.
+    val storage = container.storage
+    val volumes = storage.cacheVolumes(fresh).map { volume ->
+        val dir = volume.dir ?: return@map volume
+        storage.bounded(2, volume) { if (dir.exists()) volume.copy(freeBytes = dir.usableSpace) else volume }
     }
     return StorageStatus(
         volumes = volumes,
         choice = container.chooseTorrentCache(volumes),
-        cacheBytes = volumes.mapNotNull { v -> v.dir?.takeIf { it.exists() }?.let { v.id to container.torrents.sizeOf(it) } }.toMap(),
+        cacheBytes = volumes.mapNotNull { v ->
+            v.dir?.let { dir -> storage.bounded(4, -1L) { if (dir.exists()) container.torrents.sizeOf(dir) else 0L } }
+                ?.takeIf { it >= 0 }?.let { v.id to it }
+        }.toMap(),
         torrents = container.torrents.summaries(),
         engineProblem = container.torrents.storageProblem,
     )
@@ -100,7 +106,8 @@ internal fun TorrentsTab() {
                 )
             }
             if (mode == CachePolicy.USB && drives.none { it.id == volumeId } && volumeId.isNotEmpty()) {
-                FlatChip("USB: ${volumeLabel.ifEmpty { "drive" }} (not connected)", selected = true, onClick = {})
+                val state = if (status == null) "checking…" else "not connected"
+                FlatChip("USB: ${volumeLabel.ifEmpty { "drive" }} ($state)", selected = true, onClick = {})
             }
         }
         Text(

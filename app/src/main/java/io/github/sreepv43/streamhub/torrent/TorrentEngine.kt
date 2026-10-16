@@ -848,7 +848,12 @@ class TorrentEngine(
                 settings.setEnableLsd(true)
                 configure(settings)
                 s.addListener(resumeListener)
-                s.start(SessionParams(settings))
+                val params = SessionParams(settings)
+                // Plain reads and writes instead of memory-mapped files: Android reaches USB drives
+                // through a FUSE layer that copes badly with large memory-mapped files and can stall
+                // every access to the drive.
+                params.setPosixDiskIO()
+                s.start(params)
                 session = s
             }
         }

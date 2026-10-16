@@ -162,7 +162,7 @@ class DownloadStorage(private val context: Context) {
     private val runningProbes = ConcurrentHashMap<String, Future<String?>>()
 
     /** [block], or [default] if it doesn't finish within [seconds] (it keeps running in the background). */
-    private fun <T> bounded(seconds: Long, default: T, block: () -> T): T {
+    fun <T> bounded(seconds: Long, default: T, block: () -> T): T {
         val future = checks.submit<T> { block() }
         return try {
             future.get(seconds, TimeUnit.SECONDS)
