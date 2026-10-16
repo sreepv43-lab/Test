@@ -15,6 +15,18 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.compose.foundation.layout.Column
+import io.github.sreepv43.streamhub.ui.components.tvFocus
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.Key
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
@@ -173,11 +185,33 @@ private fun CrashReportDialog(report: String, onShare: () -> Unit, onClose: () -
                     "Sorry about that. Share this report (or take a photo of it) so the problem can be fixed.",
                     color = AppColors.textDim,
                 )
+                // The whole report, scrolled with the remote: highlight it, then Up/Down.
+                val scroll = rememberScrollState()
+                val scope = rememberCoroutineScope()
                 Text(
-                    report.lines().take(CRASH_LINES).joinToString("\n"),
+                    report,
                     style = MaterialTheme.typography.bodySmall,
                     fontFamily = FontFamily.Monospace,
-                    modifier = Modifier.padding(top = 12.dp),
+                    modifier = Modifier
+                        .padding(top = 12.dp)
+                        .heightIn(max = 320.dp)
+                        .tvFocus()
+                        .onPreviewKeyEvent { event ->
+                            if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                            val step = when (event.key) {
+                                Key.DirectionDown -> CRASH_SCROLL_STEP
+                                Key.DirectionUp -> -CRASH_SCROLL_STEP
+                                else -> return@onPreviewKeyEvent false
+                            }
+                            // At either end, Up/Down move on (to the buttons) as usual.
+                            if ((step > 0 && scroll.value >= scroll.maxValue) || (step < 0 && scroll.value <= 0)) {
+                                return@onPreviewKeyEvent false
+                            }
+                            scope.launch { scroll.animateScrollBy(step.toFloat()) }
+                            true
+                        }
+                        .focusable()
+                        .verticalScroll(scroll),
                 )
             }
         },
@@ -186,4 +220,4 @@ private fun CrashReportDialog(report: String, onShare: () -> Unit, onClose: () -
     )
 }
 
-private const val CRASH_LINES = 18
+private const val CRASH_SCROLL_STEP = 240
