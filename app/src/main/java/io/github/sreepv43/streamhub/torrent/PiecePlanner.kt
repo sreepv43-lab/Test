@@ -30,7 +30,8 @@ data class PiecePlan(val firstPiece: Int, val priorities: IntArray, val deadline
 }
 
 /**
- * Playback-aware piece scheduling, as plain arithmetic (no libtorrent), so it can be tested:
+ * Playback-aware piece scheduling, as plain arithmetic (no libtorrent), so it can be tested (with
+ * `wholeFile = false`, like Stremio, nothing outside the readers' windows is downloaded at all):
  *  - urgent: the next few seconds after each reader get deadlines (libtorrent requests them from
  *    several peers at once, nearest first);
  *  - read-ahead: about 60–120 s of video after each reader get top priority, without deadlines;
@@ -43,6 +44,8 @@ object PiecePlanner {
     const val TOP = 7
     const val NORMAL = 4
     const val LOW = 1
+    /** Not downloaded (libtorrent priority 0). */
+    const val SKIP = 0
 
     const val MIN_WINDOW_S = 60
     const val MAX_WINDOW_S = 120
@@ -92,13 +95,19 @@ object PiecePlanner {
         windowSeconds: Int,
         readers: List<ReaderWindow>,
         now: Long,
+        /** False: like Stremio, only the readers' windows are downloaded; the rest of the file isn't. */
+        wholeFile: Boolean = true,
         has: (Int) -> Boolean,
     ): PiecePlan {
         val count = lastPiece - firstPiece + 1
         val active = active(readers, now)
         val earliest = active.minOfOrNull { it.piece.coerceIn(firstPiece, lastPiece) }
         val priorities = IntArray(count) { i ->
-            if (earliest != null && firstPiece + i < earliest) LOW else NORMAL
+            when {
+                !wholeFile -> SKIP
+                earliest != null && firstPiece + i < earliest -> LOW
+                else -> NORMAL
+            }
         }
         val windowPieces = maxOf(MIN_URGENT_PIECES, ceil(windowSeconds * bitrate / pieceLength).toInt())
         val urgentPieces = maxOf(MIN_URGENT_PIECES, ceil(URGENT_S * bitrate / pieceLength).toInt()).coerceAtMost(windowPieces)

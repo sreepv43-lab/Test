@@ -41,6 +41,15 @@ class PiecePlannerTest {
     }
 
     @Test
+    fun likeStremioOnlyTheWindowsAreDownloaded() {
+        val plan = PiecePlanner.plan(0, lastPiece, pieceLength, bitrate, 60, listOf(reader(1, 500)), now = 10_000, wholeFile = false) { false }
+        assertEquals(TOP, plan.priorityOf(500))
+        assertEquals("nothing further ahead", PiecePlanner.SKIP, plan.priorityOf(600))
+        assertEquals("nothing behind", PiecePlanner.SKIP, plan.priorityOf(10))
+        assertEquals(setOf(500, 501), plan.deadlines.keys)
+    }
+
+    @Test
     fun piecesAlreadyDownloadedGetNoDeadline() {
         val plan = plan(listOf(reader(1, 500)), has = { it == 500 })
         assertEquals(setOf(501), plan.deadlines.keys)

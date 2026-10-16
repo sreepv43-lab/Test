@@ -96,10 +96,15 @@ class Settings(context: Context) {
     /** 0 = no limit. */
     val downloadSpeedLimitKb = int("download_speed_limit_kb", 0)
     val deleteAfterWatching = bool("delete_after_watching", false)
-    /** Cleanup target of the torrent cache on internal storage, in GB; 0 = none. */
+    /** Torrent cache size on internal storage, in GB: 0 = no cache (removed after watching), -1 = unlimited. */
     val torrentCacheLimitGb = int("torrent_cache_limit_gb", 5)
-    /** Torrent cache location: "auto", "internal" or "usb" (only [torrentCacheVolumeId], never elsewhere). */
-    val torrentCacheMode = string("torrent_cache_mode", "auto")
+    /**
+     * Torrent cache location: "internal" (like Stremio, the default), "auto" or "usb" (only
+     * [torrentCacheVolumeId], never elsewhere). A new key, so everyone starts on internal storage.
+     */
+    val torrentCacheMode = string("torrent_cache_mode_v2", "internal")
+    /** While streaming, download the whole file in the background (otherwise only what is watched, like Stremio). */
+    val torrentDownloadWholeFile = bool("torrent_download_whole_file", false)
     /** Filesystem UUID of the chosen USB drive (stays the same whichever port it is plugged into). */
     val torrentCacheVolumeId = string("torrent_cache_volume_id", "")
     /** Its name, to explain which drive is missing when it isn't connected. */

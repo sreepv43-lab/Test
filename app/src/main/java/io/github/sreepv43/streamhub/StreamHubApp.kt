@@ -135,6 +135,7 @@ class AppContainer(context: Context) {
         cacheRules = { dir -> torrentCacheRules(dir) },
         // Shown like a crash report on the next start, so the cause can be found.
         onStall = { report -> CrashReports.record(context, report) },
+        downloadWholeFile = { settings.torrentDownloadWholeFile.value },
     )
 
     /** Where new torrent data goes now (see [CachePolicy.choose]). */
@@ -161,10 +162,19 @@ class AppContainer(context: Context) {
     }
 
     private fun torrentCacheRules(dir: File): CacheRules {
-        val volume = storage.cacheVolumes(waitMs = 0).firstOrNull { it.dir == dir } ?: return CacheRules()
+        val volume = (listOf(storage.internalVolume()) + storage.cacheVolumes(waitMs = 0)).firstOrNull { it.dir == dir }
+            ?: return CacheRules()
         if (!settings.torrentCacheCleanup.value) return CacheRules()
-        val target = if (volume.removable) settings.torrentCacheUsbTargetGb.value else settings.torrentCacheLimitGb.value
-        return CacheRules(targetBytes = target * CachePolicy.GB, reserveBytes = CachePolicy.reserveFor(volume))
+        val targetBytes = if (volume.removable) {
+            settings.torrentCacheUsbTargetGb.value * CachePolicy.GB
+        } else {
+            when (val gb = settings.torrentCacheLimitGb.value) {
+                0 -> 1L // No cache: anything nobody is watching goes.
+                in Int.MIN_VALUE..-1 -> 0L // Unlimited.
+                else -> gb * CachePolicy.GB
+            }
+        }
+        return CacheRules(targetBytes = targetBytes, reserveBytes = CachePolicy.reserveFor(volume))
     }
 
     val torrentServer = TorrentHttpServer(torrents)

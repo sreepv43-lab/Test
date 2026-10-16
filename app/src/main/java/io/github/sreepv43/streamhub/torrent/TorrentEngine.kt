@@ -81,6 +81,8 @@ class TorrentEngine(
     /** Extra listen settings, e.g. for tests. */
     private val configure: (SettingsPack) -> Unit = {},
     storageCheckSeconds: Long = 10,
+    /** Download the whole file while streaming (otherwise only around what is being read, like Stremio). */
+    private val downloadWholeFile: () -> Boolean = { true },
     /** Told (once per occurrence) when the engine's lock has been held far too long, with the threads' stacks. */
     private val onStall: (String) -> Unit = {},
 ) {
@@ -208,6 +210,7 @@ class TorrentEngine(
         val window = PiecePlanner.windowSeconds(bitrate, entry.rates.toList())
         val plan = PiecePlanner.plan(
             file.firstPiece, file.lastPiece, file.pieceLength.toLong(), bitrate, window, readers, now,
+            wholeFile = downloadWholeFile(),
         ) { entry.knows(it) }
         val old = file.applied
         val changed = old == null || !old.priorities.contentEquals(plan.priorities)

@@ -92,8 +92,8 @@ internal fun TorrentsTab() {
         )
         val drives = status?.volumes.orEmpty().filter { it.removable }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            FlatChip("Internal storage (like Stremio)", selected = mode == CachePolicy.INTERNAL, onClick = { settings.torrentCacheMode.set(CachePolicy.INTERNAL) })
             FlatChip("Automatic", selected = mode == CachePolicy.AUTO, onClick = { settings.torrentCacheMode.set(CachePolicy.AUTO) })
-            FlatChip("Internal storage", selected = mode == CachePolicy.INTERNAL, onClick = { settings.torrentCacheMode.set(CachePolicy.INTERNAL) })
             drives.forEach { drive ->
                 FlatChip(
                     "USB: ${drive.label}",
@@ -195,8 +195,8 @@ internal fun TorrentsTab() {
         }
         val internalTarget by settings.torrentCacheLimitGb.flow.collectAsStateWithLifecycle()
         ChoiceRow(
-            "Cleanup target on internal storage",
-            listOf(2 to "2 GB", 5 to "5 GB", 10 to "10 GB", 20 to "20 GB"),
+            "Cache size on internal storage (like Stremio's Caching setting)",
+            listOf(0 to "No cache", 2 to "2 GB", 5 to "5 GB", 10 to "10 GB", -1 to "Unlimited"),
             internalTarget,
         ) {
             settings.torrentCacheLimitGb.set(it)
@@ -213,6 +213,19 @@ internal fun TorrentsTab() {
     }
 
     SettingsSection("Torrents") {
+        val wholeFile by settings.torrentDownloadWholeFile.flow.collectAsStateWithLifecycle()
+        ChoiceRow(
+            "While streaming, download",
+            listOf(false to "Only what you watch (like Stremio)", true to "The whole file"),
+            wholeFile,
+        ) { settings.torrentDownloadWholeFile.set(it) }
+        Text(
+            "Like Stremio, only the part being watched and the next one to two minutes are downloaded, so the TV " +
+                "writes far less and the cache stays small. Jumping ahead downloads from there. \"The whole file\" " +
+                "keeps downloading the rest in the background (more writing, but seeking anywhere is instant later).",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
         val prepare by settings.prepareTorrents.flow.collectAsStateWithLifecycle()
         ChoiceRow(
             "Get the best torrents ready as soon as a stream list opens (starts faster, uses some data)",
