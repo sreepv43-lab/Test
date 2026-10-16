@@ -48,6 +48,7 @@ class DownloadStorage(private val context: Context) {
         const val CACHE_VOLUMES_MS = 30_000L
         // Long enough for a sleeping hard disk to spin up (they can take ~10 s).
         const val CHECK_TIMEOUT_S = 15L
+        const val FIRST_SCAN_WAIT_MS = 20_000L
         const val FAT32_MAX_FILE = 4L * 1024 * 1024 * 1024 - 1
     }
 
@@ -100,7 +101,44 @@ class DownloadStorage(private val context: Context) {
     fun hasAllFilesAccess(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && runCatching { Environment.isExternalStorageManager() }.getOrDefault(false)
 
-    private var cachedVolumes: Pair<Long, List<CacheVolume>>? = null
+    @Volatile private var cachedVolumes: Pair<Long, List<CacheVolume>>? = null
+    private val scanLock = Any()
+    private var scan: Future<List<CacheVolume>>? = null
+
+    /**
+     * Internal storage and connected drives as torrent cache places (see [scanVolumes]). Never
+     * makes callers wait on a slow or stuck drive: the check runs in the background and the last
+     * result is used meanwhile. Only when nothing has been checked yet does it wait, up to [waitMs]
+     * (then internal storage only is returned).
+     */
+    fun cacheVolumes(fresh: Boolean = false, waitMs: Long = FIRST_SCAN_WAIT_MS): List<CacheVolume> {
+        val cached = cachedVolumes
+        if (cached != null && !fresh && SystemClock.elapsedRealtime() - cached.first < CACHE_VOLUMES_MS) return cached.second
+        val running = synchronized(scanLock) {
+            scan?.takeIf { !it.isDone } ?: checks.submit<List<CacheVolume>> {
+                scanVolumes().also { cachedVolumes = SystemClock.elapsedRealtime() to it }
+            }.also { scan = it }
+        }
+        if (cached != null) return cached.second
+        return try {
+            if (waitMs <= 0) listOf(internalVolume()) else running.get(waitMs, TimeUnit.MILLISECONDS)
+        } catch (e: Exception) {
+            listOf(internalVolume())
+        }
+    }
+
+    /** Internal storage as a torrent cache place; never touches a drive. */
+    fun internalVolume(): CacheVolume {
+        val internalDir = File(context.getExternalFilesDir(null) ?: context.filesDir, TORRENT_CACHE)
+        return CacheVolume(
+            id = CachePolicy.INTERNAL_ID,
+            label = "Internal storage",
+            dir = internalDir.takeIf { it.isDirectory || it.mkdirs() },
+            removable = false,
+            totalBytes = internalDir.parentFile?.totalSpace ?: 0,
+            freeBytes = internalDir.parentFile?.usableSpace ?: 0,
+        )
+    }
 
     /**
      * Internal storage and every connected drive as places for the torrent cache, with their space,
@@ -110,19 +148,8 @@ class DownloadStorage(private val context: Context) {
      * results are remembered for [CACHE_VOLUMES_MS]. Slow: call off the UI thread.
      */
     @SuppressLint("NewApi") // removableVolumes() is empty before Android 7
-    @Synchronized
-    fun cacheVolumes(fresh: Boolean = false): List<CacheVolume> {
-        val now = SystemClock.elapsedRealtime()
-        cachedVolumes?.takeIf { !fresh && now - it.first < CACHE_VOLUMES_MS }?.let { return it.second }
-        val internalDir = File(bounded(CHECK_TIMEOUT_S, null) { context.getExternalFilesDir(null) } ?: context.filesDir, TORRENT_CACHE)
-        val internal = CacheVolume(
-            id = CachePolicy.INTERNAL_ID,
-            label = "Internal storage",
-            dir = internalDir.takeIf { it.isDirectory || it.mkdirs() },
-            removable = false,
-            totalBytes = internalDir.parentFile?.totalSpace ?: 0,
-            freeBytes = internalDir.parentFile?.usableSpace ?: 0,
-        )
+    private fun scanVolumes(): List<CacheVolume> {
+        val internal = internalVolume()
         // On some TVs these calls can hang on a USB drive; every check here gives up after a few seconds.
         val appDirs = bounded(CHECK_TIMEOUT_S, emptyList()) { ContextCompat.getExternalFilesDirs(context, null).filterNotNull() }
         val drives = removableVolumes().map { (volume, root, label) ->
@@ -155,7 +182,7 @@ class DownloadStorage(private val context: Context) {
                 },
             )
         }
-        return (listOf(internal) + drives).also { cachedVolumes = now to it }
+        return listOf(internal) + drives
     }
 
     private val checks = Executors.newCachedThreadPool { r -> Thread(r, "storage-check").apply { isDaemon = true } }

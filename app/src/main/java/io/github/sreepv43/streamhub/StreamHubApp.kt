@@ -138,22 +138,30 @@ class AppContainer(context: Context) {
     )
 
     /** Where new torrent data goes now (see [CachePolicy.choose]). */
-    fun chooseTorrentCache(volumes: List<CacheVolume> = storage.cacheVolumes()): CacheChoice = CachePolicy.choose(
+    fun chooseTorrentCache(volumes: List<CacheVolume> = cacheVolumesForMode()): CacheChoice = CachePolicy.choose(
         mode = settings.torrentCacheMode.value,
         usbId = settings.torrentCacheVolumeId.value.ifEmpty { null },
         usbLabel = settings.torrentCacheVolumeLabel.value.ifEmpty { null },
         volumes = volumes,
     )
 
+    /** With "Internal storage" chosen, the drives aren't looked at at all (a stuck drive can't matter). */
+    private fun cacheVolumesForMode(): List<CacheVolume> =
+        if (settings.torrentCacheMode.value == CachePolicy.INTERNAL) listOf(storage.internalVolume()) else storage.cacheVolumes()
+
     /** Every torrent cache folder that exists: on each volume, plus where older versions kept it. */
     private fun torrentCacheDirs(context: Context): List<File> {
         // (Only internal storage: asking Android for the app's folders on USB drives can hang on some TVs.)
         val legacy = listOfNotNull(context.getExternalFilesDir(null), context.filesDir).map { File(it, "torrent-cache") }
-        return (storage.cacheVolumes().mapNotNull { it.dir } + legacy).distinct().filter { it.isDirectory }
+        val internal = (listOfNotNull(storage.internalVolume().dir) + legacy).distinct().filter { it.isDirectory }
+        // With internal storage chosen the drives are left alone; otherwise the last known drives
+        // (without waiting for a drive check, and without touching them: they were checked then).
+        if (settings.torrentCacheMode.value == CachePolicy.INTERNAL) return internal
+        return (internal + storage.cacheVolumes(waitMs = 0).filter { it.removable }.mapNotNull { it.dir }).distinct()
     }
 
     private fun torrentCacheRules(dir: File): CacheRules {
-        val volume = storage.cacheVolumes().firstOrNull { it.dir == dir } ?: return CacheRules()
+        val volume = storage.cacheVolumes(waitMs = 0).firstOrNull { it.dir == dir } ?: return CacheRules()
         if (!settings.torrentCacheCleanup.value) return CacheRules()
         val target = if (volume.removable) settings.torrentCacheUsbTargetGb.value else settings.torrentCacheLimitGb.value
         return CacheRules(targetBytes = target * CachePolicy.GB, reserveBytes = CachePolicy.reserveFor(volume))
