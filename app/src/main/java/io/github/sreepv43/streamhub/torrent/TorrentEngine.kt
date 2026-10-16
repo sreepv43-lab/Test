@@ -145,7 +145,13 @@ class TorrentEngine(
          * Pieces known to be downloaded (they never go missing). Asking libtorrent is a call that
          * waits for its busy network thread, so it is asked once per piece at most.
          */
-        val have = java.util.BitSet()
+        private val have = java.util.BitSet()
+        /** libtorrent's piece priorities as last sent (kept here so they needn't be asked for). */
+        var piecePriorities: Array<Priority>? = null
+
+        fun knows(piece: Int): Boolean = synchronized(have) { have.get(piece) }
+        fun mark(piece: Int) = synchronized(have) { have.set(piece) }
+        fun haveCopy(): java.util.BitSet = synchronized(have) { have.clone() as java.util.BitSet }
         /** Scheduling state of each open file. */
         val files = HashMap<Int, FileSchedule>()
         /** Recent download speeds (bytes/s), for the adaptive read-ahead. */
@@ -173,9 +179,13 @@ class TorrentEngine(
         fun pieceAt(position: Long): Int = ((fileOffset + position.coerceIn(0, maxOf(0, size - 1))) / pieceLength).toInt()
     }
 
-    private fun hasPieceLocked(entry: Entry, piece: Int): Boolean {
-        if (entry.have.get(piece)) return true
-        return (entry.handle.isValid && entry.handle.havePiece(piece)).also { if (it) entry.have.set(piece) }
+    /**
+     * Whether [piece] is downloaded. Asks libtorrent (a call that waits for its network thread) only
+     * for pieces not known yet; never call it while holding [lock].
+     */
+    private fun checkPiece(entry: Entry, piece: Int): Boolean {
+        if (entry.knows(piece)) return true
+        return (entry.handle.isValid && entry.handle.havePiece(piece)).also { if (it) entry.mark(piece) }
     }
 
     /**
@@ -198,11 +208,13 @@ class TorrentEngine(
         val window = PiecePlanner.windowSeconds(bitrate, entry.rates.toList())
         val plan = PiecePlanner.plan(
             file.firstPiece, file.lastPiece, file.pieceLength.toLong(), bitrate, window, readers, now,
-        ) { hasPieceLocked(entry, it) }
+        ) { entry.knows(it) }
         val old = file.applied
         val changed = old == null || !old.priorities.contentEquals(plan.priorities)
         if (changed && (force || old == null || now - file.prioritiesAt >= PRIORITY_REFRESH_MS)) {
-            val all = entry.handle.piecePriorities()
+            // Under the lock nothing waits for libtorrent: the priorities are kept here, and sending
+            // them (like deadlines) doesn't wait for an answer.
+            val all = entry.piecePriorities ?: return
             for (i in plan.priorities.indices) {
                 val piece = plan.firstPiece + i
                 if (piece < all.size) all[piece] = Priority.fromSwig(plan.priorities[i])
@@ -286,17 +298,17 @@ class TorrentEngine(
             val deadline = System.currentTimeMillis() + timeoutMs
             while (!closed) {
                 entry.lost?.let { throw TorrentException(it) }
-                if (lock.withLock { hasPieceLocked(entry, piece) }) return true
+                if (checkPiece(entry, piece)) return true
                 if (System.currentTimeMillis() > deadline) return false
                 Thread.sleep(50)
             }
             return false
         }
 
-        fun progress(): Float = lock.withLock {
+        fun progress(): Float {
             if (!entry.handle.isValid || size == 0L) return 0f
             val done = entry.handle.fileProgress(TorrentHandle.PIECE_GRANULARITY).getOrNull(index) ?: 0L
-            (done.toFloat() / size).coerceIn(0f, 1f)
+            return (done.toFloat() / size).coerceIn(0f, 1f)
         }
 
         override fun close() {
@@ -325,17 +337,21 @@ class TorrentEngine(
                 storageProblem = problem
                 throw TorrentException(problem)
             }
+            val current = if (entry.piecePriorities == null) entry.handle.piecePriorities() else null
             lock.withLock {
+                if (entry.piecePriorities == null) entry.piecePriorities = current
                 if (entry.openFiles.add(index)) {
                     val priorities = Array(files.numFiles()) { i ->
                         if (i in entry.openFiles) Priority.DEFAULT else Priority.IGNORE
                     }
                     entry.handle.prioritizeFiles(priorities)
-                    if (entry.limitedPieces) {
-                        entry.limitedPieces = false
-                        val pieces = entry.handle.piecePriorities()
+                    // The opened files' pieces are wanted (also lifting a prefetch's limit).
+                    entry.limitedPieces = false
+                    entry.piecePriorities?.let { pieces ->
                         for (i in entry.openFiles) {
-                            (files.pieceIndexAtFile(i)..files.lastPieceIndexAtFile(i)).forEach { pieces[it] = Priority.DEFAULT }
+                            (files.pieceIndexAtFile(i)..files.lastPieceIndexAtFile(i)).forEach {
+                                if (it < pieces.size && pieces[it] == Priority.IGNORE) pieces[it] = Priority.DEFAULT
+                            }
                         }
                         entry.handle.prioritizePieces(pieces)
                     }
@@ -441,22 +457,26 @@ class TorrentEngine(
     }
 
     /** Stats for a source that is currently open, or null. */
-    fun stats(source: String, fileIdx: Int = -1): TorrentStats? = lock.tryLocked(UI_WAIT_MS) {
-        val entry = sourcesToHash[source]?.let { torrents[it] } ?: return null
+    fun stats(source: String, fileIdx: Int = -1): TorrentStats? {
+        val (entry, firstOpen) = lock.tryLocked(UI_WAIT_MS) {
+            val entry = sourcesToHash[source]?.let { torrents[it] } ?: return null
+            entry to entry.openFiles.firstOrNull()
+        } ?: return null
+        // Asking libtorrent can take a moment while it is busy: never while holding the lock.
         if (!entry.handle.isValid) return null
         val status = entry.handle.status()
         val info = if (status.hasMetadata()) entry.handle.torrentFile() else null
         val index = when {
             info == null -> -1
             fileIdx in 0 until info.numFiles() -> fileIdx
-            else -> entry.openFiles.firstOrNull() ?: -1
+            else -> firstOpen ?: -1
         }
         val fileDone = if (index >= 0) entry.handle.fileProgress(TorrentHandle.PIECE_GRANULARITY).getOrNull(index) ?: 0L else 0L
         val fileProgress = if (index >= 0) {
             val size = info!!.files().fileSize(index)
             if (size > 0) (fileDone.toFloat() / size).coerceIn(0f, 1f) else 0f
         } else 0f
-        TorrentStats(
+        return TorrentStats(
             name = info?.name(),
             hasMetadata = status.hasMetadata(),
             peers = status.numPeers(),
@@ -475,19 +495,20 @@ class TorrentEngine(
      */
     fun reportPlayback(source: String, fileIdx: Int, positionMs: Long, durationMs: Long): Long? {
         val now = System.currentTimeMillis()
-        val (entry, file, pieces) = lock.tryLocked(UI_WAIT_MS) {
+        val (entry, file, seeked) = lock.tryLocked(UI_WAIT_MS) {
             val entry = sourcesToHash[source]?.let { torrents[it] }?.takeIf { it.handle.isValid && it.lost == null } ?: return null
             val file = entry.files[fileIdx] ?: entry.files.values.firstOrNull() ?: return null
             val seeked = file.playheadMs < 0 || kotlin.math.abs(positionMs - file.playheadMs) > SEEK_THRESHOLD_MS
             file.playheadMs = positionMs
             file.playheadAt = now
             if (durationMs > 0) file.durationMs = durationMs
-            // One call for the whole piece map (instead of asking piece by piece).
-            val pieces = entry.handle.status(TorrentHandle.QUERY_PIECES).pieces()
-            for (p in file.firstPiece..minOf(file.lastPiece, pieces.size() - 1)) if (pieces.getBit(p)) entry.have.set(p)
-            replanLocked(entry, file, force = seeked)
-            Triple(entry, file, entry.have.clone() as java.util.BitSet)
+            Triple(entry, file, seeked)
         } ?: return null
+        // One call for the whole piece map (instead of asking piece by piece), outside the lock.
+        val bits = runCatching { entry.handle.status(TorrentHandle.QUERY_PIECES).pieces() }.getOrNull()
+        if (bits != null) for (p in file.firstPiece..minOf(file.lastPiece, bits.size() - 1)) if (bits.getBit(p)) entry.mark(p)
+        lock.withLock { replanLocked(entry, file, force = seeked) }
+        val pieces = entry.haveCopy()
         if (file.durationMs <= 0) return null
         val byte = (file.size * (positionMs.toDouble() / file.durationMs)).toLong().coerceIn(0, file.size)
         val bytes = PiecePlanner.contiguousBytes(byte, file.fileOffset, file.size, file.pieceLength.toLong()) { pieces.get(it) }
@@ -501,12 +522,17 @@ class TorrentEngine(
      */
     private fun tick() {
         val now = System.currentTimeMillis()
+        val busy = lock.withLock {
+            torrents.values.filter { entry ->
+                entry.handle.isValid && entry.lost == null &&
+                    entry.files.values.any { it.readers.isNotEmpty() || now - it.playheadAt < PLAYHEAD_VALID_MS }
+            }
+        }
+        // Speeds are asked for outside the lock (libtorrent may take a moment to answer).
+        val rates = busy.associateWith { runCatching { it.handle.status().downloadPayloadRate() }.getOrDefault(0) }
         lock.withLock {
-            for (entry in torrents.values) {
+            for ((entry, rate) in rates) {
                 if (!entry.handle.isValid || entry.lost != null) continue
-                val busy = entry.files.values.any { it.readers.isNotEmpty() || now - it.playheadAt < PLAYHEAD_VALID_MS }
-                if (!busy) continue
-                val rate = runCatching { entry.handle.status().downloadPayloadRate() }.getOrDefault(0)
                 entry.rates.addLast(rate)
                 while (entry.rates.size > RATE_SAMPLES) entry.rates.removeFirst()
                 entry.files.values.forEach { runCatching { replanLocked(entry, it, force = false) } }
@@ -589,13 +615,14 @@ class TorrentEngine(
     fun sizeOf(dir: File): Long = dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
 
     /** Every torrent in the engine, for the storage status screen. */
-    fun summaries(): List<TorrentSummary> = lock.tryLocked(UI_WAIT_MS) {
-        torrents.values.mapNotNull { entry ->
+    fun summaries(): List<TorrentSummary> {
+        val entries = lock.tryLocked(UI_WAIT_MS) { torrents.values.map { it to it.refs } } ?: return emptyList()
+        return entries.mapNotNull { (entry, refs) ->
             if (!entry.handle.isValid) return@mapNotNull null
             val status = runCatching { entry.handle.status() }.getOrNull() ?: return@mapNotNull null
             TorrentSummary(
                 name = status.name().ifEmpty { entry.hash.take(12) },
-                readers = entry.refs,
+                readers = refs,
                 downloadRate = status.downloadPayloadRate(),
                 peers = status.numPeers(),
                 progress = status.progress(),
@@ -603,7 +630,7 @@ class TorrentEngine(
                 problem = entry.lost,
             )
         }
-    } ?: emptyList()
+    }
 
     /**
      * Automatic cleanup: in each cache directory, removes torrents nobody is reading, least
@@ -716,20 +743,20 @@ class TorrentEngine(
             runCatching { TorrentInfo(resumeFile.readBytes()) }.getOrNull()
         } else null
         val addInfo = info ?: keptInfo
-        val saveDir = lock.withLock {
+        lock.withLock {
             torrents[hash]?.takeIf { it.handle.isValid && it.lost == null }?.let { entry ->
                 sourcesToHash[source] = hash
                 entry.refs++
                 return entry
             }
-            val dir = File(cacheDir, hash).apply { mkdirs() }
-            if (addInfo != null) {
-                val priorities = Array(addInfo.numFiles()) { Priority.IGNORE }
-                session.download(addInfo, dir, resumeFile, priorities, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
-            } else {
-                session.download(withDefaultTrackers(source), dir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
-            }
-            dir
+        }
+        // Adding talks to libtorrent: outside the lock (adding the same torrent twice is harmless).
+        val saveDir = File(cacheDir, hash).apply { mkdirs() }
+        if (addInfo != null) {
+            val priorities = Array(addInfo.numFiles()) { Priority.IGNORE }
+            session.download(addInfo, saveDir, resumeFile, priorities, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+        } else {
+            session.download(withDefaultTrackers(source), saveDir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
         }
 
         // Adding is asynchronous; wait for the handle to appear.
@@ -754,10 +781,8 @@ class TorrentEngine(
     private fun awaitMetadata(entry: Entry, timeoutMs: Long): TorrentInfo {
         val until = System.currentTimeMillis() + timeoutMs
         while (true) {
-            val info = lock.withLock {
-                if (!entry.handle.isValid) throw TorrentException("Torrent was removed")
-                entry.handle.torrentFile()?.takeIf { it.isValid && it.numFiles() > 0 }
-            }
+            if (!entry.handle.isValid) throw TorrentException("Torrent was removed")
+            val info = entry.handle.torrentFile()?.takeIf { it.isValid && it.numFiles() > 0 }
             if (info != null) return info
             if (System.currentTimeMillis() > until) {
                 throw TorrentException("No peers found for this torrent (timed out fetching metadata)")
@@ -848,12 +873,10 @@ class TorrentEngine(
                 settings.setEnableLsd(true)
                 configure(settings)
                 s.addListener(resumeListener)
-                val params = SessionParams(settings)
-                // Plain reads and writes instead of memory-mapped files: Android reaches USB drives
-                // through a FUSE layer that copes badly with large memory-mapped files and can stall
-                // every access to the drive.
-                params.setPosixDiskIO()
-                s.start(params)
+                // libtorrent's default disk I/O works on its own threads. (The "posix" one does the
+                // writing on the network thread, so on a slow USB hard disk every question to
+                // libtorrent waited behind disk writes.)
+                s.start(SessionParams(settings))
                 session = s
             }
         }
