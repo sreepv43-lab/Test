@@ -147,8 +147,8 @@ class AppContainer(context: Context) {
 
     /** Every torrent cache folder that exists: on each volume, plus where older versions kept it. */
     private fun torrentCacheDirs(context: Context): List<File> {
-        val legacy = (ContextCompat.getExternalFilesDirs(context, null).filterNotNull() + context.filesDir)
-            .map { File(it, "torrent-cache") }
+        // (Only internal storage: asking Android for the app's folders on USB drives can hang on some TVs.)
+        val legacy = listOfNotNull(context.getExternalFilesDir(null), context.filesDir).map { File(it, "torrent-cache") }
         return (storage.cacheVolumes().mapNotNull { it.dir } + legacy).distinct().filter { it.isDirectory }
     }
 

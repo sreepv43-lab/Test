@@ -14,6 +14,11 @@ import io.github.sreepv43.streamhub.torrent.CacheVolume
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executors
+import java.util.concurrent.Future
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.TimeoutException
 import java.io.FileOutputStream
 import java.io.IOException
 import java.io.OutputStream
@@ -41,6 +46,7 @@ class DownloadStorage(private val context: Context) {
         const val DRIVE_FOLDER = "StreamHub"
         const val TORRENT_CACHE = "torrent-cache"
         const val CACHE_VOLUMES_MS = 30_000L
+        const val CHECK_TIMEOUT_S = 4L
         const val FAT32_MAX_FILE = 4L * 1024 * 1024 * 1024 - 1
     }
 
@@ -107,7 +113,7 @@ class DownloadStorage(private val context: Context) {
     fun cacheVolumes(fresh: Boolean = false): List<CacheVolume> {
         val now = SystemClock.elapsedRealtime()
         cachedVolumes?.takeIf { !fresh && now - it.first < CACHE_VOLUMES_MS }?.let { return it.second }
-        val internalDir = File(context.getExternalFilesDir(null) ?: context.filesDir, TORRENT_CACHE)
+        val internalDir = File(bounded(CHECK_TIMEOUT_S, null) { context.getExternalFilesDir(null) } ?: context.filesDir, TORRENT_CACHE)
         val internal = CacheVolume(
             id = CachePolicy.INTERNAL_ID,
             label = "Internal storage",
@@ -116,36 +122,70 @@ class DownloadStorage(private val context: Context) {
             totalBytes = internalDir.parentFile?.totalSpace ?: 0,
             freeBytes = internalDir.parentFile?.usableSpace ?: 0,
         )
-        val appDirs = ContextCompat.getExternalFilesDirs(context, null).filterNotNull()
+        // On some TVs these calls can hang on a USB drive; every check here gives up after a few seconds.
+        val appDirs = bounded(CHECK_TIMEOUT_S, emptyList()) { ContextCompat.getExternalFilesDirs(context, null).filterNotNull() }
         val drives = removableVolumes().map { (volume, root, label) ->
             val mount = mountEntry(root)
             val readOnly = volume.state == Environment.MEDIA_MOUNTED_READ_ONLY || mount?.get(3)?.split(',')?.contains("ro") == true
             val appDir = appDirs.firstOrNull { it.path.startsWith(root.path + "/") }?.let { File(it, TORRENT_CACHE) }
             val rootDir = File(File(root, DRIVE_FOLDER), ".torrent-cache")
-            val dir = when {
-                readOnly -> null
-                appDir != null && writeProblem(appDir) == null -> appDir
-                hasAllFilesAccess() && writeProblem(rootDir) == null -> rootDir
-                else -> null
+            // The app's own folder on the drive needs no permission, but on some TVs it isn't set up
+            // for USB drives; with All files access the drive's StreamHub folder (as for downloads)
+            // is tried first.
+            val candidates = if (hasAllFilesAccess()) listOfNotNull(rootDir, appDir) else listOfNotNull(appDir)
+            var lastProblem: String? = null
+            val dir = if (readOnly) null else candidates.firstOrNull { candidate ->
+                probe(candidate).also { lastProblem = it } == null
             }
             CacheVolume(
                 id = volume.uuid ?: root.name,
                 label = label,
                 dir = dir,
                 removable = true,
-                totalBytes = root.totalSpace,
-                freeBytes = (dir ?: root).usableSpace,
+                totalBytes = bounded(CHECK_TIMEOUT_S, 0L) { root.totalSpace },
+                freeBytes = bounded(CHECK_TIMEOUT_S, 0L) { (dir ?: root).usableSpace },
                 fileSystem = mount?.get(2)?.let(::fileSystemName),
                 problem = when {
                     readOnly -> "the TV mounts it read-only" + (mount?.get(2)?.let { " (${fileSystemName(it)})" } ?: "")
                     dir == null && !hasAllFilesAccess() ->
                         "StreamHub can't write to it (turn on All files access: Settings → Download location → select the drive)"
-                    dir == null -> mountProblem(rootDir) ?: "writing to it failed"
+                    dir == null -> lastProblem ?: mountProblem(rootDir) ?: "writing to it failed"
                     else -> null
                 },
             )
         }
         return (listOf(internal) + drives).also { cachedVolumes = now to it }
+    }
+
+    private val checks = Executors.newCachedThreadPool { r -> Thread(r, "storage-check").apply { isDaemon = true } }
+    /** Write checks still running (a drive that stopped answering), so they aren't piled up. */
+    private val runningProbes = ConcurrentHashMap<String, Future<String?>>()
+
+    /** [block], or [default] if it doesn't finish within [seconds] (it keeps running in the background). */
+    private fun <T> bounded(seconds: Long, default: T, block: () -> T): T {
+        val future = checks.submit<T> { block() }
+        return try {
+            future.get(seconds, TimeUnit.SECONDS)
+        } catch (e: TimeoutException) {
+            default
+        } catch (e: Exception) {
+            default
+        }
+    }
+
+    /** Whether [dir] can be written (null) or why not, giving up on a drive that doesn't answer. */
+    private fun probe(dir: File): String? {
+        val stuck = "the drive didn't answer (it may be asleep or busy); try again in a moment"
+        runningProbes[dir.path]?.let { if (!it.isDone) return stuck }
+        val future = checks.submit<String?> { writeProblem(dir) }
+        runningProbes[dir.path] = future
+        return try {
+            future.get(CHECK_TIMEOUT_S, TimeUnit.SECONDS)
+        } catch (e: TimeoutException) {
+            stuck
+        } catch (e: Exception) {
+            e.cause?.message ?: "writing to it failed"
+        }
     }
 
     private fun fileSystemName(type: String): String = type.lowercase().let { t ->
