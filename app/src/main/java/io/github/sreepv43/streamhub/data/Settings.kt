@@ -96,8 +96,18 @@ class Settings(context: Context) {
     /** 0 = no limit. */
     val downloadSpeedLimitKb = int("download_speed_limit_kb", 0)
     val deleteAfterWatching = bool("delete_after_watching", false)
-    /** Torrent streaming cache limit in GB; 0 = no limit. */
+    /** Cleanup target of the torrent cache on internal storage, in GB; 0 = none. */
     val torrentCacheLimitGb = int("torrent_cache_limit_gb", 5)
+    /** Torrent cache location: "auto", "internal" or "usb" (only [torrentCacheVolumeId], never elsewhere). */
+    val torrentCacheMode = string("torrent_cache_mode", "auto")
+    /** Filesystem UUID of the chosen USB drive (stays the same whichever port it is plugged into). */
+    val torrentCacheVolumeId = string("torrent_cache_volume_id", "")
+    /** Its name, to explain which drive is missing when it isn't connected. */
+    val torrentCacheVolumeLabel = string("torrent_cache_volume_label", "")
+    /** Automatically remove cached torrents nobody is using (over the target, or to keep the reserve free). */
+    val torrentCacheCleanup = bool("torrent_cache_cleanup", true)
+    /** Cleanup target of the torrent cache on a USB drive, in GB. */
+    val torrentCacheUsbTargetGb = int("torrent_cache_usb_target_gb", 200)
 
     private companion object {
         const val KEY_LOCATION = "download_location"

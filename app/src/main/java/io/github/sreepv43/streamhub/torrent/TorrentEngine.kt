@@ -35,23 +35,43 @@ data class TorrentStats(
     val fileDownloadedBytes: Long = 0,
 )
 
+/** One torrent in the engine, for the storage status screen. */
+data class TorrentSummary(
+    val name: String,
+    val readers: Int,
+    val downloadRate: Int,
+    val peers: Int,
+    val progress: Float,
+    val cacheDir: File,
+    /** Why it stopped (drive disconnected or full), or null. */
+    val problem: String?,
+)
+
 /**
  * Built-in BitTorrent client (libtorrent via libtorrent4j) tuned for streaming: only the requested
  * file is downloaded, sequentially, and the pieces a reader is waiting for get deadlines so they
- * arrive first. Data is cached in the largest available storage and deleted when unused.
+ * arrive first. Data is written straight to the chosen cache location (e.g. a USB drive) and read
+ * from there; it is deleted when unused.
  *
  * Kept free of Android APIs so it can be exercised on a desktop JVM.
  */
 class TorrentEngine(
-    /** Candidate cache directories; the one with the most free space is used for each torrent. */
+    /** Every cache directory that currently exists (for cleanup and the cache size). */
     private val cacheDirs: () -> List<File>,
     /** Downloads the bytes of a .torrent file from an http(s)/content/file URL. */
     private val fetchTorrentFile: (String) -> ByteArray,
     private val idleTimeoutMs: Long = 5 * 60_000L,
-    /** Cache size above which torrents nobody is watching are removed at once (0 = no limit). */
-    private val cacheLimitBytes: () -> Long = { 0L },
+    /** Where new torrents go. By default the cache directory with the most free space. */
+    private val chooseCache: () -> CacheChoice = {
+        cacheDirs().onEach { it.mkdirs() }.maxByOrNull { it.usableSpace }
+            ?.let { CacheChoice.Ready(CacheVolume(it.path, it.path, it, false, it.totalSpace, it.usableSpace), it) }
+            ?: CacheChoice.Unavailable("No storage available")
+    },
+    /** Cleanup target and free-space reserve of each cache directory. */
+    private val cacheRules: (File) -> CacheRules = { CacheRules() },
     /** Extra listen settings, e.g. for tests. */
     private val configure: (SettingsPack) -> Unit = {},
+    storageCheckSeconds: Long = 10,
 ) {
     private val log = Logger.getLogger("TorrentEngine")
     private val lock = Any()
@@ -69,11 +89,18 @@ class TorrentEngine(
         Thread(r, "torrent-prefetch").apply { isDaemon = true }
     }
 
+    /** The last storage problem that stopped a torrent (shown by the player), or null. */
+    @Volatile var storageProblem: String? = null
+        private set
+
     init {
         janitor.scheduleWithFixedDelay({ runCatching { trimCache() } }, 1, 1, TimeUnit.MINUTES)
+        janitor.scheduleWithFixedDelay({ runCatching { checkStorage() } }, storageCheckSeconds, storageCheckSeconds, TimeUnit.SECONDS)
     }
 
-    internal class Entry(val hash: String, val handle: TorrentHandle, val saveDir: File) {
+    internal class Entry(val hash: String, val handle: TorrentHandle, val saveDir: File, val volume: CacheVolume?) {
+        /** Set when the drive holding [saveDir] went away or filled up: reading stops with this message. */
+        @Volatile var lost: String? = null
         var refs = 0
         var lastReleased = System.currentTimeMillis()
         val openFiles = HashSet<Int>()
@@ -105,6 +132,12 @@ class TorrentEngine(
          */
         private val have = java.util.BitSet()
 
+        /**
+         * How far ahead of the read position pieces get deadlines: about 25 s of video, judged from
+         * the file size (a 30 GB film needs far more bytes per second than a 2 GB one).
+         */
+        private val readaheadBytes = (size / 400).coerceIn(MIN_READAHEAD_BYTES, MAX_READAHEAD_BYTES)
+
         private fun hasPiece(piece: Int): Boolean {
             if (have.get(piece)) return true
             return entry.handle.havePiece(piece).also { if (it) have.set(piece) }
@@ -126,6 +159,7 @@ class TorrentEngine(
          */
         fun read(position: Long, buffer: ByteArray, offset: Int, length: Int, timeoutMs: Long): Int {
             if (position >= size) return -1
+            entry.lost?.let { throw TorrentException(it) }
             val piece = pieceAt(position)
             if (!awaitPiece(piece, timeoutMs)) return 0
             val count = minOf(length.toLong(), bytesLeftInPiece(position), size - position).toInt()
@@ -138,6 +172,7 @@ class TorrentEngine(
             prioritizeWindow(piece)
             val deadline = System.currentTimeMillis() + timeoutMs
             while (!closed) {
+                entry.lost?.let { throw TorrentException(it) }
                 if (hasPiece(piece)) return true
                 if (System.currentTimeMillis() > deadline) return false
                 Thread.sleep(50)
@@ -150,7 +185,7 @@ class TorrentEngine(
             if (piece == windowStart) return
             val jump = windowStart < 0 || piece < windowStart || piece > windowStart + 2
             windowStart = piece
-            val count = maxOf(MIN_READAHEAD_PIECES, (READAHEAD_BYTES / pieceLength).toInt())
+            val count = maxOf(MIN_READAHEAD_PIECES, (readaheadBytes / pieceLength).toInt())
             synchronized(lock) {
                 if (!entry.handle.isValid) return
                 val from = if (jump) {
@@ -171,7 +206,7 @@ class TorrentEngine(
          * what will be played next and not to far-away parts. Called with [lock] held.
          */
         private fun raiseWindow(piece: Int, jump: Boolean) {
-            val ahead = maxOf(MIN_READAHEAD_PIECES * 2, (TOP_PRIORITY_BYTES / pieceLength).toInt())
+            val ahead = maxOf(MIN_READAHEAD_PIECES * 2, (readaheadBytes * TOP_PRIORITY_FACTOR / pieceLength).toInt())
             if (!jump && piece + ahead / 2 < topEnd) return
             val pieces = entry.handle.piecePriorities()
             val first = pieceAt(0)
@@ -208,6 +243,10 @@ class TorrentEngine(
             val info = awaitMetadata(entry, metadataTimeoutMs)
             val files = info.files()
             val index = if (fileIdx in 0 until files.numFiles() && !files.padFileAt(fileIdx)) fileIdx else pickFile(info)
+            CachePolicy.fileTooBig(entry.volume, files.fileSize(index))?.let { problem ->
+                storageProblem = problem
+                throw TorrentException(problem)
+            }
             synchronized(lock) {
                 if (entry.openFiles.add(index)) {
                     val priorities = Array(files.numFiles()) { i ->
@@ -311,6 +350,15 @@ class TorrentEngine(
         }
     }
 
+    /**
+     * Why [source] can't be played from the torrent cache right now (its drive was disconnected or
+     * is full, or the chosen cache location isn't available), or null.
+     */
+    fun problemFor(source: String): String? = synchronized(lock) {
+        val entry = sourcesToHash[source]?.let { torrents[it] }
+        entry?.lost ?: if (entry == null) storageProblem else null
+    }
+
     /** Stats for a source that is currently open, or null. */
     fun stats(source: String, fileIdx: Int = -1): TorrentStats? = synchronized(lock) {
         val entry = sourcesToHash[source]?.let { torrents[it] } ?: return null
@@ -381,26 +429,95 @@ class TorrentEngine(
         }
     }
 
-    fun cacheSizeBytes(): Long = cacheDirs().sumOf { dir -> dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() } }
+    fun cacheSizeBytes(): Long = cacheDirs().sumOf(::sizeOf)
 
-    /** Over the cache limit: removes torrents nobody is reading, least recently used first. */
+    /** Bytes of torrent data in [dir]. */
+    fun sizeOf(dir: File): Long = dir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
+
+    /** Every torrent in the engine, for the storage status screen. */
+    fun summaries(): List<TorrentSummary> = synchronized(lock) {
+        torrents.values.mapNotNull { entry ->
+            if (!entry.handle.isValid) return@mapNotNull null
+            val status = runCatching { entry.handle.status() }.getOrNull() ?: return@mapNotNull null
+            TorrentSummary(
+                name = status.name().ifEmpty { entry.hash.take(12) },
+                readers = entry.refs,
+                downloadRate = status.downloadPayloadRate(),
+                peers = status.numPeers(),
+                progress = status.progress(),
+                cacheDir = entry.saveDir.parentFile ?: entry.saveDir,
+                problem = entry.lost,
+            )
+        }
+    }
+
+    /**
+     * Automatic cleanup: in each cache directory, removes torrents nobody is reading, least
+     * recently used first, while the cache is over its cleanup target or its drive has less free
+     * space than its reserve. Torrents being played or downloaded are never touched, so the target
+     * can be exceeded while they are in use. Only cache directories are touched (never downloads).
+     */
     fun trimCache() {
-        val limit = cacheLimitBytes()
-        if (limit <= 0) return
-        var size = cacheSizeBytes()
-        if (size <= limit) return
-        val idle = synchronized(lock) { torrents.values.filter { it.refs == 0 }.sortedBy { it.lastReleased } }
-        for (entry in idle) {
-            if (size <= limit) break
-            val bytes = entry.saveDir.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
-            synchronized(lock) { if (entry.refs == 0) removeLocked(entry) }
-            size -= bytes
+        for (dir in cacheDirs()) {
+            val rules = cacheRules(dir)
+            if (rules.targetBytes <= 0 && rules.reserveBytes <= 0) continue
+            var size = sizeOf(dir)
+            var free = dir.usableSpace
+            fun over() = (rules.targetBytes > 0 && size > rules.targetBytes) || (rules.reserveBytes > 0 && free < rules.reserveBytes)
+            if (!over()) continue
+            val idle = synchronized(lock) {
+                torrents.values.filter { it.refs == 0 && it.saveDir.parentFile == dir }.sortedBy { it.lastReleased }
+            }
+            for (entry in idle) {
+                if (!over()) break
+                val bytes = sizeOf(entry.saveDir)
+                val removed = synchronized(lock) { (entry.refs == 0).also { if (it) removeLocked(entry) } }
+                if (removed) {
+                    size -= bytes
+                    free += bytes
+                }
+            }
+        }
+    }
+
+    /**
+     * Watches the drives holding torrent data: when one is unplugged (its folder is gone) or is
+     * nearly full, its torrents stop, readers get a clear error and nothing is written elsewhere.
+     */
+    private fun checkStorage() {
+        val entries = synchronized(lock) { torrents.values.filter { it.lost == null }.toList() }
+        if (entries.isEmpty()) return
+        val full = HashSet<File>()
+        for (entry in entries) {
+            val dir = entry.saveDir.parentFile ?: continue
+            val label = entry.volume?.label ?: "The torrent storage"
+            val problem = when {
+                !entry.saveDir.exists() ->
+                    "$label was disconnected, so the torrent stopped. Reconnect it and play the title again."
+                dir in full || dir.usableSpace in 1 until MIN_FREE_BYTES -> {
+                    full += dir
+                    trimCache()
+                    if (dir.usableSpace in 1 until MIN_FREE_BYTES) {
+                        "$label is full, so the torrent stopped. Free up space or clear the torrent cache."
+                    } else {
+                        full -= dir
+                        null
+                    }
+                }
+                else -> null
+            } ?: continue
+            storageProblem = problem
+            synchronized(lock) {
+                entry.lost = problem
+                runCatching { if (entry.handle.isValid) entry.handle.pause() }
+                if (entry.refs == 0) removeLocked(entry)
+            }
         }
     }
 
     private fun acquire(source: String): Entry {
         val known = synchronized(lock) {
-            sourcesToHash[source]?.let { torrents[it] }?.takeIf { it.handle.isValid }?.also { it.refs++ }
+            sourcesToHash[source]?.let { torrents[it] }?.takeIf { it.handle.isValid && it.lost == null }?.also { it.refs++ }
         }
         if (known != null) return known
 
@@ -420,9 +537,10 @@ class TorrentEngine(
         }
 
         // Looking at the drives can be slow (a sleeping USB disk); never do it while holding the lock.
-        val cacheDir = pickCacheDir()
+        val choice = pickCache()
+        val cacheDir = choice.dir
         val saveDir = synchronized(lock) {
-            torrents[hash]?.takeIf { it.handle.isValid }?.let { entry ->
+            torrents[hash]?.takeIf { it.handle.isValid && it.lost == null }?.let { entry ->
                 sourcesToHash[source] = hash
                 entry.refs++
                 return entry
@@ -448,7 +566,8 @@ class TorrentEngine(
         val added = handle ?: throw TorrentException("Could not add torrent")
 
         return synchronized(lock) {
-            val entry = torrents.getOrPut(hash) { Entry(hash, added, saveDir) }
+            val entry = torrents[hash]?.takeIf { it.lost == null }
+                ?: Entry(hash, added, saveDir, choice.volume).also { torrents[hash] = it }
             sourcesToHash[source] = hash
             entry.refs++
             entry
@@ -474,6 +593,8 @@ class TorrentEngine(
         synchronized(lock) {
             entry.refs = (entry.refs - 1).coerceAtLeast(0)
             entry.lastReleased = System.currentTimeMillis()
+            // Its drive went away: nothing to keep it for.
+            if (entry.refs == 0 && entry.lost != null && torrents[entry.hash] === entry) removeLocked(entry)
         }
         janitor.schedule({
             synchronized(lock) {
@@ -485,7 +606,7 @@ class TorrentEngine(
     }
 
     private fun removeLocked(entry: Entry) {
-        torrents.remove(entry.hash)
+        if (torrents[entry.hash] === entry) torrents.remove(entry.hash)
         sourcesToHash.entries.removeAll { it.value == entry.hash }
         runCatching {
             if (entry.handle.isValid) session?.remove(entry.handle, SessionHandle.DELETE_FILES)
@@ -526,8 +647,32 @@ class TorrentEngine(
         prefetcher.execute { runCatching { session() }.onFailure { log.log(Level.WARNING, "warm-up failed", it) } }
     }
 
-    private fun pickCacheDir(): File =
-        cacheDirs().onEach { it.mkdirs() }.maxByOrNull { it.usableSpace } ?: throw TorrentException("No storage available")
+    /**
+     * The chosen cache location for a new torrent. When it is too full, unused cached torrents are
+     * removed first; if it still can't be used, nothing is stored anywhere else.
+     */
+    private fun pickCache(): CacheChoice.Ready {
+        var choice = chooseCache()
+        if (choice is CacheChoice.Unavailable && choice.lowSpace) {
+            trimCache()
+            choice = chooseCache()
+        }
+        return when (choice) {
+            is CacheChoice.Ready -> {
+                if (!choice.dir.isDirectory && !choice.dir.mkdirs()) {
+                    val problem = "Can't create the torrent folder on ${choice.volume.label}"
+                    storageProblem = problem
+                    throw TorrentException(problem)
+                }
+                storageProblem = null
+                choice
+            }
+            is CacheChoice.Unavailable -> {
+                storageProblem = choice.message
+                throw TorrentException(choice.message)
+            }
+        }
+    }
 
     private fun pickFile(info: TorrentInfo): Int {
         val files = info.files()
@@ -544,9 +689,13 @@ class TorrentEngine(
     }
 
     companion object {
-        private const val READAHEAD_BYTES = 24L * 1024 * 1024
+        private const val MIN_READAHEAD_BYTES = 24L * 1024 * 1024
+        private const val MAX_READAHEAD_BYTES = 128L * 1024 * 1024
         private const val MIN_READAHEAD_PIECES = 4
-        private const val TOP_PRIORITY_BYTES = 96L * 1024 * 1024
+        /** Pieces this many read-aheads ahead get top priority, so peers send them before anything later. */
+        private const val TOP_PRIORITY_FACTOR = 3
+        /** A drive with less free space than this stops its torrents rather than fail mid-write. */
+        private const val MIN_FREE_BYTES = 512L * 1024 * 1024
         private const val PREFETCH_BYTES = 8L * 1024 * 1024
         private const val MAX_PREFETCHED = 6
         private const val PREFETCH_METADATA_TIMEOUT_MS = 90_000L

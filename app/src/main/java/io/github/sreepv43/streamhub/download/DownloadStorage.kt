@@ -1,11 +1,16 @@
 package io.github.sreepv43.streamhub.download
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.os.Environment
+import android.os.SystemClock
 import android.os.storage.StorageManager
+import android.os.storage.StorageVolume
+import io.github.sreepv43.streamhub.torrent.CachePolicy
+import io.github.sreepv43.streamhub.torrent.CacheVolume
 import androidx.core.content.ContextCompat
 import androidx.documentfile.provider.DocumentFile
 import java.io.File
@@ -34,6 +39,8 @@ class DownloadStorage(private val context: Context) {
 
     private companion object {
         const val DRIVE_FOLDER = "StreamHub"
+        const val TORRENT_CACHE = "torrent-cache"
+        const val CACHE_VOLUMES_MS = 30_000L
         const val FAT32_MAX_FILE = 4L * 1024 * 1024 * 1024 - 1
     }
 
@@ -86,13 +93,79 @@ class DownloadStorage(private val context: Context) {
     fun hasAllFilesAccess(): Boolean =
         Build.VERSION.SDK_INT >= Build.VERSION_CODES.R && runCatching { Environment.isExternalStorageManager() }.getOrDefault(false)
 
-    /** Folders on connected drives the torrent engine may use as cache (when writable). */
-    fun writableDriveFolders(child: String): List<File> =
-        if (!hasAllFilesAccess()) emptyList()
-        else removableVolumeRoots().map { (root, _) -> File(File(root, DRIVE_FOLDER), child) }
-            .filter { canWriteDriveFolder(it) }
+    private var cachedVolumes: Pair<Long, List<CacheVolume>>? = null
 
-    private fun canWriteDriveFolder(dir: File): Boolean = hasAllFilesAccess() && writeProblem(dir) == null
+    /**
+     * Internal storage and every connected drive as places for the torrent cache, with their space,
+     * filesystem and whether StreamHub can really write there. On a drive, the app's own folder
+     * (Android/data/…, no special permission) is preferred; a folder at the drive's root is used
+     * only when that doesn't work and All files access is on. Checking writes a small file, so
+     * results are remembered for [CACHE_VOLUMES_MS]. Slow: call off the UI thread.
+     */
+    @SuppressLint("NewApi") // removableVolumes() is empty before Android 7
+    @Synchronized
+    fun cacheVolumes(fresh: Boolean = false): List<CacheVolume> {
+        val now = SystemClock.elapsedRealtime()
+        cachedVolumes?.takeIf { !fresh && now - it.first < CACHE_VOLUMES_MS }?.let { return it.second }
+        val internalDir = File(context.getExternalFilesDir(null) ?: context.filesDir, TORRENT_CACHE)
+        val internal = CacheVolume(
+            id = CachePolicy.INTERNAL_ID,
+            label = "Internal storage",
+            dir = internalDir.takeIf { it.isDirectory || it.mkdirs() },
+            removable = false,
+            totalBytes = internalDir.parentFile?.totalSpace ?: 0,
+            freeBytes = internalDir.parentFile?.usableSpace ?: 0,
+        )
+        val appDirs = ContextCompat.getExternalFilesDirs(context, null).filterNotNull()
+        val drives = removableVolumes().map { (volume, root, label) ->
+            val mount = mountEntry(root)
+            val readOnly = volume.state == Environment.MEDIA_MOUNTED_READ_ONLY || mount?.get(3)?.split(',')?.contains("ro") == true
+            val appDir = appDirs.firstOrNull { it.path.startsWith(root.path + "/") }?.let { File(it, TORRENT_CACHE) }
+            val rootDir = File(File(root, DRIVE_FOLDER), ".torrent-cache")
+            val dir = when {
+                readOnly -> null
+                appDir != null && writeProblem(appDir) == null -> appDir
+                hasAllFilesAccess() && writeProblem(rootDir) == null -> rootDir
+                else -> null
+            }
+            CacheVolume(
+                id = volume.uuid ?: root.name,
+                label = label,
+                dir = dir,
+                removable = true,
+                totalBytes = root.totalSpace,
+                freeBytes = (dir ?: root).usableSpace,
+                fileSystem = mount?.get(2)?.let(::fileSystemName),
+                problem = when {
+                    readOnly -> "the TV mounts it read-only" + (mount?.get(2)?.let { " (${fileSystemName(it)})" } ?: "")
+                    dir == null && !hasAllFilesAccess() ->
+                        "StreamHub can't write to it (turn on All files access: Settings → Download location → select the drive)"
+                    dir == null -> mountProblem(rootDir) ?: "writing to it failed"
+                    else -> null
+                },
+            )
+        }
+        return (listOf(internal) + drives).also { cachedVolumes = now to it }
+    }
+
+    private fun fileSystemName(type: String): String = type.lowercase().let { t ->
+        when {
+            "ntfs" in t || t == "fuseblk" || t == "tntfs" || t == "ufsd" -> "NTFS"
+            "exfat" in t || t == "texfat" -> "exFAT"
+            t == "vfat" || t == "msdos" || t == "fat" -> "FAT32"
+            else -> t
+        }
+    }
+
+    /** Free space for a download into [location] (null when it can't be told, e.g. a picked folder). */
+    fun freeBytes(location: DownloadLocation): Long? =
+        if (location.kind == DownloadLocation.Kind.DIRECTORY) File(location.value).let { dir ->
+            generateSequence(dir) { it.parentFile }.firstOrNull { it.exists() }?.usableSpace
+        } else null
+
+    /** Whether [location] is on a removable drive (otherwise internal storage). */
+    fun isRemovable(location: DownloadLocation): Boolean =
+        location.kind == DownloadLocation.Kind.TREE || isOnRemovablePath(File(location.value))
 
     /**
      * Actually creates a small file, because File.canWrite() is unreliable on USB drives (e.g. NTFS
@@ -157,6 +230,22 @@ class DownloadStorage(private val context: Context) {
     /** Pushes what was written to the drive itself, so the file's length can be trusted. */
     fun sync(out: OutputStream) {
         if (out is FileOutputStream) runCatching { out.fd.sync() }
+    }
+
+    /** Mounted (also read-only) removable volumes with their root directory and name. */
+    private fun removableVolumes(): List<Triple<StorageVolume, File, String>> {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.N) return emptyList()
+        val manager = context.getSystemService(StorageManager::class.java) ?: return emptyList()
+        return manager.storageVolumes
+            .filter { it.isRemovable && (it.state == Environment.MEDIA_MOUNTED || it.state == Environment.MEDIA_MOUNTED_READ_ONLY) }
+            .mapNotNull { volume ->
+                val root = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                    volume.directory
+                } else {
+                    runCatching { volume.javaClass.getMethod("getPathFile").invoke(volume) as File }.getOrNull()
+                }
+                root?.let { Triple(volume, it, volume.getDescription(context) ?: "USB drive") }
+            }
     }
 
     /** Root directories and names of mounted removable drives (USB sticks/disks, SD cards). */

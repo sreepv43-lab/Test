@@ -177,56 +177,6 @@ private fun DownloadsTab() {
 }
 
 @Composable
-private fun TorrentsTab() {
-    val context = LocalContext.current
-    val container = context.container
-    val settings = container.settings
-    val scope = rememberCoroutineScope()
-    var cacheSize by remember { mutableStateOf<Long?>(null) }
-    SettingsSection("Torrents") {
-        Text(
-            "Torrent streams are played and downloaded by the built-in torrent engine: only the chosen file " +
-                "is fetched, in order, so playback starts after a few seconds when there are enough peers. " +
-                "Streaming data is kept in a temporary cache on the drive with the most free space and deleted " +
-                "a few minutes after you stop watching.",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        val prepare by settings.prepareTorrents.flow.collectAsStateWithLifecycle()
-        ChoiceRow(
-            "Get the best torrents ready as soon as a stream list opens (starts faster, uses some data)",
-            listOf(true to "On", false to "Off"),
-            prepare,
-        ) { settings.prepareTorrents.set(it) }
-        val cacheLimit by settings.torrentCacheLimitGb.flow.collectAsStateWithLifecycle()
-        ChoiceRow(
-            "Cache limit (torrents you aren't watching are removed when it's exceeded)",
-            listOf(2 to "2 GB", 5 to "5 GB", 10 to "10 GB", 20 to "20 GB", 0 to "No limit"),
-            cacheLimit,
-        ) {
-            settings.torrentCacheLimitGb.set(it)
-            scope.launch(Dispatchers.IO) { container.torrents.trimCache() }
-        }
-        LaunchedEffect(Unit) { cacheSize = withContext(Dispatchers.IO) { container.torrents.cacheSizeBytes() } }
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Text("Cache: " + (cacheSize?.let { Formatter.formatShortFileSize(context, it) } ?: "…"))
-            FlatButton(
-                text = "Clear torrent cache",
-                onClick = {
-                    scope.launch {
-                        cacheSize = withContext(Dispatchers.IO) {
-                            container.torrents.clearCache()
-                            container.torrents.cacheSizeBytes()
-                        }
-                        StreamActions.toast(context, "Torrent cache cleared (torrents in use were kept)")
-                    }
-                },
-                modifier = Modifier.padding(start = 16.dp),
-            )
-        }
-    }
-}
-
-@Composable
 private fun SyncTab() {
     SettingsSection("Import from Stremio") { StremioImportSection() }
     SettingsSection("Import from IMDb") { ImdbImportSection() }
@@ -359,7 +309,7 @@ private fun languages(current: String): List<Pair<String, String>> {
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun <T> ChoiceRow(label: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
+internal fun <T> ChoiceRow(label: String, options: List<Pair<T, String>>, selected: T, onSelect: (T) -> Unit) {
     Text(label, style = MaterialTheme.typography.titleSmall)
     FlowRow(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         options.forEach { (value, name) -> FlatChip(name, selected = value == selected, onClick = { onSelect(value) }) }
@@ -556,7 +506,7 @@ private fun UpdatesSection() {
 }
 
 @Composable
-private fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+internal fun SettingsSection(title: String, content: @Composable ColumnScope.() -> Unit) {
     val shape = RoundedCornerShape(24.dp)
     Column(
         Modifier.fillMaxWidth().panel(shape).padding(24.dp),

@@ -157,6 +157,111 @@ class TorrentEngineTest {
         assertArrayEquals(movie, read)
     }
 
+    /** Seeds [movie] (as pack/movie.mkv) from 127.0.0.1:[port]; returns the torrent and a magnet link to it. */
+    private fun seed(movie: ByteArray, port: Int): Pair<TorrentInfo, String> {
+        val pack = File(root, "seed/pack").apply { mkdirs() }
+        File(pack, "movie.mkv").writeBytes(movie)
+        val info = TorrentInfo(TorrentBuilder().path(pack).pieceSize(256 * 1024).generate().entry().bencode())
+        seeder = SessionManager(false)
+        val settings = SettingsPack().listenInterfaces("127.0.0.1:$port")
+        settings.setEnableDht(false)
+        settings.setEnableLsd(false)
+        seeder.start(SessionParams(settings))
+        seeder.download(info, File(root, "seed"))
+        return info to TorrentLinks.magnet(info.infoHash().toHex(), "pack") + "&x.pe=127.0.0.1:$port"
+    }
+
+    private fun localEngine(port: Int, chooseCache: () -> CacheChoice, rules: (File) -> CacheRules = { CacheRules() }, cacheDirs: List<File>) =
+        TorrentEngine(
+            cacheDirs = { cacheDirs.filter { it.exists() } },
+            fetchTorrentFile = { File(it.removePrefix("file://")).readBytes() },
+            idleTimeoutMs = 60_000,
+            chooseCache = chooseCache,
+            cacheRules = rules,
+            configure = {
+                it.listenInterfaces("127.0.0.1:$port")
+                it.setEnableDht(false)
+                it.setEnableLsd(false)
+            },
+            storageCheckSeconds = 1,
+        )
+
+    @Test
+    fun aMissingChosenDriveStoresNothingAnywhereElse() {
+        val (_, magnet) = seed(Random(3).nextBytes(1024 * 1024), 47311)
+        val internal = File(root, "internal-cache").apply { mkdirs() }
+        val message = "Seagate 2TB (torrent cache) isn't connected."
+        engine = localEngine(47312, { CacheChoice.Unavailable(message) }, cacheDirs = listOf(internal))
+        val response = open(TorrentHttpServer(engine).urlFor(magnet, -1), null)
+        assertEquals(504, response.responseCode)
+        assertEquals(message, engine.problemFor(magnet))
+        assertTrue("nothing was written to internal storage", internal.listFiles().isNullOrEmpty())
+    }
+
+    @Test
+    fun cleanupKeepsWhatIsInUseAndNeverTouchesDownloads() {
+        val movie = Random(4).nextBytes(2 * 1024 * 1024 + 99)
+        val (_, magnet) = seed(movie, 47313)
+        val drive = File(root, "usb").apply { mkdirs() }
+        val cache = File(drive, "cache").apply { mkdirs() }
+        val download = File(drive, "StreamHub/movie.mkv").apply { parentFile.mkdirs(); writeBytes(movie) }
+        val volume = CacheVolume("1A2B-3C4D", "Seagate", cache, true, drive.totalSpace, drive.usableSpace)
+        engine = localEngine(
+            47314,
+            { CacheChoice.Ready(volume, cache) },
+            // A tiny target, so every torrent nobody uses must go.
+            rules = { CacheRules(targetBytes = 1) },
+            cacheDirs = listOf(cache),
+        )
+        val file = engine.open(magnet, -1)
+        val bytes = ByteArray(movie.size)
+        var position = 0
+        while (position < movie.size) {
+            val read = file.read(position.toLong(), bytes, position, movie.size - position, 30_000)
+            assertTrue(read > 0)
+            position += read
+        }
+        assertArrayEquals(movie, bytes)
+        assertTrue("written straight to the chosen drive", engine.sizeOf(cache) >= movie.size)
+
+        engine.trimCache()
+        assertTrue("the torrent being played stays", engine.sizeOf(cache) >= movie.size)
+        file.close()
+        engine.trimCache()
+        Thread.sleep(6_000)
+        assertEquals("unused cached torrents are removed", 0L, engine.sizeOf(cache))
+        assertArrayEquals("downloads are never touched", movie, download.readBytes())
+    }
+
+    @Test
+    fun unpluggingTheDriveStopsTheTorrentWithAClearMessage() {
+        val movie = Random(5).nextBytes(1024 * 1024 + 7)
+        val (_, magnet) = seed(movie, 47315)
+        val drive = File(root, "usb").apply { mkdirs() }
+        val cache = File(drive, "cache").apply { mkdirs() }
+        val volume = CacheVolume("1A2B-3C4D", "Seagate", cache, true, drive.totalSpace, drive.usableSpace)
+        engine = localEngine(47316, { CacheChoice.Ready(volume, cache) }, cacheDirs = listOf(cache))
+        val file = engine.open(magnet, -1)
+        assertTrue(file.read(0, ByteArray(1024), 0, 1024, 30_000) > 0)
+
+        // The drive disappears (as /storage/<uuid> does when it is unplugged).
+        val unplugged = File(root, "unplugged")
+        assertTrue(drive.renameTo(unplugged))
+        val until = System.currentTimeMillis() + 10_000
+        while (engine.problemFor(magnet) == null && System.currentTimeMillis() < until) Thread.sleep(200)
+        val problem = engine.problemFor(magnet)
+        assertTrue("$problem", problem!!.contains("disconnected"))
+        val error = runCatching { file.read(0, ByteArray(1024), 0, 1024, 1_000) }.exceptionOrNull()
+        assertTrue("reading stops with the message: $error", error is TorrentException && error.message == problem)
+        file.close()
+
+        // Plugged back in: the title plays again.
+        assertTrue(unplugged.renameTo(drive))
+        val again = engine.open(magnet, -1)
+        assertTrue(again.read(0, ByteArray(1024), 0, 1024, 30_000) > 0)
+        again.close()
+    }
+
     private fun open(url: String, range: String?): HttpURLConnection =
         (URL(url).openConnection() as HttpURLConnection).apply {
             readTimeout = 60_000

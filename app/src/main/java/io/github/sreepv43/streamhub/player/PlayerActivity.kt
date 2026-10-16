@@ -320,9 +320,11 @@ class PlayerActivity : ComponentActivity() {
                     exo.prepare()
                     return
                 }
+                // A torrent whose storage is missing or full: say so, rather than a code.
+                val storageProblem = torrent?.let { container.torrents.problemFor(it.first) }
                 Toast.makeText(
                     this@PlayerActivity,
-                    "Playback error: ${error.errorCodeName}. Try another stream or an external player.",
+                    storageProblem ?: "Playback error: ${error.errorCodeName}. Try another stream or an external player.",
                     Toast.LENGTH_LONG,
                 ).show()
             }
@@ -526,7 +528,7 @@ class PlayerActivity : ComponentActivity() {
                 val line: CharSequence = if (torrent != null) {
                     val stats = withContext(Dispatchers.IO) { engine.stats(torrent.first, torrent.second) }
                     when {
-                        stats == null -> "Starting torrent…"
+                        stats == null -> engine.problemFor(torrent.first) ?: "Starting torrent…"
                         !stats.hasMetadata -> statsLine("Peers" to "${stats.peers}", "Status" to "Fetching torrent info…")
                         else -> statsLine(
                             "Peers" to "${stats.peers}",

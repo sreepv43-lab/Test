@@ -11,6 +11,7 @@ import io.github.sreepv43.streamhub.data.Settings
 import android.os.SystemClock
 import android.util.Log
 import androidx.core.content.ContextCompat
+import io.github.sreepv43.streamhub.torrent.CachePolicy
 import io.github.sreepv43.streamhub.torrent.TorrentLinks
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
@@ -327,6 +328,20 @@ class Downloader(
                     body.contentLength().takeIf { it >= 0 }
                 } ?: -1L
 
+                if (total > 0) {
+                    // Internal storage always keeps some room for Android and the apps.
+                    val needed = total - (if (append) existing else 0L)
+                    val free = storage.freeBytes(item.location)
+                    val reserve = if (storage.isRemovable(item.location)) 0L else CachePolicy.INTERNAL_RESERVE
+                    if (free != null && needed > free - reserve) {
+                        throw PermanentFailure(
+                            "Not enough space on ${item.location.label}: this needs ${CachePolicy.gb(needed)}, " +
+                                "${CachePolicy.gb(free)} is free" +
+                                (if (reserve > 0) " and ${CachePolicy.gb(reserve)} is kept free for the TV" else "") +
+                                ". Choose a USB drive as the download location.",
+                        )
+                    }
+                }
                 storage.maxFileSize(item.location)?.let { limit ->
                     if (total > limit) throw PermanentFailure(TOO_BIG_FOR_DRIVE.format(item.location.label))
                 }

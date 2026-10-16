@@ -7,7 +7,6 @@ import android.os.Handler
 import android.os.Looper
 import android.content.Context
 import android.net.Uri
-import android.os.SystemClock
 import androidx.core.content.ContextCompat
 import coil.ImageLoader
 import coil.ImageLoaderFactory
@@ -33,6 +32,10 @@ import io.github.sreepv43.streamhub.data.WatchHistory
 import io.github.sreepv43.streamhub.download.DownloadRepository
 import io.github.sreepv43.streamhub.download.DownloadStorage
 import io.github.sreepv43.streamhub.download.Downloader
+import io.github.sreepv43.streamhub.torrent.CacheChoice
+import io.github.sreepv43.streamhub.torrent.CachePolicy
+import io.github.sreepv43.streamhub.torrent.CacheRules
+import io.github.sreepv43.streamhub.torrent.CacheVolume
 import io.github.sreepv43.streamhub.torrent.TorrentEngine
 import io.github.sreepv43.streamhub.torrent.TorrentHttpServer
 import io.github.sreepv43.streamhub.torrent.TorrentLinks
@@ -120,26 +123,41 @@ class AppContainer(context: Context) {
     val storage = DownloadStorage(context)
     val downloads = DownloadRepository(context)
 
-    /** Built-in BitTorrent engine; torrent files are exposed to the player/downloader over local HTTP. */
+    /**
+     * Built-in BitTorrent engine; torrent files are exposed to the player/downloader over local HTTP.
+     * Its data goes to the torrent cache location chosen in Settings → Torrents (with a USB drive
+     * chosen, only there: never to internal storage).
+     */
     val torrents = TorrentEngine(
-        cacheDirs = {
-            (ContextCompat.getExternalFilesDirs(context, null).filterNotNull() + context.filesDir)
-                .map { File(it, "torrent-cache") } + driveCacheFolders()
-        },
+        cacheDirs = { torrentCacheDirs(context) },
         fetchTorrentFile = { url -> fetchBytes(context, url) },
-        cacheLimitBytes = { settings.torrentCacheLimitGb.value * (1L shl 30) },
+        chooseCache = { chooseTorrentCache() },
+        cacheRules = { dir -> torrentCacheRules(dir) },
     )
-    val torrentServer = TorrentHttpServer(torrents)
 
-    private var driveFolders: Pair<Long, List<File>>? = null
+    /** Where new torrent data goes now (see [CachePolicy.choose]). */
+    fun chooseTorrentCache(volumes: List<CacheVolume> = storage.cacheVolumes()): CacheChoice = CachePolicy.choose(
+        mode = settings.torrentCacheMode.value,
+        usbId = settings.torrentCacheVolumeId.value.ifEmpty { null },
+        usbLabel = settings.torrentCacheVolumeLabel.value.ifEmpty { null },
+        volumes = volumes,
+    )
 
-    /** Cache folders on USB drives. Checking them writes a test file, so it's remembered for a minute. */
-    @Synchronized
-    private fun driveCacheFolders(): List<File> {
-        val now = SystemClock.elapsedRealtime()
-        driveFolders?.takeIf { now - it.first < DRIVE_CHECK_MS }?.let { return it.second }
-        return storage.writableDriveFolders(".torrent-cache").also { driveFolders = now to it }
+    /** Every torrent cache folder that exists: on each volume, plus where older versions kept it. */
+    private fun torrentCacheDirs(context: Context): List<File> {
+        val legacy = (ContextCompat.getExternalFilesDirs(context, null).filterNotNull() + context.filesDir)
+            .map { File(it, "torrent-cache") }
+        return (storage.cacheVolumes().mapNotNull { it.dir } + legacy).distinct().filter { it.isDirectory }
     }
+
+    private fun torrentCacheRules(dir: File): CacheRules {
+        val volume = storage.cacheVolumes().firstOrNull { it.dir == dir } ?: return CacheRules()
+        if (!settings.torrentCacheCleanup.value) return CacheRules()
+        val target = if (volume.removable) settings.torrentCacheUsbTargetGb.value else settings.torrentCacheLimitGb.value
+        return CacheRules(targetBytes = target * CachePolicy.GB, reserveBytes = CachePolicy.reserveFor(volume))
+    }
+
+    val torrentServer = TorrentHttpServer(torrents)
 
     /** Local torrent streams may wait for peers, so they get generous timeouts. */
     val torrentHttp: OkHttpClient = mediaHttp.newBuilder()
@@ -172,7 +190,6 @@ class AppContainer(context: Context) {
 
     private companion object {
         const val PREPARED_STREAMS = 3
-        const val DRIVE_CHECK_MS = 60_000L
     }
 
     private fun fetchBytes(context: Context, url: String): ByteArray {
