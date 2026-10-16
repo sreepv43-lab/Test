@@ -48,13 +48,13 @@ private fun storageStatus(container: AppContainer, fresh: Boolean): StorageStatu
     val storage = container.storage
     val volumes = storage.cacheVolumes(fresh).map { volume ->
         val dir = volume.dir ?: return@map volume
-        storage.bounded(2, volume) { if (dir.exists()) volume.copy(freeBytes = dir.usableSpace) else volume }
+        storage.bounded(15, volume) { if (dir.exists()) volume.copy(freeBytes = dir.usableSpace) else volume }
     }
     return StorageStatus(
         volumes = volumes,
         choice = container.chooseTorrentCache(volumes),
         cacheBytes = volumes.mapNotNull { v ->
-            v.dir?.let { dir -> storage.bounded(4, -1L) { if (dir.exists()) container.torrents.sizeOf(dir) else 0L } }
+            v.dir?.let { dir -> storage.bounded(15, -1L) { if (dir.exists()) container.torrents.sizeOf(dir) else 0L } }
                 ?.takeIf { it >= 0 }?.let { v.id to it }
         }.toMap(),
         torrents = container.torrents.summaries(),

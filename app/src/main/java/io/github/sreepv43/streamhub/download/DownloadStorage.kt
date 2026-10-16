@@ -46,7 +46,8 @@ class DownloadStorage(private val context: Context) {
         const val DRIVE_FOLDER = "StreamHub"
         const val TORRENT_CACHE = "torrent-cache"
         const val CACHE_VOLUMES_MS = 30_000L
-        const val CHECK_TIMEOUT_S = 4L
+        // Long enough for a sleeping hard disk to spin up (they can take ~10 s).
+        const val CHECK_TIMEOUT_S = 15L
         const val FAT32_MAX_FILE = 4L * 1024 * 1024 * 1024 - 1
     }
 
