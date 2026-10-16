@@ -9,6 +9,7 @@ import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.SocketException
+import java.net.SocketTimeoutException
 import java.util.concurrent.Executors
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -80,7 +81,7 @@ class TorrentHttpServer(private val engine: TorrentEngine) {
                 } catch (e: IOException) {
                     return respond(out, 504, e.message ?: "Torrent unavailable")
                 }
-                file.use { serve(it, method == "HEAD", headers["range"], out) }
+                file.use { serve(it, method == "HEAD", headers["range"], out) { clientGone(socket, input) } }
             } catch (e: SocketException) {
                 // Client went away (seek or stop): normal.
             } catch (e: Exception) {
@@ -89,7 +90,31 @@ class TorrentHttpServer(private val engine: TorrentEngine) {
         }
     }
 
-    private fun serve(file: TorrentEngine.TorrentFile, headOnly: Boolean, rangeHeader: String?, out: OutputStream) {
+    /**
+     * Whether the player hung up (it does when it seeks elsewhere): its request must stop at once
+     * so it no longer steers the download.
+     */
+    private fun clientGone(socket: Socket, input: InputStream): Boolean {
+        val timeout = socket.soTimeout
+        return try {
+            socket.soTimeout = 1
+            input.read() == -1
+        } catch (e: SocketTimeoutException) {
+            false
+        } catch (e: IOException) {
+            true
+        } finally {
+            runCatching { socket.soTimeout = timeout }
+        }
+    }
+
+    private fun serve(
+        file: TorrentEngine.TorrentFile,
+        headOnly: Boolean,
+        rangeHeader: String?,
+        out: OutputStream,
+        clientGone: () -> Boolean,
+    ) {
         val range = ByteRange.parse(rangeHeader, file.size)
         if (range != null && (range.start >= file.size || range.start > range.endInclusive)) {
             writeHead(out, 416, "Range Not Satisfiable", listOf("Content-Range" to "bytes */${file.size}", "Content-Length" to "0"))
@@ -111,17 +136,21 @@ class TorrentHttpServer(private val engine: TorrentEngine) {
             out.flush()
             return
         }
+        // A short range (e.g. the MKV index at the end) only asks for its own bytes.
+        if (range != null) file.limitTo(end)
         val buffer = ByteArray(256 * 1024)
         var position = start
         var waitedMs = 0L
         while (position <= end) {
             val want = minOf(buffer.size.toLong(), end - position + 1).toInt()
-            val read = file.read(position, buffer, 0, want, timeoutMs = 1_000)
+            val read = file.read(position, buffer, 0, want, timeoutMs = WAIT_STEP_MS)
             if (read < 0) break
             if (read == 0) {
-                // Piece not there yet: keep the connection alive while peers deliver it.
+                // Piece not there yet: keep the connection alive while peers deliver it, unless the
+                // player has gone (seeked elsewhere).
                 out.flush()
-                waitedMs += 1_000
+                if (clientGone()) return
+                waitedMs += WAIT_STEP_MS
                 if (waitedMs > PIECE_WAIT_LIMIT_MS) throw IOException("Timed out waiting for torrent data")
                 continue
             }
@@ -159,6 +188,8 @@ class TorrentHttpServer(private val engine: TorrentEngine) {
 
     companion object {
         private const val PIECE_WAIT_LIMIT_MS = 5 * 60_000L
+        /** How long one read waits for a piece before checking whether the player is still there. */
+        private const val WAIT_STEP_MS = 250L
 
         fun mimeFor(name: String): String = when (name.substringAfterLast('.', "").lowercase()) {
             "mkv" -> "video/x-matroska"

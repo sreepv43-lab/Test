@@ -1,6 +1,8 @@
 package io.github.sreepv43.streamhub.torrent
 
 import io.github.sreepv43.streamhub.addon.AddonUrls
+import org.libtorrent4j.AddTorrentParams
+import org.libtorrent4j.AlertListener
 import org.libtorrent4j.Priority
 import org.libtorrent4j.SessionHandle
 import org.libtorrent4j.SessionManager
@@ -10,11 +12,16 @@ import org.libtorrent4j.Sha1Hash
 import org.libtorrent4j.TorrentFlags
 import org.libtorrent4j.TorrentHandle
 import org.libtorrent4j.TorrentInfo
+import org.libtorrent4j.alerts.Alert
+import org.libtorrent4j.alerts.AlertType
+import org.libtorrent4j.alerts.SaveResumeDataAlert
 import org.libtorrent4j.swig.settings_pack
 import java.io.File
 import java.io.IOException
 import java.io.RandomAccessFile
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.TimeUnit
 import java.util.logging.Level
 import java.util.logging.Logger
@@ -89,6 +96,24 @@ class TorrentEngine(
         Thread(r, "torrent-prefetch").apply { isDaemon = true }
     }
 
+    private val nextReaderId = AtomicLong()
+    /** Where to write each torrent's resume data when libtorrent delivers it (by info hash). */
+    private val resumeDirs = ConcurrentHashMap<String, File>()
+
+    /** Writes resume data (which pieces are on disk) next to the torrent's folder, to reuse its data later. */
+    private val resumeListener = object : AlertListener {
+        override fun types(): IntArray = intArrayOf(AlertType.SAVE_RESUME_DATA.swig())
+
+        override fun alert(alert: Alert<*>) {
+            val saved = alert as? SaveResumeDataAlert ?: return
+            runCatching {
+                val hash = saved.handle().infoHash().toHex().lowercase()
+                val dir = resumeDirs[hash] ?: return
+                writeAtomically(File(dir, "$hash$RESUME"), AddTorrentParams.writeResumeDataBuf(saved.params()))
+            }.onFailure { log.log(Level.WARNING, "saving resume data failed", it) }
+        }
+    }
+
     /** The last storage problem that stopped a torrent (shown by the player), or null. */
     @Volatile var storageProblem: String? = null
         private set
@@ -96,6 +121,7 @@ class TorrentEngine(
     init {
         janitor.scheduleWithFixedDelay({ runCatching { trimCache() } }, 1, 1, TimeUnit.MINUTES)
         janitor.scheduleWithFixedDelay({ runCatching { checkStorage() } }, storageCheckSeconds, storageCheckSeconds, TimeUnit.SECONDS)
+        janitor.scheduleWithFixedDelay({ runCatching { tick() } }, TICK_MS, TICK_MS, TimeUnit.MILLISECONDS)
     }
 
     internal class Entry(val hash: String, val handle: TorrentHandle, val saveDir: File, val volume: CacheVolume?) {
@@ -106,42 +132,100 @@ class TorrentEngine(
         val openFiles = HashSet<Int>()
         /** Piece priorities were limited by a prefetch; open() lifts the limit. */
         var limitedPieces = false
-    }
-
-    /** One file inside a torrent, opened for reading. Call [close] when done. */
-    inner class TorrentFile internal constructor(
-        private val entry: Entry,
-        val index: Int,
-        val name: String,
-        val size: Long,
-        private val fileOffset: Long,
-        private val pieceLength: Int,
-        private val lastPiece: Int,
-        private val path: File,
-    ) : AutoCloseable {
-        private var raf: RandomAccessFile? = null
-        private var closed = false
-        private var windowStart = -1
-        /** Last piece that has a deadline set; the window only grows by the pieces that entered it. */
-        private var deadlineEnd = -1
-        /** End (exclusive) of the pieces currently raised to top priority. */
-        private var topEnd = -1
         /**
          * Pieces known to be downloaded (they never go missing). Asking libtorrent is a call that
-         * waits for its busy network thread, so doing it for every 256 KB read would throttle playback.
+         * waits for its busy network thread, so it is asked once per piece at most.
          */
-        private val have = java.util.BitSet()
+        val have = java.util.BitSet()
+        /** Scheduling state of each open file. */
+        val files = HashMap<Int, FileSchedule>()
+        /** Recent download speeds (bytes/s), for the adaptive read-ahead. */
+        val rates = ArrayDeque<Int>()
+        var resumeSavedAt = 0L
+    }
 
-        /**
-         * How far ahead of the read position pieces get deadlines: about 25 s of video, judged from
-         * the file size (a 30 GB film needs far more bytes per second than a 2 GB one).
-         */
-        private val readaheadBytes = (size / 400).coerceIn(MIN_READAHEAD_BYTES, MAX_READAHEAD_BYTES)
+    /** Who needs which part of one open file, and what was last asked of libtorrent for it. */
+    internal class FileSchedule(
+        val index: Int,
+        val size: Long,
+        val fileOffset: Long,
+        val pieceLength: Int,
+        val firstPiece: Int,
+        val lastPiece: Int,
+    ) {
+        val readers = HashMap<Long, ReaderWindow>()
+        var durationMs = 0L
+        var playheadMs = -1L
+        var playheadAt = 0L
+        var applied: PiecePlan? = null
+        var prioritiesAt = 0L
+        var deadlines: Set<Int> = emptySet()
 
-        private fun hasPiece(piece: Int): Boolean {
-            if (have.get(piece)) return true
-            return entry.handle.havePiece(piece).also { if (it) have.set(piece) }
+        fun pieceAt(position: Long): Int = ((fileOffset + position.coerceIn(0, maxOf(0, size - 1))) / pieceLength).toInt()
+    }
+
+    private fun hasPieceLocked(entry: Entry, piece: Int): Boolean {
+        if (entry.have.get(piece)) return true
+        return (entry.handle.isValid && entry.handle.havePiece(piece)).also { if (it) entry.have.set(piece) }
+    }
+
+    /**
+     * Brings libtorrent's piece priorities and deadlines in line with the readers of [file] (see
+     * [PiecePlanner]). Deadlines follow every move; the full priority list is only sent again when
+     * a reader came, went or jumped ([force]) or every [PRIORITY_REFRESH_MS], as it covers the
+     * whole torrent. Called with [lock] held.
+     */
+    private fun replanLocked(entry: Entry, file: FileSchedule, force: Boolean) {
+        if (!entry.handle.isValid || entry.lost != null) return
+        val now = System.currentTimeMillis()
+        val readers = file.readers.values.toMutableList()
+        // The player's own position (while it reports it): what is on screen must never wait.
+        if (file.playheadMs >= 0 && file.durationMs > 0 && now - file.playheadAt < PLAYHEAD_VALID_MS) {
+            val byte = (file.size * (file.playheadMs.toDouble() / file.durationMs)).toLong()
+            readers += ReaderWindow(PLAYHEAD_READER, file.pieceAt(byte), file.lastPiece, 0, now)
         }
+        if (readers.isEmpty()) return
+        val bitrate = PiecePlanner.bitrate(file.size, file.durationMs)
+        val window = PiecePlanner.windowSeconds(bitrate, entry.rates.toList())
+        val plan = PiecePlanner.plan(
+            file.firstPiece, file.lastPiece, file.pieceLength.toLong(), bitrate, window, readers, now,
+        ) { hasPieceLocked(entry, it) }
+        val old = file.applied
+        val changed = old == null || !old.priorities.contentEquals(plan.priorities)
+        if (changed && (force || old == null || now - file.prioritiesAt >= PRIORITY_REFRESH_MS)) {
+            val all = entry.handle.piecePriorities()
+            for (i in plan.priorities.indices) {
+                val piece = plan.firstPiece + i
+                if (piece < all.size) all[piece] = Priority.fromSwig(plan.priorities[i])
+            }
+            entry.handle.prioritizePieces(all)
+            file.applied = plan
+            file.prioritiesAt = now
+        }
+        // Only this file's own obsolete deadlines are cancelled; other files and readers keep theirs.
+        for (piece in file.deadlines) if (piece !in plan.deadlines) entry.handle.resetPieceDeadline(piece)
+        for ((piece, deadline) in plan.deadlines) if (piece !in file.deadlines) entry.handle.setPieceDeadline(piece, deadline)
+        file.deadlines = plan.deadlines.keys
+    }
+
+    /** One file inside a torrent, opened for reading (one HTTP request). Call [close] when done. */
+    inner class TorrentFile internal constructor(
+        private val entry: Entry,
+        private val schedule: FileSchedule,
+        val name: String,
+        private val path: File,
+    ) : AutoCloseable {
+        val index: Int get() = schedule.index
+        val size: Long get() = schedule.size
+        private val pieceLength = schedule.pieceLength
+        private val fileOffset = schedule.fileOffset
+        private var raf: RandomAccessFile? = null
+        @Volatile private var closed = false
+        private val readerId = nextReaderId.incrementAndGet()
+        private val startedAt = System.currentTimeMillis()
+        private var lastPiece = schedule.lastPiece
+        private var currentPiece = -1
+        private var lastActive = startedAt
 
         val infoHash: String get() = entry.hash
 
@@ -154,6 +238,14 @@ class TorrentEngine(
         }
 
         /**
+         * The request only wants bytes up to [endInclusive] (e.g. the MKV index at the end): its
+         * read-ahead stops there instead of reaching into the rest of the film.
+         */
+        fun limitTo(endInclusive: Long) {
+            lastPiece = pieceAt(endInclusive.coerceIn(0, size - 1))
+        }
+
+        /**
          * Reads up to [length] bytes at [position], waiting (up to [timeoutMs]) for the piece to be
          * downloaded. Returns -1 at end of file, 0 if the piece did not arrive in time.
          */
@@ -161,62 +253,35 @@ class TorrentEngine(
             if (position >= size) return -1
             entry.lost?.let { throw TorrentException(it) }
             val piece = pieceAt(position)
+            if (piece != currentPiece) moveTo(piece)
             if (!awaitPiece(piece, timeoutMs)) return 0
             val count = minOf(length.toLong(), bytesLeftInPiece(position), size - position).toInt()
             val file = raf ?: RandomAccessFile(path, "r").also { raf = it }
             file.seek(position)
-            return file.read(buffer, offset, count)
+            val read = file.read(buffer, offset, count)
+            lastActive = System.currentTimeMillis()
+            return read
+        }
+
+        /** Tells the scheduler where this reader is now. */
+        private fun moveTo(piece: Int) {
+            val jump = currentPiece < 0 || piece < currentPiece || piece > currentPiece + 2
+            currentPiece = piece
+            synchronized(lock) {
+                schedule.readers[readerId] = ReaderWindow(readerId, piece, lastPiece, startedAt, lastActive)
+                replanLocked(entry, schedule, force = jump)
+            }
         }
 
         private fun awaitPiece(piece: Int, timeoutMs: Long): Boolean {
-            prioritizeWindow(piece)
             val deadline = System.currentTimeMillis() + timeoutMs
             while (!closed) {
                 entry.lost?.let { throw TorrentException(it) }
-                if (hasPiece(piece)) return true
+                if (synchronized(lock) { hasPieceLocked(entry, piece) }) return true
                 if (System.currentTimeMillis() > deadline) return false
                 Thread.sleep(50)
             }
             return false
-        }
-
-        /** Asks libtorrent to fetch the pieces right after the read position first. */
-        private fun prioritizeWindow(piece: Int) {
-            if (piece == windowStart) return
-            val jump = windowStart < 0 || piece < windowStart || piece > windowStart + 2
-            windowStart = piece
-            val count = maxOf(MIN_READAHEAD_PIECES, (readaheadBytes / pieceLength).toInt())
-            synchronized(lock) {
-                if (!entry.handle.isValid) return
-                val from = if (jump) {
-                    entry.handle.clearPieceDeadlines()
-                    piece
-                } else maxOf(piece, deadlineEnd + 1)
-                val to = minOf(piece + count - 1, lastPiece)
-                for (p in from..to) {
-                    if (!hasPiece(p)) entry.handle.setPieceDeadline(p, 100 + (p - piece) * 150)
-                }
-                deadlineEnd = maxOf(to, if (jump) to else deadlineEnd)
-                raiseWindow(piece, jump)
-            }
-        }
-
-        /**
-         * Puts the next stretch of the file ahead of everything else, so the peers' bandwidth goes to
-         * what will be played next and not to far-away parts. Called with [lock] held.
-         */
-        private fun raiseWindow(piece: Int, jump: Boolean) {
-            val ahead = maxOf(MIN_READAHEAD_PIECES * 2, (readaheadBytes * TOP_PRIORITY_FACTOR / pieceLength).toInt())
-            if (!jump && piece + ahead / 2 < topEnd) return
-            val pieces = entry.handle.piecePriorities()
-            val first = pieceAt(0)
-            val end = minOf(piece + ahead, lastPiece + 1)
-            for (i in first..lastPiece) {
-                if (i >= pieces.size) break
-                pieces[i] = if (i in piece until end) Priority.TOP_PRIORITY else Priority.DEFAULT
-            }
-            entry.handle.prioritizePieces(pieces)
-            topEnd = end
         }
 
         fun progress(): Float = synchronized(lock) {
@@ -229,6 +294,10 @@ class TorrentEngine(
             if (closed) return
             closed = true
             runCatching { raf?.close() }
+            synchronized(lock) {
+                // A closed request (finished, or the player seeked away) stops steering at once.
+                if (schedule.readers.remove(readerId) != null) runCatching { replanLocked(entry, schedule, force = true) }
+            }
             release(entry)
         }
     }
@@ -267,16 +336,19 @@ class TorrentEngine(
                     entry.handle.setPieceDeadline(last, 500)
                 }
             }
-            return TorrentFile(
-                entry = entry,
-                index = index,
-                name = files.fileName(index),
-                size = files.fileSize(index),
-                fileOffset = files.fileOffset(index),
-                pieceLength = info.pieceLength(),
-                lastPiece = files.lastPieceIndexAtFile(index),
-                path = File(entry.saveDir, files.filePath(index)),
-            )
+            val schedule = synchronized(lock) {
+                entry.files.getOrPut(index) {
+                    FileSchedule(
+                        index = index,
+                        size = files.fileSize(index),
+                        fileOffset = files.fileOffset(index),
+                        pieceLength = info.pieceLength(),
+                        firstPiece = files.pieceIndexAtFile(index),
+                        lastPiece = files.lastPieceIndexAtFile(index),
+                    )
+                }
+            }
+            return TorrentFile(entry, schedule, files.fileName(index), File(entry.saveDir, files.filePath(index)))
         } catch (e: Throwable) {
             release(entry)
             throw e
@@ -387,14 +459,83 @@ class TorrentEngine(
         )
     }
 
-    /** Removes every torrent nobody is reading and deletes its data. */
-    fun clearCache() {
+    /**
+     * The player's position in [source] (file [fileIdx], -1 = the one being played) and the video's
+     * length: what is on screen gets top priority, and the read-ahead adapts to the bitrate.
+     * Returns how much video (ms) is downloaded without gaps from that position, or null.
+     */
+    fun reportPlayback(source: String, fileIdx: Int, positionMs: Long, durationMs: Long): Long? {
+        val now = System.currentTimeMillis()
+        val (entry, file, pieces) = synchronized(lock) {
+            val entry = sourcesToHash[source]?.let { torrents[it] }?.takeIf { it.handle.isValid && it.lost == null } ?: return null
+            val file = entry.files[fileIdx] ?: entry.files.values.firstOrNull() ?: return null
+            val seeked = file.playheadMs < 0 || kotlin.math.abs(positionMs - file.playheadMs) > SEEK_THRESHOLD_MS
+            file.playheadMs = positionMs
+            file.playheadAt = now
+            if (durationMs > 0) file.durationMs = durationMs
+            // One call for the whole piece map (instead of asking piece by piece).
+            val pieces = entry.handle.status(TorrentHandle.QUERY_PIECES).pieces()
+            for (p in file.firstPiece..minOf(file.lastPiece, pieces.size() - 1)) if (pieces.getBit(p)) entry.have.set(p)
+            replanLocked(entry, file, force = seeked)
+            Triple(entry, file, entry.have.clone() as java.util.BitSet)
+        }
+        if (file.durationMs <= 0) return null
+        val byte = (file.size * (positionMs.toDouble() / file.durationMs)).toLong().coerceIn(0, file.size)
+        val bytes = PiecePlanner.contiguousBytes(byte, file.fileOffset, file.size, file.pieceLength.toLong()) { pieces.get(it) }
+        return (bytes / PiecePlanner.bitrate(file.size, file.durationMs) * 1000).toLong()
+    }
+
+    /**
+     * Every [TICK_MS]: samples the download speed of torrents being played (for the adaptive
+     * read-ahead), refreshes their piece plan, and saves their resume data now and then, so their
+     * data is reused even if the app is killed.
+     */
+    private fun tick() {
+        val now = System.currentTimeMillis()
         synchronized(lock) {
-            torrents.values.filter { it.refs == 0 }.forEach(::removeLocked)
+            for (entry in torrents.values) {
+                if (!entry.handle.isValid || entry.lost != null) continue
+                val busy = entry.files.values.any { it.readers.isNotEmpty() || now - it.playheadAt < PLAYHEAD_VALID_MS }
+                if (!busy) continue
+                val rate = runCatching { entry.handle.status().downloadPayloadRate() }.getOrDefault(0)
+                entry.rates.addLast(rate)
+                while (entry.rates.size > RATE_SAMPLES) entry.rates.removeFirst()
+                entry.files.values.forEach { runCatching { replanLocked(entry, it, force = false) } }
+                if (now - entry.resumeSavedAt > RESUME_SAVE_INTERVAL_MS) {
+                    entry.resumeSavedAt = now
+                    requestResumeLocked(entry)
+                }
+            }
+        }
+    }
+
+    private fun requestResumeLocked(entry: Entry) {
+        val dir = entry.saveDir.parentFile ?: return
+        resumeDirs[entry.hash] = dir
+        // With the torrent's details ("info"), so a magnet link needn't fetch them again.
+        runCatching { if (entry.handle.isValid) entry.handle.saveResumeData(TorrentHandle.SAVE_INFO_DICT.or_(TorrentHandle.FLUSH_DISK_CACHE)) }
+    }
+
+    private fun writeAtomically(file: File, bytes: ByteArray) {
+        val tmp = File(file.parentFile, file.name + ".tmp")
+        tmp.writeBytes(bytes)
+        if (!tmp.renameTo(file)) {
+            file.writeBytes(bytes)
+            tmp.delete()
+        }
+    }
+
+    /** Data of a torrent kept in [dir]: its folder and its resume data. */
+    private fun keptFiles(dir: File, hash: String): List<File> = listOf(File(dir, hash), File(dir, hash + RESUME))
+
+    /** Removes every torrent nobody is reading and deletes its data (also data kept from before). */
+    fun clearCache() {
+        val inUse = synchronized(lock) {
+            torrents.values.filter { it.refs == 0 }.toList().forEach { removeLocked(it) }
+            torrents.keys.toSet()
         }
         cacheDirs().forEach { dir ->
-            dir.listFiles()?.filter { child -> synchronized(lock) { torrents.values.none { it.saveDir == child } } }
-                ?.forEach { it.deleteRecursively() }
+            dir.listFiles()?.filter { child -> inUse.none { child.name.startsWith(it) } }?.forEach { it.deleteRecursively() }
         }
     }
 
@@ -415,10 +556,14 @@ class TorrentEngine(
      */
     fun releaseIdle() {
         janitor.execute {
-            synchronized(lock) {
-                torrents.values.filter { it.refs == 0 }.toList().forEach(::removeLocked)
+            val kept = synchronized(lock) {
+                val idle = torrents.values.filter { it.refs == 0 }.toList()
+                idle.forEach { removeLocked(it, keepData = it.files.isNotEmpty()) }
                 prefetched.clear()
+                idle.any { it.files.isNotEmpty() }
             }
+            // Give libtorrent time to deliver the resume data before the session stops.
+            if (kept) Thread.sleep(RESUME_SAVE_WAIT_MS)
             val stopped = synchronized(sessionLock) {
                 synchronized(lock) {
                     if (torrents.isNotEmpty() || prefetching.isNotEmpty()) null
@@ -465,13 +610,26 @@ class TorrentEngine(
             var free = dir.usableSpace
             fun over() = (rules.targetBytes > 0 && size > rules.targetBytes) || (rules.reserveBytes > 0 && free < rules.reserveBytes)
             if (!over()) continue
-            val idle = synchronized(lock) {
-                torrents.values.filter { it.refs == 0 && it.saveDir.parentFile == dir }.sortedBy { it.lastReleased }
+            // Least recently used first: torrents loaded but unused, and data kept from earlier.
+            val candidates = synchronized(lock) {
+                val loaded = torrents.values.filter { it.refs == 0 && it.saveDir.parentFile == dir }
+                    .map { it.hash to it.lastReleased }
+                val kept = dir.listFiles().orEmpty()
+                    .filter { it.isDirectory && HASH.matches(it.name) && it.name !in torrents }
+                    .map { it.name to maxOf(it.lastModified(), File(dir, it.name + RESUME).lastModified()) }
+                (loaded + kept).sortedBy { it.second }.map { it.first }
             }
-            for (entry in idle) {
+            for (hash in candidates) {
                 if (!over()) break
-                val bytes = sizeOf(entry.saveDir)
-                val removed = synchronized(lock) { (entry.refs == 0).also { if (it) removeLocked(entry) } }
+                val bytes = keptFiles(dir, hash).sumOf(::sizeOf)
+                val removed = synchronized(lock) {
+                    val entry = torrents[hash]
+                    when {
+                        entry == null -> true.also { keptFiles(dir, hash).forEach { it.deleteRecursively() } }
+                        entry.refs == 0 -> true.also { removeLocked(entry) }
+                        else -> false
+                    }
+                }
                 if (removed) {
                     size -= bytes
                     free += bytes
@@ -539,6 +697,14 @@ class TorrentEngine(
         // Looking at the drives can be slow (a sleeping USB disk); never do it while holding the lock.
         val choice = pickCache()
         val cacheDir = choice.dir
+        // Data kept from an earlier viewing on this drive: added with its resume data, libtorrent
+        // continues from the pieces already there instead of downloading them again.
+        val resumeFile = File(cacheDir, hash + RESUME).takeIf { it.isFile && File(cacheDir, hash).isDirectory }
+        val keptInfo = if (resumeFile != null && info == null) {
+            // Resume data saved with the torrent's "info" reads like a .torrent file.
+            runCatching { TorrentInfo(resumeFile.readBytes()) }.getOrNull()
+        } else null
+        val addInfo = info ?: keptInfo
         val saveDir = synchronized(lock) {
             torrents[hash]?.takeIf { it.handle.isValid && it.lost == null }?.let { entry ->
                 sourcesToHash[source] = hash
@@ -546,9 +712,9 @@ class TorrentEngine(
                 return entry
             }
             val dir = File(cacheDir, hash).apply { mkdirs() }
-            if (info != null) {
-                val priorities = Array(info.numFiles()) { Priority.IGNORE }
-                session.download(info, dir, null, priorities, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
+            if (addInfo != null) {
+                val priorities = Array(addInfo.numFiles()) { Priority.IGNORE }
+                session.download(addInfo, dir, resumeFile, priorities, null, TorrentFlags.SEQUENTIAL_DOWNLOAD)
             } else {
                 session.download(withDefaultTrackers(source), dir, TorrentFlags.SEQUENTIAL_DOWNLOAD)
             }
@@ -598,29 +764,63 @@ class TorrentEngine(
         }
         janitor.schedule({
             synchronized(lock) {
-                if (entry.refs == 0 && System.currentTimeMillis() - entry.lastReleased >= idleTimeoutMs) {
-                    removeLocked(entry)
+                if (entry.refs == 0 && System.currentTimeMillis() - entry.lastReleased >= idleTimeoutMs && torrents[entry.hash] === entry) {
+                    // Played titles keep their data on the drive; ones only prepared don't.
+                    removeLocked(entry, keepData = entry.files.isNotEmpty())
                 }
             }
         }, idleTimeoutMs + 1_000, TimeUnit.MILLISECONDS)
     }
 
-    private fun removeLocked(entry: Entry) {
+    /**
+     * Takes [entry] out of the engine. With [keepData] (a title that was played), its data stays on
+     * the drive with fresh resume data, so playing it again continues from what is already there;
+     * otherwise its data is deleted. A torrent whose drive is gone is only let go of.
+     */
+    private fun removeLocked(entry: Entry, keepData: Boolean = false) {
         if (torrents[entry.hash] === entry) torrents.remove(entry.hash)
         sourcesToHash.entries.removeAll { it.value == entry.hash }
-        runCatching {
-            if (entry.handle.isValid) session?.remove(entry.handle, SessionHandle.DELETE_FILES)
-        }.onFailure { log.log(Level.WARNING, "remove failed", it) }
-        janitor.schedule({ entry.saveDir.deleteRecursively() }, 5, TimeUnit.SECONDS)
+        val dir = entry.saveDir.parentFile
+        when {
+            entry.lost != null -> runCatching { if (entry.handle.isValid) session?.remove(entry.handle) }
+            keepData && dir != null -> {
+                requestResumeLocked(entry)
+                janitor.schedule({
+                    synchronized(lock) {
+                        // Played again in the meantime: it is in use, not removed.
+                        if (!torrents.containsKey(entry.hash)) runCatching { if (entry.handle.isValid) session?.remove(entry.handle) }
+                    }
+                }, RESUME_SAVE_WAIT_MS, TimeUnit.MILLISECONDS)
+            }
+            else -> {
+                runCatching {
+                    if (entry.handle.isValid) session?.remove(entry.handle, SessionHandle.DELETE_FILES)
+                }.onFailure { log.log(Level.WARNING, "remove failed", it) }
+                janitor.schedule({
+                    synchronized(lock) {
+                        if (!torrents.containsKey(entry.hash)) {
+                            entry.saveDir.deleteRecursively()
+                            if (dir != null) keptFiles(dir, entry.hash).forEach { it.deleteRecursively() }
+                        }
+                    }
+                }, 5, TimeUnit.SECONDS)
+            }
+        }
     }
 
     private fun session(): SessionManager {
         session?.let { return it }
         return synchronized(sessionLock) {
             session ?: SessionManager(false).also { s ->
-                // Leftovers from a previous run are never reused. Moving them aside is instant;
-                // deleting them (gigabytes, perhaps on a USB drive) happens in the background.
-                val stale = cacheDirs().flatMap { dir -> dir.listFiles()?.toList().orEmpty() }.mapNotNull { leftover ->
+                // Data kept with resume data is reused; other leftovers (e.g. from an app that was
+                // killed before saving any) are removed. Moving them aside is instant; deleting them
+                // (gigabytes, perhaps on a USB drive) happens in the background.
+                val stale = cacheDirs().flatMap { dir ->
+                    val children = dir.listFiles()?.toList().orEmpty()
+                    val kept = children.filter { it.isDirectory && HASH.matches(it.name) && keptFiles(dir, it.name).all(File::exists) }
+                        .flatMap { keptFiles(dir, it.name) }.toSet()
+                    children.filter { it !in kept }
+                }.mapNotNull { leftover ->
                     val aside = File(leftover.parentFile, ".old-" + System.nanoTime())
                     if (leftover.renameTo(aside)) aside else { leftover.deleteRecursively(); null }
                 }
@@ -633,9 +833,12 @@ class TorrentEngine(
                     .uploadRateLimit(2_000_000)
                 settings.setInteger(settings_pack.int_types.request_timeout.swigValue(), 10)
                 settings.setInteger(settings_pack.int_types.piece_timeout.swigValue(), 10)
+                // Peers that dropped out are tried again after 15 s instead of a minute (speeds fluctuate).
+                settings.setInteger(settings_pack.int_types.min_reconnect_time.swigValue(), 15)
                 settings.setEnableDht(true)
                 settings.setEnableLsd(true)
                 configure(settings)
+                s.addListener(resumeListener)
                 s.start(SessionParams(settings))
                 session = s
             }
@@ -689,11 +892,20 @@ class TorrentEngine(
     }
 
     companion object {
-        private const val MIN_READAHEAD_BYTES = 24L * 1024 * 1024
-        private const val MAX_READAHEAD_BYTES = 128L * 1024 * 1024
         private const val MIN_READAHEAD_PIECES = 4
-        /** Pieces this many read-aheads ahead get top priority, so peers send them before anything later. */
-        private const val TOP_PRIORITY_FACTOR = 3
+        private const val TICK_MS = 2_000L
+        /** The full piece priority list is sent at most this often unless a reader comes, goes or jumps. */
+        private const val PRIORITY_REFRESH_MS = 2_000L
+        /** Id of the player's own position among a file's readers. */
+        private const val PLAYHEAD_READER = -1L
+        private const val PLAYHEAD_VALID_MS = 5_000L
+        /** A reported position this far from the last one is a seek. */
+        private const val SEEK_THRESHOLD_MS = 5_000L
+        private const val RATE_SAMPLES = 15
+        private const val RESUME_SAVE_INTERVAL_MS = 60_000L
+        private const val RESUME_SAVE_WAIT_MS = 3_000L
+        private const val RESUME = ".resume"
+        private val HASH = Regex("[0-9a-f]{40}")
         /** A drive with less free space than this stops its torrents rather than fail mid-write. */
         private const val MIN_FREE_BYTES = 512L * 1024 * 1024
         private const val PREFETCH_BYTES = 8L * 1024 * 1024

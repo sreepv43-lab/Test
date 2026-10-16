@@ -526,13 +526,21 @@ class PlayerActivity : ComponentActivity() {
             while (isActive && player === exo) {
                 val waiting = exo.playbackState != Player.STATE_READY
                 val line: CharSequence = if (torrent != null) {
-                    val stats = withContext(Dispatchers.IO) { engine.stats(torrent.first, torrent.second) }
+                    // Tells the engine where playback is (it puts that part first) and gets back how
+                    // much video from there is downloaded without gaps.
+                    val position = exo.currentPosition
+                    val duration = exo.duration.takeIf { it > 0 } ?: -1L
+                    val (stats, readyMs) = withContext(Dispatchers.IO) {
+                        val ready = runCatching { engine.reportPlayback(torrent.first, torrent.second, position, duration) }.getOrNull()
+                        engine.stats(torrent.first, torrent.second) to ready
+                    }
                     when {
                         stats == null -> engine.problemFor(torrent.first) ?: "Starting torrent…"
                         !stats.hasMetadata -> statsLine("Peers" to "${stats.peers}", "Status" to "Fetching torrent info…")
                         else -> statsLine(
                             "Peers" to "${stats.peers}",
                             "Speed" to Formatter.formatShortFileSize(this@PlayerActivity, stats.downloadRate.toLong()) + "/s",
+                            "Ready" to (readyMs?.let { formatTime(it) } ?: "…"),
                             "Downloaded" to Formatter.formatShortFileSize(this@PlayerActivity, stats.fileDownloadedBytes),
                             "Completed" to "%.2f%%".format(stats.fileProgress * 100),
                         )
