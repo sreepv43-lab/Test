@@ -42,6 +42,7 @@ data class TorrentStats(
     val fileProgress: Float,
     /** Bytes of that file downloaded so far. */
     val fileDownloadedBytes: Long = 0,
+    val infoHash: String? = null,
 )
 
 /** One torrent in the engine, for the storage status screen. */
@@ -480,6 +481,7 @@ class TorrentEngine(
             if (size > 0) (fileDone.toFloat() / size).coerceIn(0f, 1f) else 0f
         } else 0f
         return TorrentStats(
+            infoHash = entry.hash,
             name = info?.name(),
             hasMetadata = status.hasMetadata(),
             peers = status.numPeers(),

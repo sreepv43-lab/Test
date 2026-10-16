@@ -105,6 +105,9 @@ class PlayerActivity : ComponentActivity() {
 
     // Subtitles: size/timing options, and remembering the languages chosen in the player.
     private var mediaUrl: String? = null
+    /** Latest torrent numbers and gapless ready time, for the Statistics window. */
+    private var latestStats: TorrentStats? = null
+    private var latestReadyMs: Long? = null
     private var subtitleSources: List<Subtitle> = emptyList()
     private var subtitleOffsetMs = 0L
     private val shiftedSubtitles = mutableMapOf<String, File>()
@@ -218,6 +221,7 @@ class PlayerActivity : ComponentActivity() {
             visibility = if (request.subtitle.isNullOrEmpty()) View.GONE else View.VISIBLE
         }
         addSubtitleOptionsButton()
+        addStatisticsButton()
         // Left/Right on the progress bar move by the forward step.
         resources.getIdentifier("exo_progress", "id", packageName).takeIf { it != 0 }
             ?.let { playerView.findViewById<View>(it) as? DefaultTimeBar }
@@ -544,6 +548,10 @@ class PlayerActivity : ComponentActivity() {
                     val stats = answer?.first
                     val readyMs = answer?.second
                     lastStats = stats
+                    if (answer != null) {
+                        latestStats = stats
+                        latestReadyMs = readyMs
+                    }
                     when {
                         answer == null -> "Waiting for the torrent engine…"
                         stats == null -> answer.third ?: "Starting torrent…"
@@ -703,6 +711,87 @@ class PlayerActivity : ComponentActivity() {
             0,
             LinearLayout.LayoutParams(size, size),
         )
+    }
+
+    /** Adds a "Statistics" button (like Stremio's) to the player controls. */
+    private fun addStatisticsButton() {
+        val barId = resources.getIdentifier("exo_basic_controls", "id", packageName)
+        val bar = playerView.findViewById<ViewGroup>(barId) ?: return
+        val background = TypedValue().also { theme.resolveAttribute(android.R.attr.selectableItemBackgroundBorderless, it, true) }
+        val size = (48 * resources.displayMetrics.density).toInt()
+        bar.addView(
+            ImageButton(this).apply {
+                setImageResource(R.drawable.ic_statistics)
+                setBackgroundResource(background.resourceId)
+                contentDescription = "Statistics"
+                setOnClickListener { showStatistics() }
+            },
+            0,
+            LinearLayout.LayoutParams(size, size),
+        )
+    }
+
+    /** Live numbers about what is playing (torrent, buffer, video, audio), refreshed every second. */
+    private fun showStatistics() {
+        val text = TextView(this).apply {
+            textSize = 17f
+            setLineSpacing(0f, 1.25f)
+            val pad = (24 * resources.displayMetrics.density).toInt()
+            setPadding(pad, pad / 2, pad, 0)
+        }
+        val dialog = AlertDialog.Builder(this)
+            .setTitle("Statistics")
+            .setView(text)
+            .setPositiveButton("Close", null)
+            .create()
+        val updates = lifecycleScope.launch {
+            while (isActive) {
+                text.text = statisticsText()
+                delay(1_000)
+            }
+        }
+        dialog.setOnDismissListener { updates.cancel() }
+        dialog.show()
+    }
+
+    private fun statisticsText(): CharSequence {
+        val exo = player
+        val lines = mutableListOf<Pair<String, String>>()
+        val torrent = TorrentLinks.parseLogicalUrl(request.url)
+        if (torrent != null) {
+            val stats = latestStats
+            stats?.infoHash?.let { lines += "Info hash" to it }
+            if (stats == null) {
+                lines += "Torrent" to "starting…"
+            } else {
+                lines += "Peers" to "${stats.peers} (${stats.seeds} seeds)"
+                lines += "Speed" to Formatter.formatShortFileSize(this, stats.downloadRate.toLong()) + "/s"
+                lines += "Uploading" to Formatter.formatShortFileSize(this, stats.uploadRate.toLong()) + "/s"
+                lines += "Downloaded" to Formatter.formatShortFileSize(this, stats.fileDownloadedBytes)
+                lines += "Completed" to "%.2f%%".format(stats.fileProgress * 100)
+                latestReadyMs?.let { lines += "Ready ahead" to formatTime(it) }
+            }
+        } else {
+            mediaUrl?.let { url -> Uri.parse(url).host?.let { lines += "Source" to it } }
+        }
+        if (exo != null) {
+            lines += "Buffered" to formatTime((exo.bufferedPosition - exo.currentPosition).coerceAtLeast(0))
+            exo.videoFormat?.let { f ->
+                val codec = f.sampleMimeType?.substringAfter('/')?.uppercase() ?: f.codecs ?: "?"
+                val bitrate = f.bitrate.takeIf { it > 0 }?.let { " · %.1f Mbit/s".format(it / 1_000_000.0) } ?: ""
+                lines += "Video" to "${f.width}×${f.height} $codec$bitrate"
+            }
+        }
+        audioInfo?.let { lines += "Audio" to it.removePrefix("Audio").trim().lines().first() }
+        return android.text.SpannableStringBuilder().apply {
+            lines.forEachIndexed { i, (label, value) ->
+                if (i > 0) append('\n')
+                val start = length
+                append(label)
+                setSpan(android.text.style.StyleSpan(Typeface.BOLD), start, length, 0)
+                append("   ").append(value)
+            }
+        }
     }
 
     private fun showSubtitleOptions() {
