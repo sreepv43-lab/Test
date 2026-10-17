@@ -38,6 +38,7 @@ import io.github.sreepv43.streamhub.torrent.CacheRules
 import io.github.sreepv43.streamhub.torrent.CacheVolume
 import io.github.sreepv43.streamhub.torrent.TorrentEngine
 import io.github.sreepv43.streamhub.torrent.TorrentHttpServer
+import io.github.sreepv43.streamhub.download.DownloadLocation
 import io.github.sreepv43.streamhub.torrent.TorrentLinks
 import java.io.File
 import java.io.IOException
@@ -200,7 +201,18 @@ class AppContainer(context: Context) {
         }
     }
 
-    val downloader = Downloader(context, torrentHttp, downloads, storage, settings, ::playableUrl)
+    val downloader = Downloader(
+        context, torrentHttp, downloads, storage, settings, ::playableUrl,
+        // A torrent download keeps its temporary torrent data on the same drive as the file (in a
+        // hidden folder next to it), never on internal storage, and deletes it when done.
+        torrentStarting = { item ->
+            val source = TorrentLinks.parseLogicalUrl(item.url)?.first
+            if (source != null && item.location.kind == DownloadLocation.Kind.DIRECTORY) {
+                torrents.useCacheDir(source, File(item.location.value, ".torrent-cache"))
+            }
+        },
+        torrentDone = { item -> TorrentLinks.parseLogicalUrl(item.url)?.first?.let(torrents::discard) },
+    )
 
     val updater = Updater(context, mediaHttp)
     val trakt = Trakt(context, http, library, addons)

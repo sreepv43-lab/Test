@@ -320,6 +320,24 @@ class TorrentEngineTest {
     }
 
     @Test
+    fun aDownloadKeepsItsTorrentDataOnItsOwnDriveAndDropsItWhenDone() {
+        val movie = Random(8).nextBytes(2 * 1024 * 1024 + 3)
+        val (_, magnet) = seed(movie, 47322)
+        val internal = File(root, "internal-cache").apply { mkdirs() }
+        val downloadDrive = File(root, "usb/StreamHub/.torrent-cache")
+        val volume = CacheVolume("internal", "Internal storage", internal, false, internal.totalSpace, internal.usableSpace)
+        engine = localEngine(47323, { CacheChoice.Ready(volume, internal) }, cacheDirs = listOf(internal))
+        engine.useCacheDir(magnet, downloadDrive)
+        engine.open(magnet, -1).use { assertArrayEquals(movie, readAll(it, movie.size)) }
+        assertTrue("the torrent data is next to the download", engine.sizeOf(downloadDrive) >= movie.size)
+        assertEquals("nothing on internal storage", 0L, engine.sizeOf(internal))
+
+        engine.discard(magnet)
+        Thread.sleep(6_000)
+        assertEquals("deleted when the download is done", 0L, engine.sizeOf(downloadDrive))
+    }
+
+    @Test
     fun theIndexAtTheEndAndTheMainStreamReadAtTheSameTime() {
         val movie = Random(7).nextBytes(6 * 1024 * 1024 + 321)
         val (_, magnet) = seed(movie, 47320)

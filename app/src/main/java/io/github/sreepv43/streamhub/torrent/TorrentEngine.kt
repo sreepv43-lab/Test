@@ -108,6 +108,8 @@ class TorrentEngine(
     }
 
     private val nextReaderId = AtomicLong()
+    /** Sources whose data goes to a given folder instead of the cache location (downloads: their own drive). */
+    private val cacheOverrides = ConcurrentHashMap<String, File>()
     /** Where to write each torrent's resume data when libtorrent delivers it (by info hash). */
     private val resumeDirs = ConcurrentHashMap<String, File>()
 
@@ -160,6 +162,8 @@ class TorrentEngine(
         /** Recent download speeds (bytes/s), for the adaptive read-ahead. */
         val rates = ArrayDeque<Int>()
         var resumeSavedAt = 0L
+        /** A finished or cancelled download's torrent: its data is deleted as soon as nobody reads it. */
+        var discardWhenIdle = false
     }
 
     /** Who needs which part of one open file, and what was last asked of libtorrent for it. */
@@ -738,7 +742,10 @@ class TorrentEngine(
         }
 
         // Looking at the drives can be slow (a sleeping USB disk); never do it while holding the lock.
-        val choice = pickCache()
+        val choice = cacheOverrides[source]?.let { dir ->
+            if (!dir.isDirectory && !dir.mkdirs()) throw TorrentException("Can't create the torrent folder next to the download")
+            CacheChoice.Ready(CacheVolume(dir.path, "The download drive", dir, true, dir.totalSpace, dir.usableSpace), dir)
+        } ?: pickCache()
         val cacheDir = choice.dir
         // Data kept from an earlier viewing on this drive: added with its resume data, libtorrent
         // continues from the pieces already there instead of downloading them again.
@@ -800,8 +807,8 @@ class TorrentEngine(
         lock.withLock {
             entry.refs = (entry.refs - 1).coerceAtLeast(0)
             entry.lastReleased = System.currentTimeMillis()
-            // Its drive went away: nothing to keep it for.
-            if (entry.refs == 0 && entry.lost != null && torrents[entry.hash] === entry) removeLocked(entry)
+            // Its drive went away, or it was a download that is done: nothing to keep it for.
+            if (entry.refs == 0 && (entry.lost != null || entry.discardWhenIdle) && torrents[entry.hash] === entry) removeLocked(entry)
         }
         janitor.schedule({
             lock.withLock {
@@ -912,6 +919,23 @@ class TorrentEngine(
             }
             log.warning(report)
             runCatching { onStall(report) }
+        }
+    }
+
+    /**
+     * Keeps [source]'s data in [dir] instead of the torrent cache location. Used for downloads: the
+     * temporary torrent data then sits on the same drive as the downloaded file, not on internal storage.
+     */
+    fun useCacheDir(source: String, dir: File) {
+        cacheOverrides[source] = dir
+    }
+
+    /** The download of [source] finished or was cancelled: its torrent data is deleted once nobody reads it. */
+    fun discard(source: String) {
+        cacheOverrides.remove(source)
+        lock.withLock {
+            val entry = sourcesToHash[source]?.let { torrents[it] } ?: return
+            if (entry.refs == 0) removeLocked(entry) else entry.discardWhenIdle = true
         }
     }
 

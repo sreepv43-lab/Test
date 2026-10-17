@@ -47,6 +47,10 @@ class Downloader(
     private val settings: Settings,
     /** Maps stored URLs (e.g. logical torrent URLs) to the URL to fetch right now. */
     private val resolveUrl: (String) -> String = { it },
+    /** A torrent download is about to (re)start: its temporary torrent data can be placed next to it. */
+    private val torrentStarting: (DownloadItem) -> Unit = {},
+    /** A torrent download finished or was removed: its temporary torrent data can go. */
+    private val torrentDone: (DownloadItem) -> Unit = {},
 ) {
     // Downloads can take hours: no read timeout, but notice dead connections.
     private val http = http.newBuilder()
@@ -159,6 +163,7 @@ class Downloader(
         synchronized(jobs) { jobs.remove(id) }?.cancel()
         calls.remove(id)?.cancel()
         val item = repository.get(id)
+        if (item != null && TorrentLinks.isLogicalUrl(item.url)) torrentDone(item)
         repository.remove(id)
         if (deleteFile) item?.fileUri?.let(storage::delete)
         refreshActive()
@@ -291,6 +296,7 @@ class Downloader(
         }
         val existing = item.fileUri?.takeIf(storage::exists)?.let(storage::length) ?: 0L
 
+        if (TorrentLinks.isLogicalUrl(item.url)) torrentStarting(item)
         val request = Request.Builder().url(resolveUrl(item.url)).apply {
             item.headers.forEach { (name, value) -> header(name, value) }
             if (existing > 0) header("Range", "bytes=$existing-")
@@ -311,6 +317,7 @@ class Downloader(
                     repository.update(id) {
                         it.copy(status = DownloadItem.Status.COMPLETED, downloadedBytes = existing, totalBytes = existing)
                     }
+                    if (TorrentLinks.isLogicalUrl(item.url)) torrentDone(item)
                     return
                 }
                 if (!response.isSuccessful) {
@@ -450,6 +457,7 @@ class Downloader(
                         totalBytes = if (total > 0) total else done,
                     )
                 }
+                if (TorrentLinks.isLogicalUrl(item.url)) torrentDone(item)
             }
         } finally {
             calls.remove(id, call)
