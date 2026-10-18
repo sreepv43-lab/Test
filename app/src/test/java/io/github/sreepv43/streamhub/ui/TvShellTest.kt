@@ -43,6 +43,8 @@ import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.semantics.getOrNull
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.isFocused
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
@@ -229,14 +231,43 @@ class TvShellTest {
 
     @Test
     fun choosingTheCurrentSectionJustClosesTheMenu() {
+        openMenu()
         press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("search", route())
+        assertEquals("search-field", focused())
+        openMenu()
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("search", route())
+        assertEquals("search-field", focused())
+        assertFalse(menuExpanded())
+    }
+
+    @Test
+    fun homeOnceReturnsToTheLastPlaceAndAgainStartsHomeOver() {
+        press(KeyEvent.KEYCODE_DPAD_DOWN, times = 4)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT, times = 3)
+        assertEquals("r5-c3", focused())
+        openMenu()
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("search", route())
+
+        openMenu()
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertEquals("menu-home", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        settle(1_000)
+        assertEquals("home", route())
+        assertEquals("first press: where Home was left", "r5-c3", focused())
+
+        press(KeyEvent.KEYCODE_DPAD_LEFT, times = 3)
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertEquals("menu-home", focused())
         press(KeyEvent.KEYCODE_DPAD_CENTER)
-        assertEquals("home", route())
-        assertNull(nav.previousBackStackEntry)
-        assertEquals("r1-c0", focused())
-        assertFalse(menuExpanded())
+        settle(1_000)
+        assertEquals("second press: the start of Home", "r0-c0", focused())
+        rule.onNodeWithText("Home page").assertIsDisplayed()
     }
 
     @Test
@@ -408,6 +439,7 @@ private fun FakeApp(onNav: (NavHostController) -> Unit, onShell: (TvShellState?)
         selectedKey = entries.firstOrNull { it.key == route }?.key ?: "home",
         pageKey = entry?.id,
         onSelect = { nav.openSection(it.key, it.key, home = "home") },
+        restartOnReselect = { it.key == "home" && route == "home" },
     ) { pageModifier ->
         NavHost(
             nav,
@@ -430,6 +462,7 @@ private fun FakeHome(onOpen: (String) -> Unit, onShell: (TvShellState?) -> Unit)
     val shell = LocalTvShell.current
     SideEffect { onShell(shell) }
     val listState = rememberLazyListState()
+    ScrollToStartOnRestart(listState)
     CompositionLocalProvider(LocalBringIntoViewSpec provides TvScrolling.None) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 24.dp, bottom = 48.dp)) {
             item { Text("Home page", Modifier.padding(horizontal = 24.dp, vertical = 8.dp)) }

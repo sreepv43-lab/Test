@@ -44,6 +44,7 @@ import io.github.sreepv43.streamhub.ui.components.LocalFocusKeyScope
 import io.github.sreepv43.streamhub.ui.components.PosterRow
 import io.github.sreepv43.streamhub.ui.components.alignRowOnFocus
 import io.github.sreepv43.streamhub.ui.TvScrolling
+import io.github.sreepv43.streamhub.ui.ScrollToStartOnRestart
 import io.github.sreepv43.streamhub.ui.LocalCinema
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -137,6 +138,7 @@ fun HomeScreen(
         return
     }
     val listState = rememberLazyListState()
+    ScrollToStartOnRestart(listState)
     val posterMenu = rememberPosterMenu()
     PosterMenu(posterMenu)
     val continueWatching = history.filterNot { it.isFinished }

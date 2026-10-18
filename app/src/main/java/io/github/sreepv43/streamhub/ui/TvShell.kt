@@ -2,6 +2,7 @@ package io.github.sreepv43.streamhub.ui
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusGroup
 import androidx.compose.foundation.gestures.BringIntoViewSpec
@@ -27,6 +28,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -76,6 +79,16 @@ private val RailExpanded = 220.dp
  */
 class TvShellState internal constructor() {
     internal var shownPage: Any? = null
+    /** Counts "start this page over" requests (its menu entry chosen again while it shows). */
+    var restarts by mutableIntStateOf(0)
+        private set
+    internal var pendingRestart = false
+
+    internal fun restart(page: Any?) {
+        forget(page)
+        pendingRestart = true
+        restarts++
+    }
     internal var focusedPage by mutableStateOf<Any?>(null)
     private val lastByPage = object : LinkedHashMap<Any?, Int>() {
         override fun removeEldestEntry(eldest: MutableMap.MutableEntry<Any?, Int>?) = size > MAX_PAGES
@@ -196,6 +209,8 @@ fun TvShell(
     onSelect: (MenuEntry) -> Unit,
     modifier: Modifier = Modifier,
     cinema: Boolean = false,
+    /** Whether choosing [MenuEntry] again while its page shows starts that page over from the top. */
+    restartOnReselect: (MenuEntry) -> Boolean = { false },
     content: @Composable (Modifier) -> Unit,
 ) {
     val railWidth = if (cinema) RailCinema else RailCollapsed
@@ -238,6 +253,11 @@ fun TvShell(
     LaunchedEffect(pageKey, refocus, inputMode) {
         if (inputMode == InputMode.Touch) return@LaunchedEffect
         withFrameNanos { }
+        // Starting over: let the page scroll back to its top first, so its first element is built.
+        if (shell.pendingRestart) {
+            shell.pendingRestart = false
+            repeat(RESTART_FRAMES) { withFrameNanos { } }
+        }
         var waited = 0L
         while (!pageHasFocus() && !expanded && waited < GIVE_UP_MS) {
             val restored = waited < RESTORE_WAIT_MS && shell.restore(pageKey)
@@ -298,8 +318,9 @@ fun TvShell(
             Modifier
                 .align(Alignment.CenterStart)
                 .fillMaxHeight()
-                .width(if (expanded) RailExpanded else railWidth)
-                .background(if (expanded) AppColors.panel else AppColors.background)
+                // The Cinema menu keeps its width (labels are always shown); the selection glows instead.
+                .width(if (expanded && !cinema) RailExpanded else railWidth)
+                .background(if (expanded && !cinema) AppColors.panel else AppColors.background)
                 // A focus group, so moving between items never reports the menu as unfocused.
                 .onFocusChanged {
                     menuHasFocus = it.hasFocus
@@ -317,7 +338,7 @@ fun TvShell(
             if (cinema) {
                 Box(
                     Modifier
-                        .padding(start = if (expanded) 6.dp else 10.dp, bottom = 28.dp)
+                        .padding(start = 10.dp, bottom = 28.dp)
                         .size(46.dp)
                         .background(AppColors.accent, RoundedCornerShape(14.dp)),
                     contentAlignment = Alignment.Center,
@@ -335,6 +356,7 @@ fun TvShell(
                     modifier = if (index == selectedIndex) Modifier.focusRequester(menuFocus) else Modifier,
                     onClick = {
                         expanded = false
+                        if (entry.key == selectedKey && restartOnReselect(entry)) shell.restart(pageKey)
                         onSelect(entry)
                         refocus++
                     },
@@ -392,11 +414,13 @@ private fun MenuItem(
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(12.dp)
     val tint = when {
+        focused && cinema -> AppColors.text
         focused -> AppColors.background
         selected -> AppColors.accent
         else -> AppColors.textDim
     }
     val background = when {
+        focused && cinema -> AppColors.accent.copy(alpha = 0.22f)
         focused -> AppColors.text
         selected && cinema -> AppColors.accent.copy(alpha = 0.09f)
         else -> Color.Transparent
@@ -409,9 +433,10 @@ private fun MenuItem(
         .onFocusChanged { focused = it.isFocused }
         .clip(shape)
         .background(background, shape)
+        .then(if (focused && cinema) Modifier.border(2.dp, AppColors.accent, shape) else Modifier)
         .clickable(onClick = onClick)
     // One element whether the menu is open or not, so it keeps the selection when the menu opens.
-    val stacked = cinema && !expanded
+    val stacked = cinema
     Box(item.height(if (stacked) 62.dp else 48.dp), contentAlignment = if (stacked) Alignment.Center else Alignment.CenterStart) {
         if (stacked) {
             Column(
@@ -434,6 +459,22 @@ private fun MenuItem(
                     )
                 }
             }
+        }
+    }
+}
+
+/**
+ * Scrolls [state] back to its start when the page is started over from the menu
+ * ([TvShellState.restarts]); coming back to the page normally keeps its position.
+ */
+@Composable
+fun ScrollToStartOnRestart(state: LazyListState) {
+    val restarts = LocalTvShell.current?.restarts ?: 0
+    var seen by rememberSaveable { mutableIntStateOf(restarts) }
+    LaunchedEffect(restarts) {
+        if (restarts != seen) {
+            seen = restarts
+            state.scrollToItem(0)
         }
     }
 }
@@ -467,6 +508,7 @@ object TvScrolling {
 }
 
 private const val EDGE_MARGIN = 0.08f
+private const val RESTART_FRAMES = 3
 private const val RESTORE_WAIT_MS = 300L
 private const val PARK_AFTER_MS = 2_000L
 private const val MAX_PAGES = 64

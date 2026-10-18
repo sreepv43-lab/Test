@@ -6,6 +6,12 @@ import androidx.compose.foundation.layout.width
 import io.github.sreepv43.streamhub.sync.Trakt
 import io.github.sreepv43.streamhub.ui.components.TvTextField
 import androidx.compose.foundation.focusGroup
+import androidx.compose.foundation.ScrollState
+import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.key
@@ -86,7 +92,7 @@ private val ClassicTabs = listOf(
 private val CinemaTabs = listOf(SettingsTab.Storage, SettingsTab.Playback, SettingsTab.Theme, SettingsTab.Sync, SettingsTab.About)
 
 /** Settings are split into tabs, so the remote only has a few rows to move through at a time. */
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalComposeUiApi::class)
 @Composable
 fun SettingsScreen() {
     val cinema = LocalCinema.current
@@ -98,6 +104,11 @@ fun SettingsScreen() {
         chosen == SettingsTab.Storage -> SettingsTab.Downloads
         else -> SettingsTab.Storage
     }
+    // Coming back up from a tab's options lands on that tab (not the one above the last option) and
+    // shows the tab's options from their start again.
+    val tabFocus = remember { SettingsTab.entries.associateWith { FocusRequester() } }
+    val scroll = remember(tab) { ScrollState(0) }
+    val scope = rememberCoroutineScope()
     Column(Modifier.fillMaxSize()) {
         if (cinema) {
             CinemaPageTitle("MAKE IT YOURS", "Settings", "Simple controls. Clear choices.")
@@ -109,11 +120,23 @@ fun SettingsScreen() {
             )
         }
         FlowRow(
-            Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
+            Modifier
+                .padding(horizontal = 24.dp, vertical = 16.dp)
+                .onFocusChanged { if (it.hasFocus) scope.launch { scroll.animateScrollTo(0) } }
+                .focusProperties { enter = { tabFocus.getValue(tab) } }
+                .tvRow()
+                .focusGroup(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            tabs.forEach { FlatChip(if (cinema) it.cinemaTitle else it.title, selected = it == tab, onClick = { chosen = it }) }
+            tabs.forEach {
+                FlatChip(
+                    if (cinema) it.cinemaTitle else it.title,
+                    selected = it == tab,
+                    onClick = { chosen = it },
+                    modifier = Modifier.focusRequester(tabFocus.getValue(it)),
+                )
+            }
         }
         // Each tab has its own scroll position and is only built while it is showing.
         key(tab) {
@@ -121,7 +144,7 @@ fun SettingsScreen() {
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scroll)
                     // Left at a row's start must reach the side menu, not jump up to a tab.
                     .tvRow()
                     .focusGroup()

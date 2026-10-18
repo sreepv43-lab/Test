@@ -54,6 +54,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import io.github.sreepv43.streamhub.ui.components.alignRowOnFocus
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -162,7 +164,8 @@ internal fun CinemaTitlePage(
 
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 40.dp)) {
         item(key = "header") {
-            TitleHeader(
+            // Back up at the buttons: show the whole top of the page, not just the buttons.
+            Box(Modifier.alignRowOnFocus(listState, 0, first = true)) { TitleHeader(
                 meta = meta,
                 subtitle = subtitle,
                 best = best?.takeIf { streams != null },
@@ -179,7 +182,7 @@ internal fun CinemaTitlePage(
                 onDownload = { best?.let { handlers.onDownload(it.stream) } },
                 onToggleList = onToggleList,
                 onTrailer = onTrailer,
-            )
+            ) }
         }
         if (hasCredits) {
             item(key = "credits") { Credits(meta) }
@@ -201,7 +204,13 @@ internal fun CinemaTitlePage(
                     sources.flatMap { it.facts.languages }.groupingBy { it }.eachCount().entries
                         .sortedByDescending { it.value }.map { it.key }.take(MAX_LANGUAGE_CHIPS)
                 }
-                Column(Modifier.padding(horizontal = 24.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Column(
+                    Modifier
+                        // Keeps the "Available sources" heading in view above the filters.
+                        .onFocusChanged { if (it.hasFocus) scope.launch { listState.animateScrollToItem(sourcesTitleIndex) } }
+                        .padding(horizontal = 24.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
                     if (qualities.size > 1) {
                         ChipRow {
                             FlatChip("All quality", selected = quality == null, onClick = { quality = null })

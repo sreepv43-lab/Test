@@ -54,6 +54,7 @@ import io.github.sreepv43.streamhub.data.LibraryItem
 import io.github.sreepv43.streamhub.data.WatchEntry
 import io.github.sreepv43.streamhub.ui.AppColors
 import io.github.sreepv43.streamhub.ui.TvScrolling
+import io.github.sreepv43.streamhub.ui.ScrollToStartOnRestart
 import io.github.sreepv43.streamhub.ui.components.FlatButton
 import io.github.sreepv43.streamhub.ui.components.LocalFocusKeyScope
 import io.github.sreepv43.streamhub.ui.components.MetaRow
@@ -106,6 +107,7 @@ internal fun CinemaHome(
     }
 
     val listState = rememberLazyListState()
+    ScrollToStartOnRestart(listState)
     val posterMenu = rememberPosterMenu()
     PosterMenu(posterMenu)
     // List positions: the banner is item 0, then the optional rows, then the catalogues.

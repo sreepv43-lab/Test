@@ -88,6 +88,8 @@ fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
             },
             modifier = Modifier.background(MaterialTheme.colorScheme.background),
             cinema = LocalCinema.current,
+            // Home chosen while Home shows: back to the start of Home.
+            restartOnReselect = { it.key == Routes.HOME && current == Routes.HOME },
         ) { pageModifier ->
             AppNavHost(nav, pageModifier)
         }

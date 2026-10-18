@@ -4,13 +4,10 @@ import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -45,11 +42,10 @@ internal fun CinemaPageTitle(eyebrow: String, title: String, description: String
 }
 
 /**
- * One card per storage place (the TV and each connected drive): free space, a usage bar and its
- * state. Drives are looked at in the background and every look is time-limited, so a sleeping
- * USB hard disk never freezes the page.
+ * One slim strip with a section per storage place (the TV and each connected drive): free space,
+ * a usage bar and its state. Drives are looked at in the background and every look is
+ * time-limited, so a sleeping USB hard disk never freezes the page.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun StorageCards() {
     val container = LocalContext.current.container
@@ -65,63 +61,59 @@ internal fun StorageCards() {
             delay(STORAGE_REFRESH_MS)
         }
     }
-    val list = volumes
-    if (list == null) {
-        Text("Checking the drives…", color = AppColors.textDim)
-        return
-    }
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        list.forEach { StorageCard(it) }
+    val shape = RoundedCornerShape(16.dp)
+    Row(
+        Modifier.fillMaxWidth().panel(shape).padding(horizontal = 20.dp, vertical = 14.dp),
+        horizontalArrangement = Arrangement.spacedBy(28.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        val list = volumes
+        if (list == null) {
+            Text("Checking the drives…", color = AppColors.textDim)
+        } else {
+            list.forEach { StoragePlace(it, Modifier.weight(1f)) }
+        }
     }
 }
 
 @Composable
-private fun StorageCard(volume: CacheVolume) {
+private fun StoragePlace(volume: CacheVolume, modifier: Modifier) {
     val context = LocalContext.current
     fun size(bytes: Long) = Formatter.formatShortFileSize(context, bytes)
-    val shape = RoundedCornerShape(16.dp)
-    Column(
-        Modifier.widthIn(min = 300.dp, max = 420.dp).panel(shape).padding(22.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            Text(volume.label, style = MaterialTheme.typography.titleSmall)
+            Text(volume.label, style = MaterialTheme.typography.titleSmall, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
             val state = when {
                 volume.problem != null -> "Can't write"
-                volume.removable -> "Connected"
-                else -> null
+                volume.removable -> volume.fileSystem ?: "USB"
+                else -> "TV"
             }
-            state?.let {
-                Text(
-                    it,
-                    fontSize = 11.sp,
-                    color = if (volume.problem != null) MaterialTheme.colorScheme.error else Green,
-                    modifier = Modifier
-                        .padding(start = 10.dp)
-                        .background(AppColors.panelRaised, RoundedCornerShape(5.dp))
-                        .padding(horizontal = 7.dp, vertical = 2.dp),
-                )
-            }
+            Text(
+                state,
+                fontSize = 11.sp,
+                color = if (volume.problem != null) MaterialTheme.colorScheme.error else if (volume.removable) Green else AppColors.textDim,
+                modifier = Modifier
+                    .padding(start = 8.dp)
+                    .background(AppColors.panelRaised, RoundedCornerShape(5.dp))
+                    .padding(horizontal = 6.dp, vertical = 1.dp),
+            )
         }
         if (volume.totalBytes > 0) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(size(volume.freeBytes), fontSize = 28.sp, fontWeight = FontWeight.Bold)
-                Text(" free of ${size(volume.totalBytes)}", style = MaterialTheme.typography.bodyMedium, color = AppColors.textDim)
-            }
+            Text(
+                "${size(volume.freeBytes)} free of ${size(volume.totalBytes)}",
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
             val used = (1f - volume.freeBytes.toFloat() / volume.totalBytes).coerceIn(0f, 1f)
             LinearProgressIndicator(
                 progress = { used },
                 color = if (volume.removable) AppColors.accent else AppColors.textDim,
                 trackColor = AppColors.panelRaised,
-                modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
+                modifier = Modifier.fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
             )
         }
-        Text(
-            listOfNotNull(if (volume.removable) "External USB drive" else "TV storage", volume.fileSystem).joinToString(" · "),
-            style = MaterialTheme.typography.bodySmall,
-            color = AppColors.textDim,
-        )
-        volume.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+        volume.problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error, maxLines = 1) }
     }
 }
 
