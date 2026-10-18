@@ -22,6 +22,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.LazyListScope
+import io.github.sreepv43.streamhub.ui.LocalCinema
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -148,61 +150,86 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
     StreamDialogs(dialogs, watch())
 
     val meta = state.meta
+    val onTrailer = { ytId: String -> StreamActions.openUrl(context, "https://www.youtube.com/watch?v=$ytId") }
+    val toggleList = { m: Meta ->
+        val container = context.container
+        if (container.library.contains(m.id)) {
+            container.library.remove(m.id)
+            container.trakt.removeFromWatchlist(m.type, m.id)
+        } else {
+            container.library.add(LibraryItem(m.id, m.type, m.name, m.poster))
+            container.trakt.addToWatchlist(m.type, m.id)
+        }
+    }
+    val resumeMs = meta?.let { m -> history.firstOrNull { it.videoId == m.movieVideoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs }
     when {
         state.loading -> CenteredLoading()
         meta == null -> CenteredMessage(state.error ?: "Not found")
+        LocalCinema.current -> CinemaTitlePage(
+            meta = meta,
+            subtitle = null,
+            streams = streamsState.takeUnless { meta.isSeries },
+            handlers = handlers,
+            resumeMs = resumeMs.takeUnless { meta.isSeries },
+            inList = myList.any { it.id == meta.id },
+            onToggleList = { toggleList(meta) },
+            onTrailer = onTrailer,
+        ) {
+            if (meta.isSeries) seriesItems(meta, state.season, vm::selectSeason, onOpenEpisode)
+        }
         else -> LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
             item(key = "header") {
                 MetaHeader(
                     meta,
-                    onTrailer = { ytId -> StreamActions.openUrl(context, "https://www.youtube.com/watch?v=$ytId") },
+                    onTrailer = onTrailer,
                     inList = myList.any { it.id == meta.id },
-                    onToggleList = {
-                        val container = context.container
-                        if (container.library.contains(meta.id)) {
-                            container.library.remove(meta.id)
-                            container.trakt.removeFromWatchlist(meta.type, meta.id)
-                        } else {
-                            container.library.add(LibraryItem(meta.id, meta.type, meta.name, meta.poster))
-                            container.trakt.addToWatchlist(meta.type, meta.id)
-                        }
-                    },
+                    onToggleList = { toggleList(meta) },
                 )
             }
             if (meta.isSeries) {
-                val seasons = meta.seasons
-                if (seasons.size > 1) {
-                    item(key = "seasons") {
-                        LazyRow(
-                            modifier = Modifier.tvRow(),
-                            contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            items(seasons) { season ->
-                                FlatChip(
-                                    text = if (season == 0) "Specials" else "Season $season",
-                                    selected = state.season == season,
-                                    onClick = { vm.selectSeason(season) },
-                                )
-                            }
-                        }
-                    }
-                }
-                val episodes = meta.videos
-                    .filter { seasons.isEmpty() || it.season == state.season }
-                    .sortedWith(compareBy({ it.season ?: 0 }, { it.episodeNumber ?: 0 }))
-                    .distinctBy { it.id } // list keys must be unique; some addons repeat episodes
-                items(episodes, key = { "ep-" + it.id }) { video ->
-                    EpisodeRow(video, onClick = { onOpenEpisode(meta.type, meta.id, video.id) })
-                }
+                seriesItems(meta, state.season, vm::selectSeason, onOpenEpisode)
             } else {
                 item(key = "streams-title") {
                     Text("Streams", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 }
-                resumeNote(history.firstOrNull { it.videoId == meta.movieVideoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs)
+                resumeNote(resumeMs)
                 streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution, passthrough)
             }
         }
+    }
+}
+
+/** Season chips and the episodes of the chosen season. */
+private fun LazyListScope.seriesItems(
+    meta: Meta,
+    season: Int?,
+    onSelectSeason: (Int) -> Unit,
+    onOpenEpisode: (type: String, metaId: String, videoId: String) -> Unit,
+) {
+    val seasons = meta.seasons
+    if (seasons.size > 1) {
+        item(key = "seasons") {
+            LazyRow(
+                modifier = Modifier.tvRow(),
+                contentPadding = PaddingValues(horizontal = 24.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                items(seasons) { s ->
+                    FlatChip(
+                        text = if (s == 0) "Specials" else "Season $s",
+                        selected = season == s,
+                        onClick = { onSelectSeason(s) },
+                    )
+                }
+            }
+        }
+    }
+    val episodes = meta.videos
+        .filter { seasons.isEmpty() || it.season == season }
+        .sortedWith(compareBy({ it.season ?: 0 }, { it.episodeNumber ?: 0 }))
+        .distinctBy { it.id } // list keys must be unique; some addons repeat episodes
+    items(episodes, key = { "ep-" + it.id }) { video ->
+        EpisodeRow(video, onClick = { onOpenEpisode(meta.type, meta.id, video.id) })
     }
 }
 

@@ -172,7 +172,7 @@ fun LazyListScope.streamItems(
  * Ranking every stream runs a few regular expressions per stream, so it is done once per set of
  * results (and settings), not on every recomposition of the list. Only used on the main thread.
  */
-private object RankedStreams {
+internal object RankedStreams {
     private var results: List<AddonStreams>? = null
     private var settings: Pair<Int, String>? = null
     private var ranked: List<Stream> = emptyList()
@@ -266,7 +266,7 @@ private fun StreamRow(stream: Stream, onPlay: () -> Unit, onDownload: () -> Unit
     }
 }
 
-private fun streamKey(stream: Stream): String =
+internal fun streamKey(stream: Stream): String =
     stream.infoHash + ":" + stream.fileIdx + stream.url + stream.externalUrl + stream.ytId + stream.name
 
 /** State of the "where to download to" dialog. */

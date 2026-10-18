@@ -12,6 +12,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import io.github.sreepv43.streamhub.ui.appViewModel
+import io.github.sreepv43.streamhub.ui.LocalCinema
 import io.github.sreepv43.streamhub.ui.rememberHistory
 import io.github.sreepv43.streamhub.ui.components.resumeNote
 import io.github.sreepv43.streamhub.ui.components.CenteredLoading
@@ -52,9 +53,14 @@ fun StreamsScreen() {
         CenteredLoading()
         return
     }
+    val resumeMs = history.firstOrNull { it.videoId == vm.videoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs
+    if (LocalCinema.current) {
+        CinemaTitlePage(meta, subtitle = episodeTitle, streams = streamsState, handlers = handlers, resumeMs = resumeMs)
+        return
+    }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item(key = "header") { MetaHeader(meta, subtitle = episodeTitle) }
-        resumeNote(history.firstOrNull { it.videoId == vm.videoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs)
+        resumeNote(resumeMs)
         streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution, passthrough)
     }
 }

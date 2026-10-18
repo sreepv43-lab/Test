@@ -50,6 +50,8 @@ import io.github.sreepv43.streamhub.ui.components.StreamsState
 import io.github.sreepv43.streamhub.ui.components.streamItems
 import io.github.sreepv43.streamhub.ui.screens.SettingsScreen
 import io.github.sreepv43.streamhub.ui.screens.CinemaHome
+import io.github.sreepv43.streamhub.ui.screens.CinemaTitlePage
+import io.github.sreepv43.streamhub.ui.components.StreamHandlers
 import io.github.sreepv43.streamhub.ui.screens.HomeState
 import io.github.sreepv43.streamhub.ui.components.FlatButton
 import io.github.sreepv43.streamhub.addon.CatalogRef
@@ -275,6 +277,43 @@ class ScreensTest {
         assertEquals(RailCinema - 24.dp, width)
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertEquals("Home", focused())
+    }
+
+    @Test
+    fun cinemaMoviePageShowsSourceCardsWithFiltersAndDetails() {
+        val hd = Stream(url = "https://a.example/hd.mkv", name = "Web", title = "Movie.2026.1080p.WEB-DL.x264.AAC.5.1 [Tam + Mal] 4.2 GB")
+        val uhd = Stream(url = "https://a.example/uhd.mkv", name = "Web", title = "Movie.2026.2160p.WEB-DL.HDR10.HEVC.DDP5.1 14.8 GB")
+        var played: Stream? = null
+        show {
+            CinemaTitlePage(
+                Meta(id = "tt1", name = "The Last Horizon", director = listOf("Elena Ward"), cast = listOf("Leo Vale")),
+                subtitle = null,
+                streams = StreamsState(results = listOf(AddonStreams(addon("Sample A"), listOf(uhd, hd)))),
+                handlers = StreamHandlers(onPlay = { played = it }, onDownload = {}, onExternal = {}),
+                resumeMs = null,
+            )
+        }
+        rule.onNodeWithText("4K · WEB-DL · HDR10").assertExists()
+        rule.onNodeWithText("Leo Vale").assertExists()
+
+        // The suggested source fits the 1080p setting.
+        focus(rule.onNodeWithText("Play suggested"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(hd, played)
+
+        // Sources jumps to the first card.
+        focus(rule.onNodeWithText("Sources (2)"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        settle(1_000)
+        assertTrue(focused(), focused().contains("1080p · WEB-DL"))
+
+        focus(rule.onAllNodesWithText("4K")[0]) // the chip; the 4K card has its own "4K" badge
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertTrue(rule.onAllNodesWithText("1080p · WEB-DL").fetchSemanticsNodes().isEmpty())
+
+        focus(rule.onAllNodesWithText("Details")[0])
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("Description").assertExists()
     }
 
     private fun addon(name: String) = InstalledAddon("https://$name.example/manifest.json".replace(' ', '-'), Manifest(id = name, name = name))
