@@ -293,7 +293,6 @@ class ScreensTest {
                 resumeMs = null,
             )
         }
-        rule.onNodeWithText("4K · WEB-DL · HDR10").assertExists()
         rule.onNodeWithText("Leo Vale").assertExists()
 
         // The suggested source fits the 1080p setting.
@@ -306,6 +305,8 @@ class ScreensTest {
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         settle(1_000)
         assertTrue(focused(), focused().contains("1080p · WEB-DL"))
+        // Cards are only built once they scroll into view.
+        rule.onNodeWithText("4K · WEB-DL · HDR10").assertExists()
 
         focus(rule.onAllNodesWithText("4K")[0]) // the chip; the 4K card has its own "4K" badge
         press(KeyEvent.KEYCODE_DPAD_CENTER)
