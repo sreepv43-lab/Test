@@ -262,11 +262,13 @@ class ScreensTest {
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertEquals("tt1", opened?.id)
 
-        // Down: My List row (just added), then the catalogue row; Up comes back to the banner.
+        // Down: My List row (just added), the catalogues heading, then the catalogue row; Up comes back to the banner.
         press(KeyEvent.KEYCODE_DPAD_DOWN, 2)
+        assertEquals("Customize Home", focused())
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_RIGHT)
         assertEquals("Blue Silence", focused())
-        press(KeyEvent.KEYCODE_DPAD_UP, 2)
+        press(KeyEvent.KEYCODE_DPAD_UP, 3)
         assertTrue(focused(), focused() in setOf("Movie details", "In My List"))
     }
 
