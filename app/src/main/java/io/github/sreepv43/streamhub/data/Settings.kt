@@ -61,6 +61,9 @@ class Settings(context: Context) {
     private fun float(key: String, default: Float) =
         Setting(key, default, { k, d -> getFloat(k, d) }, { k, v -> putFloat(k, v) })
 
+    /** Home rows the user hid ("Customize Home"): catalog keys (CatalogRef.key), one per line. */
+    val hiddenHomeRows = string("hidden_home_rows", "")
+
     /** "classic" or "cinema" (see ui.Interfaces). */
     val interfaceStyle = string("interface_style", "classic")
 

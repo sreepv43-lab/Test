@@ -37,6 +37,7 @@ import io.github.sreepv43.streamhub.ui.screens.DetailScreen
 import io.github.sreepv43.streamhub.ui.screens.DownloadsScreen
 import io.github.sreepv43.streamhub.ui.screens.HomeScreen
 import io.github.sreepv43.streamhub.ui.screens.LinkScreen
+import io.github.sreepv43.streamhub.ui.screens.PersonScreen
 import io.github.sreepv43.streamhub.ui.screens.SearchScreen
 import io.github.sreepv43.streamhub.ui.screens.SettingsScreen
 import io.github.sreepv43.streamhub.ui.screens.StreamsScreen
@@ -166,10 +167,17 @@ private fun AppNavHost(nav: NavHostController, modifier: Modifier) {
         page(Routes.DETAIL) {
             DetailScreen(
                 onOpenEpisode = { type, metaId, videoId -> nav.navigate(Routes.streams(type, metaId, videoId)) },
+                onOpenPerson = { nav.navigate(Routes.person(it)) },
             )
         }
         page(Routes.STREAMS) {
-            StreamsScreen()
+            StreamsScreen(onOpenPerson = { nav.navigate(Routes.person(it)) })
+        }
+        page(
+            Routes.PERSON,
+            arguments = listOf(navArgument("name") { type = NavType.StringType }),
+        ) {
+            PersonScreen(onOpenMeta = { nav.navigate(Routes.detail(it.type, it.id)) })
         }
     }
 }

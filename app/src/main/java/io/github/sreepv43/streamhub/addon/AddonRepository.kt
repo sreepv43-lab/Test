@@ -97,6 +97,13 @@ class AddonRepository(context: Context, private val client: AddonClient) {
             .map { CatalogRef(addon, it) }
     }
 
+    /** Catalogs that can list one genre (from the genres they offer), for browsing by genre. */
+    fun genreCatalogs(): List<CatalogRef> = _addons.value.flatMap { addon ->
+        addon.manifest.catalogs
+            .filter { it.options("genre").isNotEmpty() && (it.requiredExtras - "genre").isEmpty() }
+            .map { CatalogRef(addon, it) }
+    }
+
     fun findCatalog(transportUrl: String, type: String, id: String): CatalogRef? =
         _addons.value.firstOrNull { it.transportUrl == transportUrl }?.let { addon ->
             addon.manifest.catalogs.firstOrNull { it.type == type && it.id == id }?.let { CatalogRef(addon, it) }

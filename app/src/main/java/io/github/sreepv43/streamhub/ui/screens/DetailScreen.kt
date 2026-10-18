@@ -131,7 +131,10 @@ class MetaViewModel(
 }
 
 @Composable
-fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) -> Unit) {
+fun DetailScreen(
+    onOpenEpisode: (type: String, metaId: String, videoId: String) -> Unit,
+    onOpenPerson: (String) -> Unit = {},
+) {
     val vm = appViewModel { c, handle -> MetaViewModel(c.addons, handle, c::prepareTorrents) }
     val state by vm.state.collectAsStateWithLifecycle()
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
@@ -174,6 +177,8 @@ fun DetailScreen(onOpenEpisode: (type: String, metaId: String, videoId: String) 
             inList = myList.any { it.id == meta.id },
             onToggleList = { toggleList(meta) },
             onTrailer = onTrailer,
+            onOpenPerson = onOpenPerson,
+            watch = watch(),
         ) {
             if (meta.isSeries) seriesItems(meta, state.season, vm::selectSeason, onOpenEpisode)
         }

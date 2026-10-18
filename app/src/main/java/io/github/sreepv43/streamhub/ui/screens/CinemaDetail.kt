@@ -84,6 +84,12 @@ import io.github.sreepv43.streamhub.ui.components.streamKey
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 import io.github.sreepv43.streamhub.ui.components.tvRow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
+import androidx.activity.compose.BackHandler
+import androidx.compose.runtime.LaunchedEffect
+import io.github.sreepv43.streamhub.download.DownloadItem
+import io.github.sreepv43.streamhub.ui.components.StreamActions
+import io.github.sreepv43.streamhub.ui.components.WatchContext
 
 /** How the source list is ordered. */
 internal enum class SourceSort(val label: String) {
@@ -112,6 +118,10 @@ internal fun CinemaTitlePage(
     inList: Boolean? = null,
     onToggleList: (() -> Unit)? = null,
     onTrailer: ((String) -> Unit)? = null,
+    /** Opens a cast member's or director's films and series. */
+    onOpenPerson: ((String) -> Unit)? = null,
+    /** What is being watched, for downloads that start right away (with Undo) on the saved drive. */
+    watch: WatchContext? = null,
     extra: LazyListScope.() -> Unit = {},
 ) {
     val context = LocalContext.current
@@ -135,6 +145,26 @@ internal fun CinemaTitlePage(
     var language by rememberSaveable { mutableStateOf<String?>(null) }
     var sort by rememberSaveable { mutableStateOf(SourceSort.Suggested) }
     var details by remember { mutableStateOf<Source?>(null) }
+    // With a drive already chosen for downloads, Download starts at once; Back within a few
+    // seconds undoes it. Otherwise the usual "Download to" choice opens.
+    val savedLocation by settings.downloadLocation.collectAsState()
+    var undo by remember { mutableStateOf<DownloadItem?>(null) }
+    val download = { stream: Stream ->
+        val location = savedLocation
+        if (location == null || watch == null) handlers.onDownload(stream)
+        else StreamActions.startDownload(context, stream, watch, location)?.let { undo = it }
+    }
+    LaunchedEffect(undo) {
+        if (undo != null) {
+            delay(UNDO_MS)
+            undo = null
+        }
+    }
+    BackHandler(enabled = undo != null) {
+        undo?.let { context.container.downloader.remove(it.id, deleteFile = true) }
+        undo = null
+        StreamActions.toast(context, "Download cancelled")
+    }
     val shown = remember(sources, quality, language, sort) {
         val filtered = sources.filter { s ->
             (quality == null || s.facts.quality == quality) && (language == null || language in s.facts.languages)
@@ -162,6 +192,7 @@ internal fun CinemaTitlePage(
         )
     }
 
+    Box(Modifier.fillMaxSize()) {
     LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(bottom = 40.dp)) {
         item(key = "header") {
             // Back up at the buttons: show the whole top of the page, not just the buttons.
@@ -179,13 +210,13 @@ internal fun CinemaTitlePage(
                         runCatching { firstSource.requestFocus() }
                     }
                 },
-                onDownload = { best?.let { handlers.onDownload(it.stream) } },
+                onDownload = { best?.let { download(it.stream) } },
                 onToggleList = onToggleList,
                 onTrailer = onTrailer,
             ) }
         }
         if (hasCredits) {
-            item(key = "credits") { Credits(meta) }
+            item(key = "credits") { Credits(meta, onOpenPerson) }
         }
         if (streams != null) {
             item(key = "sources-title") {
@@ -249,7 +280,7 @@ internal fun CinemaTitlePage(
                     suggested = source === best,
                     modifier = if (source === shown.first()) Modifier.focusRequester(firstSource) else Modifier,
                     onPlay = { handlers.onPlay(source.stream) },
-                    onDownload = { handlers.onDownload(source.stream) },
+                    onDownload = { download(source.stream) },
                     onDetails = { details = source },
                 )
             }
@@ -284,6 +315,19 @@ internal fun CinemaTitlePage(
             }
         }
         extra()
+    }
+    undo?.let { item ->
+        Text(
+            "Downloading to ${item.location.label}. Press Back within ${UNDO_MS / 1000} seconds to undo.",
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier
+                .align(Alignment.BottomCenter)
+                .padding(24.dp)
+                .background(AppColors.panelRaised, RoundedCornerShape(14.dp))
+                .border(1.dp, AppColors.accent, RoundedCornerShape(14.dp))
+                .padding(horizontal = 22.dp, vertical = 14.dp),
+        )
+    }
     }
 }
 
@@ -419,23 +463,31 @@ private fun TitleHeader(
 /** Director and cast as small cards (the cast with their initials). */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun Credits(meta: Meta) {
+private fun Credits(meta: Meta, onOpenPerson: ((String) -> Unit)?) {
     Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp)) {
-        Text("Cast & creators", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Cast & creators", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            if (onOpenPerson != null) {
+                Text("SELECT A NAME TO SEE THEIR FILMS", fontSize = 11.sp, letterSpacing = 1.5.sp, color = AppColors.textDim)
+            }
+        }
         FlowRow(
-            Modifier.padding(top = 12.dp),
+            Modifier.padding(top = 12.dp).tvRow(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             val shape = RoundedCornerShape(12.dp)
+            fun Modifier.person(name: String) =
+                if (onOpenPerson == null) this
+                else tvFocus(shape, key = "person-$name").clip(shape).clickable { onOpenPerson(name) }
             meta.director.take(2).forEach { name ->
-                Column(Modifier.panel(shape).padding(horizontal = 16.dp, vertical = 10.dp)) {
+                Column(Modifier.person(name).panel(shape).padding(horizontal = 16.dp, vertical = 10.dp)) {
                     Text("Director", style = MaterialTheme.typography.bodySmall, color = AppColors.textDim)
-                    Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = AppColors.accent)
+                    Text("$name →", style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = AppColors.accent)
                 }
             }
             meta.cast.take(MAX_CAST).forEach { name ->
-                Row(Modifier.panel(shape).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.person(name).panel(shape).padding(horizontal = 12.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically) {
                     Box(Modifier.size(34.dp).background(AppColors.panelRaised, CircleShape), contentAlignment = Alignment.Center) {
                         Text(initials(name), fontSize = 12.sp, fontFamily = FontFamily.Serif)
                     }
@@ -580,6 +632,7 @@ private fun clock(ms: Long): String {
     else "%d:%02d".format(total / 60, total % 60)
 }
 
+private const val UNDO_MS = 8_000L
 private val QUALITY_ORDER = listOf("4K", "1440p", "1080p", "720p", "SD")
 private const val MAX_LANGUAGE_CHIPS = 8
 private const val MAX_CAST = 6

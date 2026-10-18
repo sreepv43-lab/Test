@@ -25,6 +25,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,6 +34,10 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.saveable.rememberSaveable
+import io.github.sreepv43.streamhub.ui.components.FlatChip
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -56,6 +61,11 @@ import io.github.sreepv43.streamhub.ui.AppColors
 import io.github.sreepv43.streamhub.ui.TvScrolling
 import io.github.sreepv43.streamhub.ui.ScrollToStartOnRestart
 import io.github.sreepv43.streamhub.ui.components.FlatButton
+import io.github.sreepv43.streamhub.ui.components.DialogShape
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import io.github.sreepv43.streamhub.ui.components.LocalFocusKeyScope
 import io.github.sreepv43.streamhub.ui.components.MetaRow
 import io.github.sreepv43.streamhub.ui.components.PosterCard
@@ -114,7 +124,14 @@ internal fun CinemaHome(
     var nextIndex = 1
     val continueIndex = if (continueWatching.isNotEmpty()) nextIndex++ else -1
     val myListIndex = if (myList.isNotEmpty()) nextIndex++ else -1
+    val headingIndex = nextIndex++
     val firstRowIndex = nextIndex
+    // "All addons" or one addon's rows only.
+    var addonFilter by rememberSaveable { mutableStateOf<String?>(null) }
+    val addonNames = state.rows.map { it.first.addon }.distinctBy { it.transportUrl }
+    val rows = state.rows.filter { addonFilter == null || it.first.addon.transportUrl == addonFilter }
+    var customizing by remember { mutableStateOf(false) }
+    if (customizing) CustomizeHome(onClose = { customizing = false })
     CompositionLocalProvider(LocalBringIntoViewSpec provides TvScrolling.None) {
         LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 20.dp, bottom = 48.dp)) {
             item(key = "hero") {
@@ -175,6 +192,29 @@ internal fun CinemaHome(
                     }
                 }
             }
+            item(key = "catalogues-heading") {
+                Column(Modifier.alignRowOnFocus(listState, headingIndex).padding(top = 18.dp)) {
+                    Row(Modifier.padding(horizontal = 24.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Your catalogues", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                            Text("Collections from your addons.", style = MaterialTheme.typography.bodySmall, color = AppColors.textDim)
+                        }
+                    }
+                    Row(
+                        Modifier.tvRow().padding(start = 24.dp, end = 24.dp, top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (addonNames.size > 1) {
+                            FlatChip("All addons", selected = addonFilter == null, onClick = { addonFilter = null })
+                            addonNames.forEach { addon ->
+                                FlatChip(addon.manifest.name, selected = addonFilter == addon.transportUrl, onClick = { addonFilter = addon.transportUrl })
+                            }
+                        }
+                        FlatButton("Customize Home", onClick = { customizing = true }, icon = Icons.Default.Tune, compact = true)
+                    }
+                }
+            }
             if (state.rows.isEmpty()) {
                 item {
                     Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -188,7 +228,7 @@ internal fun CinemaHome(
                     }
                 }
             }
-            itemsIndexed(state.rows, key = { _, row -> row.first.key }, contentType = { _, _ -> "catalog-row" }) { i, (ref, rowState) ->
+            itemsIndexed(rows, key = { _, row -> row.first.key }, contentType = { _, _ -> "catalog-row" }) { i, (ref, rowState) ->
                 val count = (rowState as? RowState.Loaded)?.metas?.size
                 MetaRow(
                     title = ref.catalog.name ?: ref.catalog.id,
@@ -362,3 +402,44 @@ private fun timeLeft(entry: WatchEntry): String? {
 }
 
 private val HeroHeight = 340.dp
+
+/** Turns each catalogue row of Home on or off (hidden rows are kept in Settings, for both interfaces). */
+@Composable
+private fun CustomizeHome(onClose: () -> Unit) {
+    val container = LocalContext.current.container
+    val hiddenText by container.settings.hiddenHomeRows.flow.collectAsStateWithLifecycle()
+    val hidden = hiddenText.lines().filter { it.isNotBlank() }.toSet()
+    val catalogs = remember { container.addons.boardCatalogs() }
+    fun toggle(key: String) {
+        val next = if (key in hidden) hidden - key else hidden + key
+        container.settings.hiddenHomeRows.set(next.joinToString("\n"))
+    }
+    AlertDialog(
+        containerColor = AppColors.panel,
+        shape = DialogShape,
+        onDismissRequest = onClose,
+        title = { Text("Customize Home") },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text("Choose which catalogue rows appear on Home.", color = AppColors.textDim)
+                catalogs.forEach { ref ->
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f).padding(end = 12.dp)) {
+                            Text(ref.catalog.name ?: ref.catalog.id, style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                ref.addon.manifest.name + " · " + ref.catalog.type.replaceFirstChar { it.uppercase() },
+                                style = MaterialTheme.typography.bodySmall,
+                                color = AppColors.textDim,
+                            )
+                        }
+                        val shown = ref.key !in hidden
+                        FlatChip(if (shown) "On Home" else "Hidden", selected = shown, onClick = { toggle(ref.key) })
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(modifier = Modifier.tvFocus(), onClick = onClose) { Text("Done") }
+        },
+    )
+}

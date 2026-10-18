@@ -12,12 +12,14 @@ object Routes {
     const val DETAIL = "detail/{type}/{id}"
     const val STREAMS = "streams/{type}/{metaId}/{videoId}"
     const val CATALOG = "catalog?addon={addon}&type={type}&id={id}"
+    const val PERSON = "person?name={name}"
 
     fun addons(install: String? = null) = if (install == null) "addons" else "addons?install=${Uri.encode(install)}"
     fun link(url: String? = null) = if (url == null) "link" else "link?url=${Uri.encode(url)}"
     fun detail(type: String, id: String) = "detail/${Uri.encode(type)}/${Uri.encode(id)}"
     fun streams(type: String, metaId: String, videoId: String) =
         "streams/${Uri.encode(type)}/${Uri.encode(metaId)}/${Uri.encode(videoId)}"
+    fun person(name: String) = "person?name=${Uri.encode(name)}"
     fun catalog(addon: String, type: String, id: String) =
         "catalog?addon=${Uri.encode(addon)}&type=${Uri.encode(type)}&id=${Uri.encode(id)}"
 }

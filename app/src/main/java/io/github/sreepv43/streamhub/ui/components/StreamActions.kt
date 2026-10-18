@@ -10,6 +10,7 @@ import io.github.sreepv43.streamhub.addon.Stream
 import io.github.sreepv43.streamhub.addon.StreamResolver
 import io.github.sreepv43.streamhub.addon.Subtitle
 import io.github.sreepv43.streamhub.container
+import io.github.sreepv43.streamhub.download.DownloadItem
 import io.github.sreepv43.streamhub.download.DownloadLocation
 import io.github.sreepv43.streamhub.player.PlayRequest
 import io.github.sreepv43.streamhub.player.PlayerActivity
@@ -104,6 +105,15 @@ object StreamActions {
         return downloadTarget(context, target, watch, location, stream.behaviorHints.filename)
     }
 
+    /** Starts downloading [stream] to [location] without a message; null if it can't be downloaded. */
+    fun startDownload(context: Context, stream: Stream, watch: WatchContext, location: DownloadLocation): DownloadItem? {
+        val target = StreamResolver.resolve(stream) ?: run {
+            toast(context, "This stream type is not supported")
+            return null
+        }
+        return enqueue(context, target, watch, location, stream.behaviorHints.filename)
+    }
+
     fun downloadTarget(
         context: Context,
         target: PlaybackTarget,
@@ -111,15 +121,27 @@ object StreamActions {
         location: DownloadLocation,
         suggestedFileName: String? = null,
     ): Boolean {
+        enqueue(context, target, watch, location, suggestedFileName) ?: return false
+        toast(context, "Downloading to ${location.label}")
+        return true
+    }
+
+    private fun enqueue(
+        context: Context,
+        target: PlaybackTarget,
+        watch: WatchContext,
+        location: DownloadLocation,
+        suggestedFileName: String?,
+    ): DownloadItem? {
         val (url, headers) = when (target) {
             is PlaybackTarget.Direct -> target.url to target.headers
             is PlaybackTarget.Torrent -> TorrentLinks.logicalUrl(target.source, target.fileIdx) to emptyMap()
             is PlaybackTarget.External -> {
                 toast(context, "Links to other apps or websites can't be downloaded")
-                return false
+                return null
             }
         }
-        context.container.downloader.enqueue(
+        return context.container.downloader.enqueue(
             title = watch.title,
             subtitle = watch.episodeTitle,
             poster = watch.poster,
@@ -131,8 +153,6 @@ object StreamActions {
             suggestedFileName = suggestedFileName,
             location = location,
         )
-        toast(context, "Downloading to ${location.label}")
-        return true
     }
 
     fun openUrl(context: Context, url: String) {

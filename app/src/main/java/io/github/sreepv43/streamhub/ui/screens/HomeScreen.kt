@@ -55,6 +55,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
@@ -65,7 +66,11 @@ data class HomeState(
     val rows: List<Pair<CatalogRef, RowState>> = emptyList(),
 )
 
-class HomeViewModel(private val repository: AddonRepository, private val cache: HomeCache) : ViewModel() {
+class HomeViewModel(
+    private val repository: AddonRepository,
+    private val cache: HomeCache,
+    private val hiddenRows: StateFlow<String> = MutableStateFlow(""),
+) : ViewModel() {
     private val _state = MutableStateFlow(HomeState())
     val state: StateFlow<HomeState> = _state.asStateFlow()
     private var cached: Map<String, List<Meta>>? = null
@@ -75,12 +80,13 @@ class HomeViewModel(private val repository: AddonRepository, private val cache: 
             // The very first start needs the default addons before there is anything to show;
             // later, defaults added by an update are installed in the background.
             if (repository.isFirstRun) repository.installDefaults() else launch { repository.installDefaults() }
-            repository.addons.collectLatest { load() }
+            combine(repository.addons, hiddenRows) { _, hidden -> hidden.lines().filter { it.isNotBlank() }.toSet() }
+                .collectLatest { load(it) }
         }
     }
 
-    private suspend fun load() = coroutineScope {
-        val refs = repository.boardCatalogs()
+    private suspend fun load(hidden: Set<String>) = coroutineScope {
+        val refs = repository.boardCatalogs().filterNot { it.key in hidden }
         // Rows show what they had (or what the last start showed) until they are reloaded.
         val saved = cached ?: withContext(Dispatchers.IO) { cache.read() }.also { cached = it }
         val shown = _state.value.rows.associate { (ref, row) -> ref.key to row }
@@ -125,7 +131,7 @@ fun HomeScreen(
     onSeeAll: (CatalogRef) -> Unit,
     onOpenAddons: () -> Unit,
 ) {
-    val vm = appViewModel { c, _ -> HomeViewModel(c.addons, c.homeCache) }
+    val vm = appViewModel { c, _ -> HomeViewModel(c.addons, c.homeCache, c.settings.hiddenHomeRows.flow) }
     val state by vm.state.collectAsStateWithLifecycle()
     val history by rememberHistory()
 

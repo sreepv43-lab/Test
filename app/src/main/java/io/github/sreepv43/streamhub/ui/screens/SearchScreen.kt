@@ -20,6 +20,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.LazyRow
+import io.github.sreepv43.streamhub.ui.components.FlatChip
+import io.github.sreepv43.streamhub.ui.components.tvRow
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -60,6 +63,8 @@ import kotlinx.coroutines.launch
 
 data class SearchState(
     val query: String = "",
+    /** Browsing one genre instead of searching. */
+    val genre: String? = null,
     val rows: List<Pair<CatalogRef, RowState>> = emptyList(),
 )
 
@@ -68,15 +73,30 @@ class SearchViewModel(private val repository: AddonRepository) : ViewModel() {
     val state: StateFlow<SearchState> = _state.asStateFlow()
     private var jobs = emptyList<Job>()
 
+    /** Genres offered by the installed addons' catalogs, most common first. */
+    val genres: List<String> = repository.genreCatalogs()
+        .flatMap { it.catalog.options("genre") }
+        .groupingBy { it }.eachCount().entries
+        .sortedByDescending { it.value }
+        .map { it.key }
+
     fun search(query: String) {
         val q = query.trim()
         if (q.isEmpty()) return
+        load(SearchState(q), repository.searchableCatalogs(), "search" to q)
+    }
+
+    fun browse(genre: String) {
+        if (_state.value.genre == genre) return
+        load(SearchState(genre = genre), repository.genreCatalogs().filter { genre in it.catalog.options("genre") }, "genre" to genre)
+    }
+
+    private fun load(start: SearchState, refs: List<CatalogRef>, extra: Pair<String, String>) {
         jobs.forEach { it.cancel() }
-        val refs = repository.searchableCatalogs()
-        _state.value = SearchState(q, refs.map { it to RowState.Loading })
+        _state.value = start.copy(rows = refs.map { it to RowState.Loading })
         jobs = refs.map { ref ->
             viewModelScope.launch {
-                val result = runCatching { repository.catalog(ref, listOf("search" to q)) }
+                val result = runCatching { repository.catalog(ref, listOf(extra)) }
                     .fold({ RowState.Loaded(it) }, { RowState.Failed(it.message ?: "Search failed") })
                 _state.update { s -> s.copy(rows = s.rows.map { if (it.first.key == ref.key) ref to result else it }) }
             }
@@ -119,9 +139,20 @@ fun SearchScreen(onOpenMeta: (Meta) -> Unit) {
                 modifier = Modifier.padding(start = 12.dp),
             )
         }
+        if (vm.genres.isNotEmpty()) {
+            LazyRow(
+                Modifier.tvRow(),
+                contentPadding = PaddingValues(start = 24.dp, end = 24.dp, bottom = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                items(vm.genres, key = { it }) { genre ->
+                    FlatChip(genre, selected = state.genre == genre, onClick = { vm.browse(genre) })
+                }
+            }
+        }
         when {
-            state.query.isEmpty() -> CenteredMessage("Search across all installed addons")
-            state.rows.isEmpty() -> CenteredMessage("None of your addons support search")
+            state.query.isEmpty() && state.genre == null -> CenteredMessage("Search across all installed addons, or pick a genre")
+            state.rows.isEmpty() -> CenteredMessage(if (state.genre != null) "No catalog lists this genre" else "None of your addons support search")
             else -> CompositionLocalProvider(LocalBringIntoViewSpec provides TvScrolling.None) {
                 LazyColumn(
                     state = listState,

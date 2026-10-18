@@ -24,7 +24,7 @@ import io.github.sreepv43.streamhub.ui.components.streamItems
 
 /** Streams for one episode of a series (or any specific video id). */
 @Composable
-fun StreamsScreen() {
+fun StreamsScreen(onOpenPerson: (String) -> Unit = {}) {
     val vm = appViewModel { c, handle -> MetaViewModel(c.addons, handle, c::prepareTorrents) }
     val state by vm.state.collectAsStateWithLifecycle()
     val streamsState by vm.streams.state.collectAsStateWithLifecycle()
@@ -55,7 +55,7 @@ fun StreamsScreen() {
     }
     val resumeMs = history.firstOrNull { it.videoId == vm.videoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs
     if (LocalCinema.current) {
-        CinemaTitlePage(meta, subtitle = episodeTitle, streams = streamsState, handlers = handlers, resumeMs = resumeMs)
+        CinemaTitlePage(meta, subtitle = episodeTitle, streams = streamsState, handlers = handlers, resumeMs = resumeMs, onOpenPerson = onOpenPerson, watch = watch())
         return
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
