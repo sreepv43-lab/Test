@@ -55,13 +55,17 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalInputModeManager
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlin.math.abs
 
 data class MenuEntry(val key: String, val label: String, val icon: ImageVector)
 
 val RailCollapsed = 76.dp
+/** The Cinema interface's menu, with labels under the icons. */
+val RailCinema = 92.dp
 private val RailExpanded = 220.dp
 
 /**
@@ -191,8 +195,10 @@ fun TvShell(
     pageKey: Any?,
     onSelect: (MenuEntry) -> Unit,
     modifier: Modifier = Modifier,
+    cinema: Boolean = false,
     content: @Composable (Modifier) -> Unit,
 ) {
+    val railWidth = if (cinema) RailCinema else RailCollapsed
     val focusManager = LocalFocusManager.current
     val inputModes = LocalInputModeManager.current
     val shell = remember { TvShellState() }
@@ -266,7 +272,7 @@ fun TvShell(
             content(
                 Modifier
                     .fillMaxSize()
-                    .padding(start = RailCollapsed)
+                    .padding(start = railWidth)
                     .focusRequester(pageFocus)
                     .focusGroup()
                     // Arrows move the selection before the focused element sees them, so text fields
@@ -292,7 +298,7 @@ fun TvShell(
             Modifier
                 .align(Alignment.CenterStart)
                 .fillMaxHeight()
-                .width(if (expanded) RailExpanded else RailCollapsed)
+                .width(if (expanded) RailExpanded else railWidth)
                 .background(if (expanded) AppColors.panel else AppColors.background)
                 // A focus group, so moving between items never reports the menu as unfocused.
                 .onFocusChanged {
@@ -306,13 +312,25 @@ fun TvShell(
                 .onKeyEvent { event -> handleMenuKey(event, expanded, onExpand = { expanded = true }, onClose = ::closeMenu) }
                 .padding(horizontal = 12.dp, vertical = 24.dp)
                 .testTag("menu"),
-            verticalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterVertically),
+            verticalArrangement = Arrangement.spacedBy(8.dp, if (cinema) Alignment.Top else Alignment.CenterVertically),
         ) {
+            if (cinema) {
+                Box(
+                    Modifier
+                        .padding(start = if (expanded) 6.dp else 10.dp, bottom = 28.dp)
+                        .size(46.dp)
+                        .background(AppColors.accent, RoundedCornerShape(14.dp)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text("s", color = AppColors.onAccent, fontSize = 26.sp, fontWeight = FontWeight.Black)
+                }
+            }
             entries.forEachIndexed { index, entry ->
                 MenuItem(
                     entry = entry,
                     selected = entry.key == selectedKey,
                     expanded = expanded,
+                    cinema = cinema,
                     focusable = { menuActive },
                     modifier = if (index == selectedIndex) Modifier.focusRequester(menuFocus) else Modifier,
                     onClick = {
@@ -366,6 +384,7 @@ private fun MenuItem(
     entry: MenuEntry,
     selected: Boolean,
     expanded: Boolean,
+    cinema: Boolean,
     focusable: () -> Boolean,
     modifier: Modifier,
     onClick: () -> Unit,
@@ -377,29 +396,44 @@ private fun MenuItem(
         selected -> AppColors.accent
         else -> AppColors.textDim
     }
-    Row(
-        modifier
-            .fillMaxWidth()
-            .height(48.dp)
-            .testTag("menu-${entry.key}")
-            // Unreachable with the remote while the menu is closed; taps still work on tablets.
-            .focusProperties { canFocus = focusable() }
-            .onFocusChanged { focused = it.isFocused }
-            .clip(shape)
-            .background(if (focused) AppColors.text else Color.Transparent, shape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Icon(entry.icon, contentDescription = entry.label, tint = tint, modifier = Modifier.size(24.dp))
-        if (expanded) {
-            Text(
-                entry.label,
-                style = MaterialTheme.typography.titleMedium,
-                color = tint,
-                maxLines = 1,
-                modifier = Modifier.padding(start = 16.dp),
-            )
+    val background = when {
+        focused -> AppColors.text
+        selected && cinema -> AppColors.accent.copy(alpha = 0.09f)
+        else -> Color.Transparent
+    }
+    val item = modifier
+        .fillMaxWidth()
+        .testTag("menu-${entry.key}")
+        // Unreachable with the remote while the menu is closed; taps still work on tablets.
+        .focusProperties { canFocus = focusable() }
+        .onFocusChanged { focused = it.isFocused }
+        .clip(shape)
+        .background(background, shape)
+        .clickable(onClick = onClick)
+    // One element whether the menu is open or not, so it keeps the selection when the menu opens.
+    val stacked = cinema && !expanded
+    Box(item.height(if (stacked) 62.dp else 48.dp), contentAlignment = if (stacked) Alignment.Center else Alignment.CenterStart) {
+        if (stacked) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
+                Icon(entry.icon, contentDescription = entry.label, tint = tint, modifier = Modifier.size(22.dp))
+                Text(entry.label, fontSize = 10.sp, color = tint, maxLines = 1)
+            }
+        } else {
+            Row(Modifier.padding(horizontal = 14.dp), verticalAlignment = Alignment.CenterVertically) {
+                Icon(entry.icon, contentDescription = entry.label, tint = tint, modifier = Modifier.size(24.dp))
+                if (expanded) {
+                    Text(
+                        entry.label,
+                        style = MaterialTheme.typography.titleMedium,
+                        color = tint,
+                        maxLines = 1,
+                        modifier = Modifier.padding(start = 16.dp),
+                    )
+                }
+            }
         }
     }
 }

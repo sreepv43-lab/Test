@@ -95,7 +95,28 @@ object Palettes {
         text = Color(0xFFF1EEFA), textDim = Color(0xFFADA8C6), focus = Color(0xFFF7C8E0),
     )
 
+    /** The Cinema interface's own colours: deep navy-black with a warm gold accent. */
+    val Midnight = Palette(
+        id = "midnight", name = "Midnight", isLight = false,
+        background = Color(0xFF0C1015), panel = Color(0xFF161C23), panelRaised = Color(0xFF202831),
+        accent = Color(0xFFE7BD74), onAccent = Color(0xFF181A1D),
+        text = Color(0xFFF3F2ED), textDim = Color(0xFF9BA6B2), focus = Color(0xFFFFFFFF),
+    )
+    val Forest = Palette(
+        id = "forest", name = "Forest", isLight = false,
+        background = Color(0xFF0D1411), panel = Color(0xFF16201B), panelRaised = Color(0xFF213029),
+        accent = Color(0xFF92D5B5), onAccent = Color(0xFF0D1411),
+        text = Color(0xFFEFF3EE), textDim = Color(0xFF9DB1A6), focus = Color(0xFFFFFFFF),
+    )
+    val WarmCharcoal = Palette(
+        id = "charcoal", name = "Warm charcoal", isLight = false,
+        background = Color(0xFF161412), panel = Color(0xFF211E1B), panelRaised = Color(0xFF2E2A26),
+        accent = Color(0xFFE7A86A), onAccent = Color(0xFF161412),
+        text = Color(0xFFF4EFE8), textDim = Color(0xFFB0A598), focus = Color(0xFFFFFFFF),
+    )
+
     val all = listOf(
+        Midnight, Forest, WarmCharcoal,
         DarkMoody, EarthTones, VibrantBold, PastelNight,
         Pastel, PastelMint, PastelPeach, PastelSky, PastelRose, PastelLemon, CottonCandy,
     )
@@ -104,6 +125,15 @@ object Palettes {
 }
 
 val LocalPalette = staticCompositionLocalOf { Palettes.DarkMoody }
+
+/** How the pages look: the original layout, or the Cinema design (large banner on Home, labelled menu). */
+object Interfaces {
+    const val CLASSIC = "classic"
+    const val CINEMA = "cinema"
+}
+
+/** True while the Cinema interface is chosen. */
+val LocalCinema = staticCompositionLocalOf { false }
 
 /** Current theme colours, e.g. `AppColors.panel`. */
 object AppColors {
@@ -118,7 +148,7 @@ object AppColors {
 }
 
 @Composable
-fun StreamHubTheme(palette: Palette = Palettes.DarkMoody, content: @Composable () -> Unit) {
+fun StreamHubTheme(palette: Palette = Palettes.DarkMoody, cinema: Boolean = false, content: @Composable () -> Unit) {
     val scheme = if (palette.isLight) {
         lightColorScheme(
             primary = palette.accent, onPrimary = palette.onAccent,
@@ -138,7 +168,7 @@ fun StreamHubTheme(palette: Palette = Palettes.DarkMoody, content: @Composable (
             outline = palette.panelRaised, error = Color(0xFFFF7A7A),
         )
     }
-    CompositionLocalProvider(LocalPalette provides palette) {
+    CompositionLocalProvider(LocalPalette provides palette, LocalCinema provides cinema) {
         MaterialTheme(colorScheme = scheme, content = content)
     }
 }

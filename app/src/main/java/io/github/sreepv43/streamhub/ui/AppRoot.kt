@@ -87,6 +87,7 @@ fun AppRoot(navRequest: String?, onNavRequestHandled: () -> Unit) {
                 nav.openSection(target.route, target.pattern)
             },
             modifier = Modifier.background(MaterialTheme.colorScheme.background),
+            cinema = LocalCinema.current,
         ) { pageModifier ->
             AppNavHost(nav, pageModifier)
         }

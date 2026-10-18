@@ -49,6 +49,17 @@ import io.github.sreepv43.streamhub.container
 import io.github.sreepv43.streamhub.ui.components.StreamsState
 import io.github.sreepv43.streamhub.ui.components.streamItems
 import io.github.sreepv43.streamhub.ui.screens.SettingsScreen
+import io.github.sreepv43.streamhub.ui.screens.CinemaHome
+import io.github.sreepv43.streamhub.ui.screens.HomeState
+import io.github.sreepv43.streamhub.ui.components.FlatButton
+import io.github.sreepv43.streamhub.addon.CatalogRef
+import io.github.sreepv43.streamhub.addon.CatalogDef
+import androidx.compose.foundation.layout.Box
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.ui.test.getBoundsInRoot
+import androidx.compose.ui.test.onNodeWithTag
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -205,6 +216,63 @@ class ScreensTest {
         settle()
         assertEquals("me@example.com", typed)
         assertTrue(rule.onAllNodes(hasSetTextAction()).fetchSemanticsNodes().isEmpty())
+    }
+
+    @Test
+    fun cinemaHomeShowsTheBannerAndMovesOneRowAtATime() {
+        val metas = listOf(
+            Meta(id = "tt1", name = "The Last Horizon", background = "https://img.example/bg.jpg", description = "A cartographer follows a signal.", releaseInfo = "2026", imdbRating = "8.6", genres = listOf("Sci-fi")),
+            Meta(id = "tt2", name = "Blue Silence"),
+        )
+        val ref = CatalogRef(addon("Cinemeta"), CatalogDef(type = "movie", id = "top", name = "Popular"))
+        var opened: Meta? = null
+        show {
+            CinemaHome(
+                HomeState(initializing = false, rows = listOf(ref to RowState.Loaded(metas))),
+                onOpenMeta = { opened = it },
+                onOpenHistory = {},
+                onSeeAll = {},
+                onOpenAddons = {},
+            )
+        }
+        rule.onNodeWithText("Cinemeta · Movie · 2 titles").assertExists()
+        rule.onNodeWithText("A cartographer follows a signal.").assertExists()
+
+        focus(rule.onNodeWithText("Movie details"))
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("My List", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertTrue(container.library.contains("tt1"))
+        assertEquals("In My List", focused())
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("tt1", opened?.id)
+
+        // Down: My List row (just added), then the catalogue row; Up comes back to the banner.
+        press(KeyEvent.KEYCODE_DPAD_DOWN, 2)
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Blue Silence", focused())
+        press(KeyEvent.KEYCODE_DPAD_UP, 2)
+        assertTrue(focused(), focused() in setOf("Movie details", "In My List"))
+    }
+
+    @Test
+    fun cinemaMenuShowsLabelsWhileClosed() {
+        val entries = listOf(
+            MenuEntry("home", "Home", Icons.Default.Home),
+            MenuEntry("downloads", "Downloads", Icons.Default.Download),
+        )
+        show {
+            TvShell(entries, selectedKey = "home", pageKey = "page", onSelect = {}, cinema = true) { pageModifier ->
+                Box(pageModifier) { TvPage("page") { FlatButton("Play", onClick = {}) } }
+            }
+        }
+        assertEquals("Play", focused())
+        rule.onNodeWithText("Downloads").assertExists()
+        val width = rule.onNodeWithTag("menu").getBoundsInRoot().let { it.right - it.left }
+        assertEquals(RailCinema, width)
+        press(KeyEvent.KEYCODE_DPAD_LEFT)
+        assertEquals("Home", focused())
     }
 
     private fun addon(name: String) = InstalledAddon("https://$name.example/manifest.json".replace(' ', '-'), Manifest(id = name, name = name))

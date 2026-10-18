@@ -61,6 +61,9 @@ class Settings(context: Context) {
     private fun float(key: String, default: Float) =
         Setting(key, default, { k, d -> getFloat(k, d) }, { k, v -> putFloat(k, v) })
 
+    /** "classic" or "cinema" (see ui.Interfaces). */
+    val interfaceStyle = string("interface_style", "classic")
+
     // Playback
     /** Sharpest picture to prefer when picking a stream (720, 1080 or 2160). */
     val maxResolution = int("max_resolution", 1080)

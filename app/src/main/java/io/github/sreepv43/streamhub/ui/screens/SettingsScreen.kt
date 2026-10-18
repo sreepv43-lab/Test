@@ -34,6 +34,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.ui.draw.clip
 import io.github.sreepv43.streamhub.ui.AppColors
 import io.github.sreepv43.streamhub.ui.Palette
+import io.github.sreepv43.streamhub.ui.Interfaces
 import io.github.sreepv43.streamhub.ui.Palettes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -125,6 +126,24 @@ fun SettingsScreen() {
 private fun ThemeTab() {
     val settings = LocalContext.current.container.settings
     val themeId by settings.theme.collectAsStateWithLifecycle()
+    val style by settings.interfaceStyle.flow.collectAsStateWithLifecycle()
+    SettingsSection("Interface") {
+        ChoiceRow(
+            "How StreamHub looks",
+            listOf(Interfaces.CLASSIC to "Classic", Interfaces.CINEMA to "Cinema (new)"),
+            style,
+        ) {
+            settings.interfaceStyle.set(it)
+            // Cinema is designed around its Midnight colours; any theme can still be picked below.
+            if (it == Interfaces.CINEMA && themeId == Palettes.DarkMoody.id) settings.setTheme(Palettes.Midnight.id)
+        }
+        Text(
+            "Cinema is a calmer design: a large banner on Home, wide Continue watching cards and a menu with " +
+                "labels. Classic is the original layout. Everything else (addons, My List, downloads) is shared.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
     SettingsSection("Colour theme") {
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(16.dp),

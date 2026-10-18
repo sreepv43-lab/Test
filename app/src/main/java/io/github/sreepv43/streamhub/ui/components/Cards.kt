@@ -234,10 +234,21 @@ fun MetaRow(
     onSeeAll: (() -> Unit)? = null,
     onMetaFocused: ((Meta) -> Unit)? = null,
     onMetaLongClick: ((Meta) -> Unit)? = null,
+    /** Small line under the title (Cinema interface: which addon the row comes from). */
+    subtitle: String? = null,
+    focusScope: Any = title,
 ) {
     Column(modifier.fillMaxWidth().padding(vertical = 10.dp)) {
         Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp))
-        CompositionLocalProvider(LocalFocusKeyScope provides title) {
+        if (subtitle != null) {
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = AppColors.textDim,
+                modifier = Modifier.padding(start = 24.dp, end = 24.dp, top = 2.dp),
+            )
+        }
+        CompositionLocalProvider(LocalFocusKeyScope provides focusScope) {
             MetaRowContent(state, onMetaClick, onSeeAll, onMetaFocused, onMetaLongClick)
         }
     }

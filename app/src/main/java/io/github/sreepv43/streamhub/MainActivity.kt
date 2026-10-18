@@ -47,6 +47,7 @@ import io.github.sreepv43.streamhub.update.Updater
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import io.github.sreepv43.streamhub.ui.Routes
+import io.github.sreepv43.streamhub.ui.Interfaces
 import io.github.sreepv43.streamhub.ui.Palettes
 import io.github.sreepv43.streamhub.ui.StreamHubTheme
 import io.github.sreepv43.streamhub.ui.screens.streamForLink
@@ -70,7 +71,8 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             val themeId by container.settings.theme.collectAsState()
-            StreamHubTheme(Palettes.byId(themeId)) {
+            val interfaceStyle by container.settings.interfaceStyle.flow.collectAsState()
+            StreamHubTheme(Palettes.byId(themeId), cinema = interfaceStyle == Interfaces.CINEMA) {
                 AppRoot(navRequest = navRequest, onNavRequestHandled = { navRequest = null })
                 var crash by remember { mutableStateOf(CrashReports.pending(this)) }
                 crash?.let { report ->

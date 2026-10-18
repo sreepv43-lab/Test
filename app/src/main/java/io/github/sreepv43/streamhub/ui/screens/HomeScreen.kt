@@ -44,6 +44,7 @@ import io.github.sreepv43.streamhub.ui.components.LocalFocusKeyScope
 import io.github.sreepv43.streamhub.ui.components.PosterRow
 import io.github.sreepv43.streamhub.ui.components.alignRowOnFocus
 import io.github.sreepv43.streamhub.ui.TvScrolling
+import io.github.sreepv43.streamhub.ui.LocalCinema
 import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -129,6 +130,10 @@ fun HomeScreen(
 
     if (state.initializing) {
         CenteredLoading()
+        return
+    }
+    if (LocalCinema.current) {
+        CinemaHome(state, onOpenMeta, onOpenHistory, onSeeAll, onOpenAddons)
         return
     }
     val listState = rememberLazyListState()

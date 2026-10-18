@@ -1,0 +1,362 @@
+package io.github.sreepv43.streamhub.ui.screens
+
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.LocalBringIntoViewSpec
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
+import io.github.sreepv43.streamhub.addon.CatalogRef
+import io.github.sreepv43.streamhub.addon.Meta
+import io.github.sreepv43.streamhub.container
+import io.github.sreepv43.streamhub.data.LibraryItem
+import io.github.sreepv43.streamhub.data.WatchEntry
+import io.github.sreepv43.streamhub.ui.AppColors
+import io.github.sreepv43.streamhub.ui.TvScrolling
+import io.github.sreepv43.streamhub.ui.components.FlatButton
+import io.github.sreepv43.streamhub.ui.components.LocalFocusKeyScope
+import io.github.sreepv43.streamhub.ui.components.MetaRow
+import io.github.sreepv43.streamhub.ui.components.PosterCard
+import io.github.sreepv43.streamhub.ui.components.PosterMenu
+import io.github.sreepv43.streamhub.ui.components.PosterRow
+import io.github.sreepv43.streamhub.ui.components.PosterTarget
+import io.github.sreepv43.streamhub.ui.components.RowState
+import io.github.sreepv43.streamhub.ui.components.alignRowOnFocus
+import io.github.sreepv43.streamhub.ui.components.panel
+import io.github.sreepv43.streamhub.ui.components.rememberPosterMenu
+import io.github.sreepv43.streamhub.ui.components.tvFocus
+import io.github.sreepv43.streamhub.ui.components.tvRow
+import io.github.sreepv43.streamhub.ui.rememberHistory
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+
+/**
+ * Home in the Cinema interface: a large banner for the film to continue (or the first one of the
+ * catalogues), wide Continue watching cards, then My List and the addons' catalogue rows.
+ * Same data and remote behaviour as the classic Home (one row per Up/Down).
+ */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+internal fun CinemaHome(
+    state: HomeState,
+    onOpenMeta: (Meta) -> Unit,
+    onOpenHistory: (WatchEntry) -> Unit,
+    onSeeAll: (CatalogRef) -> Unit,
+    onOpenAddons: () -> Unit,
+) {
+    val container = LocalContext.current.container
+    val history by rememberHistory()
+    val myList by container.library.items.collectAsStateWithLifecycle()
+    val continueWatching = history.filterNot { it.isFinished }
+    val loaded = remember(state.rows) {
+        state.rows.flatMap { (it.second as? RowState.Loaded)?.metas.orEmpty() }.associateBy { it.id }
+    }
+    val resume = continueWatching.firstOrNull()
+    // The catalogues usually already have the banner's picture and description; otherwise ask the addons.
+    val fetched by produceState<Meta?>(null, resume?.metaId, resume != null && resume.metaId !in loaded) {
+        val entry = resume ?: return@produceState
+        if (entry.metaId in loaded) return@produceState
+        value = withContext(Dispatchers.IO) { runCatching { container.addons.meta(entry.type, entry.metaId) }.getOrNull() }
+    }
+    val hero = when {
+        resume != null -> loaded[resume.metaId] ?: fetched?.takeIf { it.id == resume.metaId }
+            ?: Meta(id = resume.metaId, type = resume.type, name = resume.name, poster = resume.poster)
+        else -> loaded.values.firstOrNull { it.background != null } ?: loaded.values.firstOrNull()
+    }
+
+    val listState = rememberLazyListState()
+    val posterMenu = rememberPosterMenu()
+    PosterMenu(posterMenu)
+    // List positions: the banner is item 0, then the optional rows, then the catalogues.
+    var nextIndex = 1
+    val continueIndex = if (continueWatching.isNotEmpty()) nextIndex++ else -1
+    val myListIndex = if (myList.isNotEmpty()) nextIndex++ else -1
+    val firstRowIndex = nextIndex
+    CompositionLocalProvider(LocalBringIntoViewSpec provides TvScrolling.None) {
+        LazyColumn(Modifier.fillMaxSize(), state = listState, contentPadding = PaddingValues(top = 20.dp, bottom = 48.dp)) {
+            item(key = "hero") {
+                Column(Modifier.alignRowOnFocus(listState, 0, first = true)) {
+                    Wordmark()
+                    if (hero != null) {
+                        Hero(
+                            meta = hero,
+                            resume = resume?.takeIf { it.metaId == hero.id },
+                            inMyList = myList.any { it.id == hero.id },
+                            onResume = onOpenHistory,
+                            onDetails = { onOpenMeta(hero) },
+                            onToggleMyList = {
+                                if (container.library.contains(hero.id)) container.library.remove(hero.id)
+                                else container.library.add(LibraryItem(hero.id, hero.type, hero.name, hero.poster))
+                            },
+                        )
+                    }
+                }
+            }
+            if (continueWatching.isNotEmpty()) {
+                item(key = "continue") {
+                    Column(Modifier.alignRowOnFocus(listState, continueIndex).padding(top = 14.dp)) {
+                        SectionTitle("Continue watching")
+                        CompositionLocalProvider(LocalFocusKeyScope provides "continue") {
+                            PosterRow {
+                                items(continueWatching, key = { it.metaId }) { entry ->
+                                    val meta = loaded[entry.metaId]
+                                    ContinueCard(
+                                        entry = entry,
+                                        image = meta?.background ?: entry.poster,
+                                        onClick = { onOpenHistory(entry) },
+                                        onLongClick = { posterMenu.target = PosterTarget.of(entry) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (myList.isNotEmpty()) {
+                item(key = "my-list") {
+                    Column(Modifier.alignRowOnFocus(listState, myListIndex).padding(top = 10.dp)) {
+                        SectionTitle("My List")
+                        CompositionLocalProvider(LocalFocusKeyScope provides "my-list") {
+                            PosterRow {
+                                items(myList, key = { it.id }) { item ->
+                                    PosterCard(
+                                        title = item.name,
+                                        image = item.poster,
+                                        onClick = { onOpenMeta(Meta(id = item.id, type = item.type, name = item.name, poster = item.poster)) },
+                                        focusKey = item.id,
+                                        onLongClick = { posterMenu.target = PosterTarget.of(item) },
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if (state.rows.isEmpty()) {
+                item {
+                    Column(Modifier.fillMaxWidth().padding(32.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text("No catalogues yet. Install addons to start browsing.")
+                        FlatButton(
+                            text = "Manage addons",
+                            onClick = onOpenAddons,
+                            prominent = true,
+                            modifier = Modifier.padding(top = 16.dp),
+                        )
+                    }
+                }
+            }
+            itemsIndexed(state.rows, key = { _, row -> row.first.key }, contentType = { _, _ -> "catalog-row" }) { i, (ref, rowState) ->
+                val count = (rowState as? RowState.Loaded)?.metas?.size
+                MetaRow(
+                    title = ref.catalog.name ?: ref.catalog.id,
+                    subtitle = listOfNotNull(
+                        ref.addon.manifest.name,
+                        ref.catalog.type.replaceFirstChar { it.uppercase() },
+                        count?.let { if (it == 1) "1 title" else "$it titles" },
+                    ).joinToString(" · "),
+                    focusScope = ref.key,
+                    state = rowState,
+                    onMetaClick = onOpenMeta,
+                    modifier = Modifier.alignRowOnFocus(listState, firstRowIndex + i),
+                    onSeeAll = { onSeeAll(ref) },
+                    onMetaLongClick = { posterMenu.target = PosterTarget.of(it) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun Wordmark() {
+    Row(Modifier.padding(start = 24.dp, end = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.Bottom) {
+        Text("stream", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = AppColors.text)
+        Text("hub", fontSize = 22.sp, fontWeight = FontWeight.Bold, color = AppColors.accent)
+        Text("TV", fontSize = 10.sp, letterSpacing = 2.sp, color = AppColors.textDim, modifier = Modifier.padding(start = 8.dp, bottom = 4.dp))
+    }
+}
+
+@Composable
+private fun SectionTitle(text: String) {
+    Text(text, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.padding(horizontal = 24.dp))
+}
+
+@Composable
+private fun Hero(
+    meta: Meta,
+    resume: WatchEntry?,
+    inMyList: Boolean,
+    onResume: (WatchEntry) -> Unit,
+    onDetails: () -> Unit,
+    onToggleMyList: () -> Unit,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    val background = AppColors.background
+    Box(
+        Modifier
+            .padding(horizontal = 24.dp)
+            .fillMaxWidth()
+            .height(HeroHeight)
+            .clip(shape)
+            .panel(shape),
+    ) {
+        val image = meta.background ?: meta.poster
+        if (image != null) {
+            AsyncImage(model = image, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        }
+        // Keeps the text readable over any picture.
+        Box(
+            Modifier
+                .fillMaxSize()
+                .background(Brush.horizontalGradient(0f to background, 0.4f to background.copy(alpha = 0.82f), 0.75f to Color.Transparent)),
+        )
+        Column(
+            Modifier
+                .align(Alignment.CenterStart)
+                .fillMaxWidth(0.62f)
+                .padding(horizontal = 36.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                if (resume != null) "CONTINUE WATCHING" else "YOUR NEXT GREAT STORY",
+                fontSize = 12.sp,
+                letterSpacing = 2.sp,
+                fontWeight = FontWeight.Bold,
+                color = AppColors.accent,
+            )
+            Text(
+                meta.name,
+                fontFamily = FontFamily.Serif,
+                fontSize = 44.sp,
+                lineHeight = 48.sp,
+                color = AppColors.text,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            val facts = listOfNotNull(
+                meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" },
+                meta.releaseInfo?.takeIf { it.isNotBlank() },
+                meta.genres.take(2).takeIf { it.isNotEmpty() }?.joinToString(" / "),
+                meta.runtime?.takeIf { it.isNotBlank() },
+            )
+            if (facts.isNotEmpty()) {
+                Text(facts.joinToString("   "), style = MaterialTheme.typography.bodyMedium, color = AppColors.text)
+            }
+            meta.description?.takeIf { it.isNotBlank() }?.let {
+                Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.textDim, maxLines = 2, overflow = TextOverflow.Ellipsis)
+            }
+            Row(Modifier.tvRow().padding(top = 6.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (resume != null) {
+                    FlatButton("Resume", onClick = { onResume(resume) }, icon = Icons.Default.PlayArrow, prominent = true)
+                }
+                FlatButton(
+                    if (meta.type == "series") "Show details" else "Movie details",
+                    onClick = onDetails,
+                    icon = Icons.Default.Info,
+                    prominent = resume == null,
+                )
+                FlatButton(
+                    if (inMyList) "In My List" else "My List",
+                    onClick = onToggleMyList,
+                    icon = if (inMyList) Icons.Default.Check else Icons.Default.Add,
+                )
+            }
+            resume?.let { entry ->
+                Text(
+                    listOfNotNull(entry.videoTitle, timeLeft(entry)).joinToString(" · "),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = AppColors.textDim,
+                )
+            }
+        }
+    }
+}
+
+/** A wide card: picture on the left, title, time left and progress on the right. */
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun ContinueCard(entry: WatchEntry, image: String?, onClick: () -> Unit, onLongClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Row(
+        Modifier
+            .width(340.dp)
+            .height(108.dp)
+            .tvFocus(shape, scale = 1.04f, key = entry.metaId)
+            .clip(shape)
+            .panel(shape)
+            .combinedClickable(onClick = onClick, onLongClick = onLongClick),
+    ) {
+        Box(Modifier.width(150.dp).fillMaxHeight().background(AppColors.panelRaised)) {
+            if (image != null) {
+                AsyncImage(model = image, contentDescription = entry.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+            }
+        }
+        Column(
+            Modifier.weight(1f).fillMaxHeight().padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+        ) {
+            Text(entry.name, style = MaterialTheme.typography.titleSmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(
+                listOfNotNull(entry.videoTitle, timeLeft(entry)).joinToString(" · "),
+                style = MaterialTheme.typography.bodySmall,
+                color = AppColors.textDim,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            LinearProgressIndicator(
+                progress = { entry.progress },
+                color = AppColors.accent,
+                trackColor = AppColors.panelRaised,
+                modifier = Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
+            )
+        }
+    }
+}
+
+private fun timeLeft(entry: WatchEntry): String? {
+    if (entry.durationMs <= 0) return null
+    val minutes = ((entry.durationMs - entry.positionMs) / 60_000).coerceAtLeast(1)
+    return "$minutes min left"
+}
+
+private val HeroHeight = 340.dp
