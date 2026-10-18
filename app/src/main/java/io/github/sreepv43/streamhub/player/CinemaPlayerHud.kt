@@ -194,7 +194,7 @@ fun PlayerHud(state: PlayerHudState) {
             Box(
                 Modifier
                     .fillMaxSize()
-                    .background(Brush.verticalGradient(0f to Color(0xA6010409), 0.25f to Color.Transparent, 0.5f to Color.Transparent, 1f to Color(0xE8020508))),
+                    .background(Brush.verticalGradient(0f to Color(0x99010409), 0.14f to Color.Transparent, 0.72f to Color.Transparent, 1f to Color(0xD9020508))),
             )
         }
         if (showControls) {
@@ -221,10 +221,10 @@ fun PlayerHud(state: PlayerHudState) {
 
 @Composable
 private fun Header(state: PlayerHudState, modifier: Modifier) {
-    Row(modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 26.dp), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.fillMaxWidth().padding(horizontal = 32.dp, vertical = 16.dp), verticalAlignment = Alignment.CenterVertically) {
         Box(
             Modifier
-                .size(46.dp)
+                .size(38.dp)
                 .tvFocus(RoundedCornerShape(12.dp))
                 .clip(RoundedCornerShape(12.dp))
                 .background(Color(0xA30E1721))
@@ -235,7 +235,7 @@ private fun Header(state: PlayerHudState, modifier: Modifier) {
             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back to the film's page", tint = Txt)
         }
         Column(Modifier.weight(1f).padding(start = 18.dp)) {
-            Text(state.title, color = Txt, fontSize = 21.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(state.title, color = Txt, fontSize = 18.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
             if (state.subtitleLine.isNotEmpty()) {
                 Text(state.subtitleLine, color = Color(0xFFD0D8D9), fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
@@ -255,22 +255,22 @@ private fun Header(state: PlayerHudState, modifier: Modifier) {
 
 @Composable
 private fun Controls(state: PlayerHudState, playFocus: FocusRequester, toolFocus: Map<HudPanel, FocusRequester>, modifier: Modifier) {
-    Column(modifier.fillMaxWidth().padding(horizontal = 40.dp, vertical = 22.dp)) {
+    Column(modifier.fillMaxWidth().padding(start = 32.dp, end = 32.dp, bottom = 12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(9.dp)) {
-            if (state.qualityLine.isNotEmpty()) Text(state.qualityLine, color = Color(0xFFDFE7E5), fontSize = 13.sp)
+            if (state.qualityLine.isNotEmpty()) Text(state.qualityLine, color = Color(0xFFDFE7E5), fontSize = 12.sp)
             state.aheadText?.let {
                 Text(
                     it,
                     color = Color(0xFFB4E5C7),
-                    fontSize = 13.sp,
-                    modifier = Modifier.background(Color(0x18A6F6C8), RoundedCornerShape(5.dp)).padding(horizontal = 10.dp, vertical = 4.dp),
+                    fontSize = 12.sp,
+                    modifier = Modifier.background(Color(0x18A6F6C8), RoundedCornerShape(5.dp)).padding(horizontal = 8.dp, vertical = 2.dp),
                 )
             }
-            state.cacheText?.let { Text(it, color = Color(0xFFDFE7E5), fontSize = 13.sp) }
+            state.cacheText?.let { Text(it, color = Color(0xFFDFE7E5), fontSize = 12.sp) }
         }
-        Timeline(state, Modifier.padding(top = 12.dp))
-        Row(Modifier.fillMaxWidth().padding(top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
+        Timeline(state, Modifier.padding(top = 4.dp))
+        Row(Modifier.fillMaxWidth().padding(top = 2.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
                 HudButton(Icons.Default.FastRewind, "Back ${state.seekBackSeconds}s") { state.actions.seekStep(forward = false, repeat = false) }
                 HudButton(
                     if (state.playing) Icons.Default.Pause else Icons.Default.PlayArrow,
@@ -281,7 +281,7 @@ private fun Controls(state: PlayerHudState, playFocus: FocusRequester, toolFocus
                 HudButton(Icons.Default.FastForward, "Forward ${state.seekForwardSeconds}s") { state.actions.seekStep(forward = true, repeat = false) }
             }
             Spacer(Modifier.weight(1f))
-            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 listOf(
                     HudPanel.Languages to (Icons.Default.Subtitles to "Languages"),
                     HudPanel.Sources to (Icons.AutoMirrored.Filled.List to "Sources"),
@@ -293,12 +293,6 @@ private fun Controls(state: PlayerHudState, playFocus: FocusRequester, toolFocus
                 }
             }
         }
-        Text(
-            "OK: select  ·  ← / → on the timeline: seek  ·  Back: close a panel, hide the controls, then leave  ·  Menu: audio & subtitles",
-            color = Color(0xFFBCC5C9),
-            fontSize = 12.sp,
-            modifier = Modifier.padding(top = 14.dp),
-        )
     }
 }
 
@@ -309,12 +303,12 @@ private fun Timeline(state: PlayerHudState, modifier: Modifier) {
     val shown = state.seekTargetMs ?: state.positionMs
     val duration = state.durationMs
     Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(formatClock(shown), color = Txt, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+        Text(formatClock(shown), color = Txt, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
         Box(
             Modifier
                 .weight(1f)
-                .height(32.dp)
-                .padding(horizontal = 14.dp)
+                .height(26.dp)
+                .padding(horizontal = 12.dp)
                 .onFocusChanged { focused = it.isFocused }
                 .onPreviewKeyEvent { event ->
                     val forward = when (event.key) {
@@ -329,7 +323,7 @@ private fun Timeline(state: PlayerHudState, modifier: Modifier) {
             contentAlignment = Alignment.Center,
         ) {
             Canvas(Modifier.fillMaxWidth().height(22.dp)) {
-                val barHeight = (if (focused) 9.dp else 7.dp).toPx()
+                val barHeight = (if (focused) 7.dp else 5.dp).toPx()
                 val top = (size.height - barHeight) / 2
                 val radius = CornerRadius(barHeight / 2)
                 fun part(from: Float, to: Float, color: Color) {
@@ -340,7 +334,7 @@ private fun Timeline(state: PlayerHudState, modifier: Modifier) {
                 part(0f, 1f, Color(0x42FFFFFF))
                 part(played, buffered, Color(0x79E6E5DF))
                 part(0f, played, Gold)
-                val thumb = (if (focused) 10.dp else 8.dp).toPx()
+                val thumb = (if (focused) 8.dp else 6.dp).toPx()
                 val center = Offset(size.width * played, size.height / 2)
                 if (focused) drawCircle(Gold.copy(alpha = 0.4f), thumb + 4.dp.toPx(), center)
                 drawCircle(Color.White, thumb, center)
@@ -362,7 +356,7 @@ private fun Timeline(state: PlayerHudState, modifier: Modifier) {
         Text(
             if (duration > 0) "−" + formatClock((duration - shown).coerceAtLeast(0)) else "",
             color = Color(0xFFD2D7DA),
-            fontSize = 16.sp,
+            fontSize = 14.sp,
             fontWeight = FontWeight.SemiBold,
         )
     }
@@ -370,22 +364,22 @@ private fun Timeline(state: PlayerHudState, modifier: Modifier) {
 
 @Composable
 private fun HudButton(icon: ImageVector, label: String, modifier: Modifier = Modifier, primary: Boolean = false, onClick: () -> Unit) {
-    val shape = RoundedCornerShape(13.dp)
+    val shape = RoundedCornerShape(10.dp)
     Column(
         modifier
-            .widthIn(min = if (primary) 78.dp else 76.dp)
-            .height(62.dp)
+            .widthIn(min = if (primary) 58.dp else 54.dp)
+            .height(44.dp)
             .tvFocus(shape)
             .clip(shape)
             .background(if (primary) Gold else Color.Transparent, shape)
             .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 7.dp),
+            .padding(horizontal = 6.dp, vertical = 3.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterVertically),
+        verticalArrangement = Arrangement.spacedBy(1.dp, Alignment.CenterVertically),
     ) {
         val color = if (primary) Ink else Color(0xFFEEEEEE)
-        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(if (primary) 25.dp else 22.dp))
-        Text(label, color = color, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Icon(icon, contentDescription = null, tint = color, modifier = Modifier.size(if (primary) 20.dp else 18.dp))
+        Text(label, color = color, fontSize = 9.sp, lineHeight = 10.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
     }
 }
 
