@@ -50,6 +50,10 @@ import io.github.sreepv43.streamhub.ui.components.StreamsState
 import io.github.sreepv43.streamhub.ui.components.streamItems
 import io.github.sreepv43.streamhub.ui.screens.SettingsScreen
 import io.github.sreepv43.streamhub.ui.screens.CinemaHome
+import io.github.sreepv43.streamhub.ui.screens.CinemaDownloads
+import io.github.sreepv43.streamhub.download.DownloadItem
+import io.github.sreepv43.streamhub.download.DownloadLocation
+import androidx.compose.runtime.CompositionLocalProvider
 import io.github.sreepv43.streamhub.ui.screens.CinemaTitlePage
 import io.github.sreepv43.streamhub.ui.components.StreamHandlers
 import io.github.sreepv43.streamhub.ui.screens.HomeState
@@ -315,6 +319,42 @@ class ScreensTest {
         focus(rule.onAllNodesWithText("Details")[0])
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.onNodeWithText("Description").assertExists()
+    }
+
+    @Test
+    fun cinemaDownloadsFilterAndPlay() {
+        val place = DownloadLocation(DownloadLocation.Kind.DIRECTORY, "/storage/elements/StreamHub", "Elements")
+        val done = DownloadItem("1", "Monsoon Letters", url = "https://a.example/1.mkv", location = place, status = DownloadItem.Status.COMPLETED, totalBytes = 100, downloadedBytes = 100)
+        val running = DownloadItem("2", "The Last Horizon", url = "https://a.example/2.mkv", location = place, status = DownloadItem.Status.RUNNING, totalBytes = 100, downloadedBytes = 62)
+        var played: DownloadItem? = null
+        show {
+            CinemaDownloads(
+                items = listOf(running, done),
+                speeds = emptyMap(),
+                waitingForWifi = false,
+                onPlay = { played = it },
+                onPause = {}, onResume = {}, onMove = {}, onDelete = {}, onPauseAll = {}, onResumeAll = {}, onOpenStorage = {},
+            )
+        }
+        rule.onNodeWithText("Downloading · 62%").assertExists()
+        rule.onNodeWithText("Completed ✓").assertExists()
+
+        focus(rule.onNodeWithText("Completed"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertTrue(rule.onAllNodesWithText("Downloading · 62%").fetchSemanticsNodes().isEmpty())
+        focus(rule.onNodeWithText("Play"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals("1", played?.id)
+    }
+
+    @Test
+    fun cinemaSettingsHaveTheDemoTabs() {
+        show { CompositionLocalProvider(LocalCinema provides true) { SettingsScreen() } }
+        rule.onNodeWithText("MAKE IT YOURS").assertExists()
+        rule.onNodeWithText("Download location").assertExists()
+        focus(rule.onNodeWithText("Appearance"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        rule.onNodeWithText("How StreamHub looks").assertExists()
     }
 
     private fun addon(name: String) = InstalledAddon("https://$name.example/manifest.json".replace(' ', '-'), Manifest(id = name, name = name))

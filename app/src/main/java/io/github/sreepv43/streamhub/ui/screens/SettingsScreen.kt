@@ -35,6 +35,7 @@ import androidx.compose.ui.draw.clip
 import io.github.sreepv43.streamhub.ui.AppColors
 import io.github.sreepv43.streamhub.ui.Palette
 import io.github.sreepv43.streamhub.ui.Interfaces
+import io.github.sreepv43.streamhub.ui.LocalCinema
 import io.github.sreepv43.streamhub.ui.Palettes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -68,32 +69,51 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-private enum class SettingsTab(val title: String) {
-    Theme("Theme"),
+private enum class SettingsTab(val title: String, val cinemaTitle: String = title) {
+    Theme("Theme", cinemaTitle = "Appearance"),
     Playback("Playback"),
     Downloads("Downloads"),
     Torrents("Torrents"),
-    Sync("Import & sync"),
-    About("Addons & updates"),
+    /** Cinema interface: drives, downloads and the torrent cache on one tab. */
+    Storage("Storage"),
+    Sync("Import & sync", cinemaTitle = "Import"),
+    About("Addons & updates", cinemaTitle = "About"),
 }
+
+private val ClassicTabs = listOf(
+    SettingsTab.Theme, SettingsTab.Playback, SettingsTab.Downloads, SettingsTab.Torrents, SettingsTab.Sync, SettingsTab.About,
+)
+private val CinemaTabs = listOf(SettingsTab.Storage, SettingsTab.Playback, SettingsTab.Theme, SettingsTab.Sync, SettingsTab.About)
 
 /** Settings are split into tabs, so the remote only has a few rows to move through at a time. */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun SettingsScreen() {
-    var tab by rememberSaveable { mutableStateOf(SettingsTab.Theme) }
+    val cinema = LocalCinema.current
+    val tabs = if (cinema) CinemaTabs else ClassicTabs
+    var chosen by rememberSaveable { mutableStateOf(tabs.first()) }
+    // A tab of the other interface (after switching it on the Theme tab) maps to its place in this one.
+    val tab = when {
+        chosen in tabs -> chosen
+        chosen == SettingsTab.Storage -> SettingsTab.Downloads
+        else -> SettingsTab.Storage
+    }
     Column(Modifier.fillMaxSize()) {
-        Text(
-            "Settings",
-            style = MaterialTheme.typography.headlineLarge,
-            modifier = Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp),
-        )
+        if (cinema) {
+            CinemaPageTitle("MAKE IT YOURS", "Settings", "Simple controls. Clear choices.")
+        } else {
+            Text(
+                "Settings",
+                style = MaterialTheme.typography.headlineLarge,
+                modifier = Modifier.padding(start = 24.dp, top = 24.dp, end = 24.dp),
+            )
+        }
         FlowRow(
             Modifier.padding(horizontal = 24.dp, vertical = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            SettingsTab.entries.forEach { FlatChip(it.title, selected = it == tab, onClick = { tab = it }) }
+            tabs.forEach { FlatChip(if (cinema) it.cinemaTitle else it.title, selected = it == tab, onClick = { chosen = it }) }
         }
         // Each tab has its own scroll position and is only built while it is showing.
         key(tab) {
@@ -113,6 +133,11 @@ fun SettingsScreen() {
                     SettingsTab.Playback -> SettingsSection("Video and audio") { PlaybackSettings() }
                     SettingsTab.Downloads -> DownloadsTab()
                     SettingsTab.Torrents -> TorrentsTab()
+                    SettingsTab.Storage -> {
+                        StorageCards()
+                        DownloadsTab()
+                        TorrentsTab()
+                    }
                     SettingsTab.Sync -> SyncTab()
                     SettingsTab.About -> AboutTab()
                 }

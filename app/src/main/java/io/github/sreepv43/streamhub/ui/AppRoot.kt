@@ -135,7 +135,9 @@ private fun AppNavHost(nav: NavHostController, modifier: Modifier) {
         page(Routes.SEARCH) {
             SearchScreen(onOpenMeta = { nav.navigate(Routes.detail(it.type, it.id)) })
         }
-        page(Routes.DOWNLOADS) { DownloadsScreen() }
+        page(Routes.DOWNLOADS) {
+            DownloadsScreen(onOpenStorageSettings = { nav.openSection(Routes.SETTINGS, Routes.SETTINGS) })
+        }
         page(
             Routes.ADDONS,
             arguments = listOf(navArgument("install") { type = NavType.StringType; nullable = true; defaultValue = null }),

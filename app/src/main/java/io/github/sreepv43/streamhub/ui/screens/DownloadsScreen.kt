@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.DriveFileMove
 import io.github.sreepv43.streamhub.ui.components.StorageChooser
 import io.github.sreepv43.streamhub.ui.components.FlatButton
 import io.github.sreepv43.streamhub.ui.AppColors
+import io.github.sreepv43.streamhub.ui.LocalCinema
 import android.text.format.Formatter
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -61,7 +62,7 @@ import io.github.sreepv43.streamhub.ui.components.panel
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 
 @Composable
-fun DownloadsScreen() {
+fun DownloadsScreen(onOpenStorageSettings: () -> Unit = {}) {
     val context = LocalContext.current
     val downloader = context.container.downloader
     val items by downloader.items.collectAsStateWithLifecycle()
@@ -70,8 +71,45 @@ fun DownloadsScreen() {
     val scope = rememberCoroutineScope()
     var toDelete by remember { mutableStateOf<DownloadItem?>(null) }
     var toMove by remember { mutableStateOf<DownloadItem?>(null) }
+    fun play(item: DownloadItem) {
+        val uri = item.fileUri ?: return
+        scope.launch {
+            // A file shorter than its download (e.g. the drive lost data) can't
+            // play to the end; it goes back to paused so Resume can finish it.
+            if (!withContext(Dispatchers.IO) { downloader.verifyComplete(item.id) }) {
+                StreamActions.toast(context, "This download isn't complete. Press Resume to finish it.")
+                return@launch
+            }
+            StreamActions.playFile(
+                context,
+                uri,
+                WatchContext(
+                    metaId = item.metaId ?: item.id,
+                    type = item.type ?: "movie",
+                    videoId = item.videoId ?: item.id,
+                    title = item.title,
+                    episodeTitle = item.subtitle,
+                    poster = item.poster,
+                ),
+            )
+        }
+    }
 
-    Column(Modifier.fillMaxSize()) {
+    if (LocalCinema.current) {
+        CinemaDownloads(
+            items = items,
+            speeds = speeds,
+            waitingForWifi = waitingForWifi,
+            onPlay = ::play,
+            onPause = { downloader.pause(it.id) },
+            onResume = { downloader.resume(it.id) },
+            onMove = { toMove = it },
+            onDelete = { toDelete = it },
+            onPauseAll = downloader::pauseAll,
+            onResumeAll = downloader::resumeAll,
+            onOpenStorage = onOpenStorageSettings,
+        )
+    } else Column(Modifier.fillMaxSize()) {
         Row(Modifier.fillMaxWidth().padding(24.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("Downloads", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             val active = items.any { it.status == DownloadItem.Status.RUNNING || it.status == DownloadItem.Status.QUEUED }
@@ -105,28 +143,7 @@ fun DownloadsScreen() {
                     DownloadRow(
                         item,
                         speed = speeds[item.id],
-                        onPlay = {
-                            item.fileUri?.let { uri -> scope.launch {
-                                // A file shorter than its download (e.g. the drive lost data) can't
-                                // play to the end; it goes back to paused so Resume can finish it.
-                                if (!withContext(Dispatchers.IO) { downloader.verifyComplete(item.id) }) {
-                                    StreamActions.toast(context, "This download isn't complete. Press Resume to finish it.")
-                                    return@launch
-                                }
-                                StreamActions.playFile(
-                                    context,
-                                    uri,
-                                    WatchContext(
-                                        metaId = item.metaId ?: item.id,
-                                        type = item.type ?: "movie",
-                                        videoId = item.videoId ?: item.id,
-                                        title = item.title,
-                                        episodeTitle = item.subtitle,
-                                        poster = item.poster,
-                                    ),
-                                )
-                            } }
-                        },
+                        onPlay = { play(item) },
                         onPause = { downloader.pause(item.id) },
                         onResume = { downloader.resume(item.id) },
                         onMove = { toMove = item },
@@ -191,7 +208,7 @@ fun DownloadsScreen() {
 }
 
 /** " · 12 min left" once the size and speed are known. */
-private fun timeLeft(item: DownloadItem, speed: Long): String {
+internal fun timeLeft(item: DownloadItem, speed: Long): String {
     if (item.totalBytes <= 0 || speed <= 0) return ""
     val seconds = (item.totalBytes - item.downloadedBytes).coerceAtLeast(0) / speed
     return when {
