@@ -248,7 +248,8 @@ class ScreensTest {
         focus(rule.onNodeWithText("Customize Home"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.onNodeWithText("Choose which catalogue rows appear on Home.").assertExists()
-        press(KeyEvent.KEYCODE_BACK)
+        rule.onNodeWithText("Done").performClick()
+        settle()
         assertTrue(rule.onAllNodesWithText("Choose which catalogue rows appear on Home.").fetchSemanticsNodes().isEmpty())
 
         focus(rule.onNodeWithText("Movie details"))
