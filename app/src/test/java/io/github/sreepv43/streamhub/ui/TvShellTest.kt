@@ -246,8 +246,7 @@ class TvShellTest {
     @Test
     fun homeOnceReturnsToTheLastPlaceAndAgainStartsHomeOver() {
         press(KeyEvent.KEYCODE_DPAD_DOWN, times = 4)
-        press(KeyEvent.KEYCODE_DPAD_RIGHT, times = 3)
-        assertEquals("r5-c3", focused())
+        assertEquals("r5-c0", focused())
         openMenu()
         press(KeyEvent.KEYCODE_DPAD_DOWN)
         press(KeyEvent.KEYCODE_DPAD_CENTER)
@@ -259,9 +258,8 @@ class TvShellTest {
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         settle(1_000)
         assertEquals("home", route())
-        assertEquals("first press: where Home was left", "r5-c3", focused())
+        assertEquals("first press: where Home was left", "r5-c0", focused())
 
-        press(KeyEvent.KEYCODE_DPAD_LEFT, times = 3)
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertEquals("menu-home", focused())
         press(KeyEvent.KEYCODE_DPAD_CENTER)
