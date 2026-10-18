@@ -66,6 +66,16 @@ import io.github.sreepv43.streamhub.addon.PlaybackTarget
 import io.github.sreepv43.streamhub.addon.StreamRanking
 import io.github.sreepv43.streamhub.addon.StreamResolver
 import io.github.sreepv43.streamhub.addon.Video
+import io.github.sreepv43.streamhub.addon.Stream
+import io.github.sreepv43.streamhub.addon.StreamFacts
+import io.github.sreepv43.streamhub.torrent.CachePolicy
+import io.github.sreepv43.streamhub.ui.Interfaces
+import io.github.sreepv43.streamhub.ui.Palettes
+import io.github.sreepv43.streamhub.ui.StreamHubTheme
+import androidx.compose.ui.platform.ComposeView
+import android.content.ClipData
+import android.content.ClipboardManager
+import java.util.Locale
 import java.io.File
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.Deferred
@@ -139,6 +149,17 @@ class PlayerActivity : ComponentActivity() {
     private var markedWatched = false
     private var deletedAfterWatching = false
     private var restartedFromStart = false
+
+    // Cinema interface: StreamHub's own controls (PlayerHud) instead of Media3's.
+    private var hud: PlayerHudState? = null
+    private var hudHide: Job? = null
+    private var lastStatusLine = ""
+    private var bufferingSince = 0L
+    private var bufferingDismissed = false
+    private var hudStreams: List<Stream> = emptyList()
+    private var sourcesJob: Job? = null
+    private var sleepJob: Job? = null
+    private var sleepAtEnd = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -220,8 +241,12 @@ class PlayerActivity : ComponentActivity() {
             text = request.subtitle.orEmpty()
             visibility = if (request.subtitle.isNullOrEmpty()) View.GONE else View.VISIBLE
         }
-        addSubtitleOptionsButton()
-        addStatisticsButton()
+        if (container.settings.interfaceStyle.value == Interfaces.CINEMA) {
+            setUpHud(root)
+        } else {
+            addSubtitleOptionsButton()
+            addStatisticsButton()
+        }
         // Left/Right on the progress bar move by the forward step.
         resources.getIdentifier("exo_progress", "id", packageName).takeIf { it != 0 }
             ?.let { playerView.findViewById<View>(it) as? DefaultTimeBar }
@@ -327,6 +352,16 @@ class PlayerActivity : ComponentActivity() {
                 }
                 // A torrent whose storage is missing or full: say so, rather than a code.
                 val storageProblem = torrent?.let { container.torrents.problemFor(it.first) }
+                hud?.let { h ->
+                    h.panel = null
+                    h.problem = HudProblem(
+                        if (storageProblem != null) "Storage unavailable" else "Unable to play this source",
+                        storageProblem ?: "The TV couldn't play this file (${error.errorCodeName}). Another source, often a " +
+                            "1080p one with H.264 video, usually works.",
+                        buffering = false,
+                    )
+                    return
+                }
                 Toast.makeText(
                     this@PlayerActivity,
                     storageProblem ?: "Playback error: ${error.errorCodeName}. Try another stream or an external player.",
@@ -339,12 +374,17 @@ class PlayerActivity : ComponentActivity() {
                 loadingView.visibility = View.GONE
                 titlePulse?.cancel()
                 fillAnimation?.cancel()
+                if (hud != null) showHud()
             }
 
             override fun onPlaybackStateChanged(state: Int) {
                 if (state == Player.STATE_ENDED) {
                     saveProgress()
                     deleteIfWatched()
+                    if (sleepAtEnd) {
+                        finish()
+                        return
+                    }
                     if (upNextShown && !upNextCancelled) playNext() else finish()
                 }
             }
@@ -401,6 +441,7 @@ class PlayerActivity : ComponentActivity() {
         lifecycleScope.launch {
             while (isActive && player === exo) {
                 updateUpNextAndSkipIntro(exo)
+                hud?.let { updateHud(exo, it) }
                 delay(500)
             }
         }
@@ -570,6 +611,8 @@ class PlayerActivity : ComponentActivity() {
                 if (!firstFrameShown) {
                     loadingStats.text = line
                     loadingFraction(exo, torrent, lastStats)?.let(::showLoadingProgress) ?: showConnecting()
+                } else if (hud != null) {
+                    lastStatusLine = line.toString()
                 } else {
                     statusView.text = line
                     statusView.visibility = if (waiting) View.VISIBLE else View.GONE
@@ -625,8 +668,10 @@ class PlayerActivity : ComponentActivity() {
         val ok = event.keyCode == KeyEvent.KEYCODE_DPAD_CENTER || event.keyCode == KeyEvent.KEYCODE_ENTER ||
             event.keyCode == KeyEvent.KEYCODE_NUMPAD_ENTER
         val back = event.keyCode == KeyEvent.KEYCODE_BACK
+        val h = hud
+        val controlsShown = h?.let { it.controlsVisible || it.panel != null || it.problem != null } ?: playerView.isControllerFullyVisible
         // While the controls are hidden, OK answers the up-next / skip-intro label and Back dismisses it.
-        if (!playerView.isControllerFullyVisible) {
+        if (!controlsShown) {
             if (upNextView.visibility == View.VISIBLE && (ok || back)) {
                 if (up) if (ok) playNext() else cancelNext()
                 return true
@@ -637,13 +682,20 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         if (event.keyCode == KeyEvent.KEYCODE_MENU) {
-            if (up) showSubtitleOptions()
+            if (up) {
+                if (h != null) {
+                    h.problem = null
+                    h.panel = HudPanel.Languages
+                } else {
+                    showSubtitleOptions()
+                }
+            }
             return true
         }
         // Rewind / forward keys, and Left / Right while the controls are hidden: jumps that add up.
         val mediaSeek = event.keyCode == KeyEvent.KEYCODE_MEDIA_REWIND || event.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD
         val dpadSeek = (event.keyCode == KeyEvent.KEYCODE_DPAD_LEFT || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT) &&
-            !playerView.isControllerFullyVisible && firstFrameShown && container.settings.dpadSeeks.value
+            !controlsShown && firstFrameShown && container.settings.dpadSeeks.value
         if (mediaSeek || dpadSeek) {
             if (event.action == KeyEvent.ACTION_DOWN) {
                 val forward = event.keyCode == KeyEvent.KEYCODE_MEDIA_FAST_FORWARD || event.keyCode == KeyEvent.KEYCODE_DPAD_RIGHT
@@ -651,6 +703,7 @@ class PlayerActivity : ComponentActivity() {
             }
             return true
         }
+        if (h != null) return dispatchHudKey(event, h)
         // Let the player view handle D-pad and media keys (shows controls, seeks, play/pause).
         if (event.keyCode == KeyEvent.KEYCODE_BACK && playerView.isControllerFullyVisible) {
             if (event.action == KeyEvent.ACTION_UP) playerView.hideController()
@@ -681,16 +734,488 @@ class PlayerActivity : ComponentActivity() {
         player = null
     }
 
+    // ---- Cinema controls (PlayerHud) ---------------------------------------------------------------
+
+    private fun setUpHud(root: FrameLayout) {
+        val settings = container.settings
+        val state = PlayerHudState(hudActions).apply {
+            title = request.title
+            subtitleLine = listOfNotNull(request.subtitle, request.quality).joinToString(" · ")
+            subtitleScale = settings.subtitleScale.value
+            subtitleBox = settings.subtitleBox.value
+            startBufferMs = settings.startBufferMs.value
+            seekBackSeconds = settings.seekBackSeconds.value
+            seekForwardSeconds = settings.seekForwardSeconds.value
+            resizeMode = playerView.resizeMode
+            cacheText = cacheLabel()
+        }
+        hud = state
+        playerView.useController = false
+        playerView.isFocusable = false
+        playerView.descendantFocusability = ViewGroup.FOCUS_BLOCK_DESCENDANTS
+        // Tapping the picture (tablets) shows or hides the controls.
+        playerView.setOnClickListener { if (state.controlsVisible) hideHud() else showHud() }
+        root.addView(
+            ComposeView(this).apply {
+                setContent { StreamHubTheme(Palettes.Midnight, cinema = true) { PlayerHud(state) } }
+            },
+            FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT),
+        )
+    }
+
+    private fun showHud() {
+        val h = hud ?: return
+        h.controlsVisible = true
+        h.focusPlay++
+        scheduleHide()
+    }
+
+    private fun hideHud() {
+        hudHide?.cancel()
+        hud?.controlsVisible = false
+    }
+
+    /** The controls hide a few seconds after the last key press while the video plays. */
+    private fun scheduleHide() {
+        val h = hud ?: return
+        hudHide?.cancel()
+        hudHide = lifecycleScope.launch {
+            delay(HUD_HIDE_MS)
+            if (h.panel == null && h.problem == null && player?.isPlaying == true) h.controlsVisible = false
+        }
+    }
+
+    /**
+     * Remote keys with the Cinema controls: while they are hidden, ← / → seek and any other arrow
+     * or OK shows them; Back closes a panel, then hides the controls, then leaves the player.
+     */
+    private fun dispatchHudKey(event: KeyEvent, h: PlayerHudState): Boolean {
+        val down = event.action == KeyEvent.ACTION_DOWN
+        val up = event.action == KeyEvent.ACTION_UP
+        if (h.controlsVisible) scheduleHide()
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE, KeyEvent.KEYCODE_SPACE -> {
+                if (down && event.repeatCount == 0) hudActions.togglePlay()
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PLAY -> {
+                if (down) player?.play()
+                return true
+            }
+            KeyEvent.KEYCODE_MEDIA_PAUSE -> {
+                if (down) {
+                    player?.pause()
+                    showHud()
+                }
+                return true
+            }
+            KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_ESCAPE -> {
+                if (h.problem == null && h.panel == null && !h.controlsVisible) return super.dispatchKeyEvent(event)
+                if (up) {
+                    when {
+                        h.problem != null -> hudActions.dismissProblem()
+                        h.panel != null -> h.panel = null
+                        else -> hideHud()
+                    }
+                }
+                return true
+            }
+        }
+        if (!h.controlsVisible && h.panel == null && h.problem == null && event.keyCode in SHOW_KEYS) {
+            if (down) showHud()
+            return true
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    private fun updateHud(exo: ExoPlayer, h: PlayerHudState) {
+        h.positionMs = exo.currentPosition
+        h.durationMs = exo.duration.takeIf { it != C.TIME_UNSET && it > 0 } ?: 0L
+        h.bufferedMs = exo.bufferedPosition
+        h.playing = exo.playWhenReady
+        h.speed = exo.playbackParameters.speed
+        h.subtitleOffsetMs = subtitleOffsetMs
+        h.qualityLine = listOfNotNull(
+            exo.videoFormat?.let { videoLabel(it) },
+            audioInfo?.lines()?.firstOrNull()?.removePrefix("Audio")?.trim()?.ifEmpty { null },
+        ).joinToString(" · ")
+        val ahead = maxOf(exo.bufferedPosition - exo.currentPosition, latestReadyMs ?: 0L)
+        h.aheadText = if (firstFrameShown && ahead >= 1_000) "Buffered ahead " + formatAhead(ahead) else null
+        val buffering = firstFrameShown && exo.playbackState == Player.STATE_BUFFERING
+        val failed = h.problem?.buffering == false
+        h.statusOk = !buffering && !failed
+        h.statusText = when {
+            failed -> "Playback problem"
+            !firstFrameShown -> "Starting…"
+            buffering -> "Waiting for data"
+            !exo.playWhenReady -> "Paused"
+            else -> "Playing smoothly"
+        }
+        // Waiting a long time for data: say so, with the torrent numbers and a way out.
+        if (buffering) {
+            val now = SystemClock.elapsedRealtime()
+            if (bufferingSince == 0L) bufferingSince = now
+            val message = "Playback paused because the next part of the video isn't here yet." +
+                lastStatusLine.takeIf { it.isNotBlank() }?.let { "\n\n$it" }.orEmpty()
+            val current = h.problem
+            if (current?.buffering == true) {
+                h.problem = current.copy(message = message)
+            } else if (current == null && h.panel == null && !bufferingDismissed && now - bufferingSince > BUFFERING_PROBLEM_MS) {
+                h.problem = HudProblem("Waiting for stream data", message, buffering = true)
+            }
+        } else {
+            bufferingSince = 0L
+            bufferingDismissed = false
+            if (h.problem?.buffering == true) h.problem = null
+        }
+        when (h.panel) {
+            HudPanel.Languages -> {
+                h.audioTracks = hudTracks(exo, C.TRACK_TYPE_AUDIO)
+                h.textTracks = hudTracks(exo, C.TRACK_TYPE_TEXT)
+            }
+            HudPanel.Info -> h.info = statisticsLines() + listOf(
+                "Position" to formatTime(exo.currentPosition) + (h.durationMs.takeIf { it > 0 }?.let { " of " + formatTime(it) } ?: ""),
+                "Playback speed" to "${exo.playbackParameters.speed}×",
+            )
+            else -> {}
+        }
+    }
+
+    private val hudActions = object : PlayerHudActions {
+        override fun togglePlay() {
+            val exo = player ?: return
+            if (exo.playbackState == Player.STATE_ENDED) exo.seekTo(0)
+            exo.playWhenReady = !exo.playWhenReady
+            hud?.playing = exo.playWhenReady
+            showHud()
+        }
+
+        override fun seekStep(forward: Boolean, repeat: Boolean) = onSeekKey(forward, repeat)
+
+        override fun exit() = finish()
+
+        override fun selectAudio(id: String) = selectTrack(id)
+
+        override fun selectSubtitle(id: String?) {
+            val exo = player ?: return
+            if (id == null) {
+                exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+                    .setTrackTypeDisabled(C.TRACK_TYPE_TEXT, true)
+                    .build()
+            } else {
+                selectTrack(id)
+            }
+        }
+
+        override fun shiftSubtitles(deltaMs: Long?) = retimeSubtitles(deltaMs?.let { subtitleOffsetMs + it } ?: 0L)
+
+        override fun setSubtitleScale(scale: Float) {
+            container.settings.subtitleScale.set(scale)
+            hud?.subtitleScale = scale
+            applySubtitleStyle()
+        }
+
+        override fun setSubtitleBox(box: Boolean) {
+            container.settings.subtitleBox.set(box)
+            hud?.subtitleBox = box
+            applySubtitleStyle()
+        }
+
+        override fun loadSources() = loadHudSources()
+
+        override fun switchSource(index: Int) = switchToSource(index)
+
+        override fun setResizeMode(mode: Int) {
+            playerView.resizeMode = mode
+            hud?.resizeMode = mode
+        }
+
+        override fun setSpeed(speed: Float) {
+            player?.setPlaybackSpeed(speed)
+            hud?.speed = speed
+        }
+
+        override fun setStartBuffer(ms: Int) {
+            container.settings.startBufferMs.set(ms)
+            hud?.startBufferMs = ms
+            hud?.message = "Applies the next time a video starts"
+        }
+
+        override fun copyReport() {
+            val text = "StreamHub playback report\n" + request.title + (request.subtitle?.let { " · $it" } ?: "") + "\n" +
+                (request.quality?.let { "Source: $it\n" } ?: "") +
+                statisticsLines().joinToString("\n") { (label, value) -> "$label: $value" }
+            runCatching {
+                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                    .setPrimaryClip(ClipData.newPlainText("StreamHub playback report", text))
+            }
+            hud?.message = "Playback report copied"
+        }
+
+        override fun restart() {
+            player?.let {
+                it.seekTo(0)
+                it.play()
+            }
+            hud?.panel = null
+            hud?.message = "Started from the beginning"
+        }
+
+        override fun download() = downloadCurrent()
+
+        override fun setSleep(minutes: Int) = setSleepTimer(minutes)
+
+        override fun retry() {
+            hud?.problem = null
+            player?.let {
+                it.prepare()
+                it.play()
+            }
+        }
+
+        override fun dismissProblem() {
+            if (hud?.problem?.buffering == true) bufferingDismissed = true
+            hud?.problem = null
+            showHud()
+        }
+    }
+
+    private fun selectTrack(id: String) {
+        val exo = player ?: return
+        val (g, i) = id.split(':').map { it.toIntOrNull() ?: return }
+        val group = exo.currentTracks.groups.getOrNull(g) ?: return
+        if (i >= group.length) return
+        exo.trackSelectionParameters = exo.trackSelectionParameters.buildUpon()
+            .setTrackTypeDisabled(group.type, false)
+            .setOverrideForType(TrackSelectionOverride(group.mediaTrackGroup, i))
+            .build()
+    }
+
+    private fun hudTracks(exo: ExoPlayer, type: Int): List<HudTrack> {
+        val out = mutableListOf<HudTrack>()
+        exo.currentTracks.groups.forEachIndexed { g, group ->
+            if (group.type != type) return@forEachIndexed
+            for (i in 0 until group.length) {
+                if (!group.isTrackSupported(i)) continue
+                val f = group.getTrackFormat(i)
+                val language = f.language?.takeIf { it != "und" }?.let { code ->
+                    Locale.forLanguageTag(code).getDisplayLanguage(Locale.ENGLISH).ifEmpty { code }
+                }
+                val label = language ?: f.label ?: "Track ${out.size + 1}"
+                val extra = f.label?.takeIf { !it.equals(label, ignoreCase = true) && !it.equals(f.language, ignoreCase = true) }
+                val detail = if (type == C.TRACK_TYPE_AUDIO) {
+                    listOfNotNull(extra, audioCodecName(f), channelLabel(f.channelCount)).joinToString(" · ")
+                } else {
+                    val fromAddon = subtitleSources.any { sub -> f.id?.endsWith(sub.url) == true }
+                    listOfNotNull(extra, if (fromAddon) "From an addon" else "In the video").joinToString(" · ")
+                }
+                out += HudTrack("$g:$i", label, detail, group.isTrackSelected(i))
+            }
+        }
+        return out
+    }
+
+    private fun audioCodecName(f: Format): String? = when (f.sampleMimeType) {
+        MimeTypes.AUDIO_E_AC3_JOC -> "Dolby Atmos (DD+)"
+        MimeTypes.AUDIO_E_AC3 -> "Dolby Digital Plus"
+        MimeTypes.AUDIO_AC3 -> "Dolby Digital"
+        MimeTypes.AUDIO_TRUEHD -> "Dolby TrueHD"
+        MimeTypes.AUDIO_DTS -> "DTS"
+        MimeTypes.AUDIO_DTS_HD -> "DTS-HD"
+        MimeTypes.AUDIO_AAC -> "AAC"
+        MimeTypes.AUDIO_OPUS -> "Opus"
+        MimeTypes.AUDIO_FLAC -> "FLAC"
+        null -> null
+        else -> f.sampleMimeType?.substringAfter('/')?.uppercase()
+    }
+
+    private fun channelLabel(count: Int): String? = when (count) {
+        Format.NO_VALUE, 0 -> null
+        1 -> "mono"
+        2 -> "stereo"
+        6 -> "5.1"
+        8 -> "7.1"
+        else -> "$count channels"
+    }
+
+    private fun videoLabel(f: Format): String? {
+        val height = f.height.takeIf { it > 0 } ?: return null
+        return when {
+            height >= 2000 -> "4K"
+            height >= 1400 -> "1440p"
+            height >= 1000 -> "1080p"
+            height >= 700 -> "720p"
+            else -> "${height}p"
+        }
+    }
+
+    /** "2m 10s" */
+    private fun formatAhead(ms: Long): String {
+        val total = ms / 1000
+        return if (total >= 60) "${total / 60}m ${"%02d".format(total % 60)}s" else "${total}s"
+    }
+
+    /** Where torrent data goes while streaming, for the info line. */
+    private fun cacheLabel(): String? {
+        if (TorrentLinks.parseLogicalUrl(request.url) == null) return null
+        val settings = container.settings
+        return "Cache: " + when (settings.torrentCacheMode.value) {
+            CachePolicy.INTERNAL -> "TV storage"
+            CachePolicy.USB -> settings.torrentCacheVolumeLabel.value.ifEmpty { "USB drive" }
+            else -> "automatic"
+        }
+    }
+
+    /** The URL the player uses for [stream] (logical torrent URL or direct link), or null. */
+    private fun playUrl(stream: Stream): Pair<String, Map<String, String>>? = when (val target = StreamResolver.resolve(stream)) {
+        is PlaybackTarget.Direct -> target.url to target.headers
+        is PlaybackTarget.Torrent -> TorrentLinks.logicalUrl(target.source, target.fileIdx) to emptyMap()
+        else -> null
+    }
+
+    /** Asks the addons for this video's other sources, best first (like "Play best"). */
+    private fun loadHudSources() {
+        val h = hud ?: return
+        if (h.sources != null || sourcesJob?.isActive == true) return
+        val type = request.type
+        val videoId = request.videoId
+        if (type == null || videoId == null) {
+            h.sourcesMessage = "Other sources aren't available for this video (it was opened from a file or a link)."
+            h.sources = emptyList()
+            return
+        }
+        h.sourcesMessage = "Asking your addons for sources…"
+        sourcesJob = lifecycleScope.launch {
+            val found = coroutineScope {
+                container.addons.streamAddons(type, videoId).map { addon ->
+                    async {
+                        withTimeoutOrNull(NEXT_STREAMS_TIMEOUT_MS) { runCatching { container.addons.streams(addon, type, videoId) }.getOrNull() }
+                    }
+                }.awaitAll().filterNotNull()
+            }
+            val addonOf = HashMap<Stream, String>()
+            found.forEach { result -> result.streams.forEach { addonOf.putIfAbsent(it, result.addon.manifest.name) } }
+            val ranked = StreamRanking.rank(
+                found.flatMap { it.streams },
+                container.settings.maxResolution.value,
+                container.settings.surroundPassthrough.value,
+            ).filter { playUrl(it) != null }.distinctBy { playUrl(it)?.first }.take(MAX_SOURCES)
+            hudStreams = ranked
+            h.sourcesMessage = if (ranked.isEmpty()) "Your addons found no other sources for this video." else null
+            h.sources = ranked.mapIndexed { i, stream ->
+                val facts = StreamFacts.of(stream)
+                HudSource(
+                    badge = facts.quality ?: "—",
+                    headline = facts.headline.ifEmpty { stream.name?.lineSequence()?.firstOrNull() ?: "Stream" },
+                    detail = listOfNotNull(
+                        facts.languages.joinToString(", ").ifEmpty { null },
+                        facts.audio,
+                        facts.codec,
+                        facts.sizeBytes?.let { Formatter.formatShortFileSize(this@PlayerActivity, it) },
+                        addonOf[stream],
+                    ).joinToString(" · "),
+                    note = when {
+                        !StreamResolver.isTorrent(stream) -> "Direct link"
+                        facts.seeders == null -> "Seeders not reported"
+                        facts.seeders == 0 -> "No seeders reported: may not start"
+                        else -> "${facts.seeders} seeders"
+                    },
+                    playing = playUrl(stream)?.first == request.url,
+                    suggested = i == 0,
+                )
+            }
+        }
+    }
+
+    /** Plays another source from where the current one is now. */
+    private fun switchToSource(index: Int) {
+        val h = hud ?: return
+        val stream = hudStreams.getOrNull(index) ?: return
+        val (url, headers) = playUrl(stream) ?: return
+        if (url == request.url) {
+            h.panel = null
+            h.message = "This source is already playing"
+            return
+        }
+        saveProgress()
+        startActivity(
+            request.copy(
+                url = url,
+                headers = headers,
+                subtitles = stream.subtitles,
+                bingeGroup = stream.behaviorHints.bingeGroup,
+                quality = StreamFacts.of(stream).label,
+            ).toIntent(this),
+        )
+        finish()
+    }
+
+    /** Downloads the source being played to the usual download place. */
+    private fun downloadCurrent() {
+        val h = hud ?: return
+        if (request.url.startsWith("file:") || request.url.startsWith("content:")) {
+            h.message = "This video is already a download"
+            return
+        }
+        lifecycleScope.launch {
+            val location = container.settings.downloadLocation.value
+                ?: withContext(Dispatchers.IO) { container.storage.defaultLocation() }
+            container.downloader.enqueue(
+                title = request.title,
+                subtitle = request.subtitle,
+                poster = request.poster,
+                metaId = request.metaId,
+                type = request.type,
+                videoId = request.videoId,
+                url = request.url,
+                headers = request.headers,
+                suggestedFileName = null,
+                location = location,
+            )
+            h.panel = null
+            h.message = "Downloading to ${location.label}"
+        }
+    }
+
+    private fun setSleepTimer(minutes: Int) {
+        val h = hud ?: return
+        sleepJob?.cancel()
+        sleepAtEnd = minutes == PlayerHudState.SLEEP_END
+        h.sleepMinutes = minutes
+        if (minutes > 0) {
+            sleepJob = lifecycleScope.launch {
+                delay(minutes * 60_000L)
+                player?.pause()
+                saveProgress()
+                h.sleepMinutes = 0
+                showHud()
+                h.message = "Sleep timer: paused"
+            }
+        }
+        h.message = when {
+            minutes == 0 -> "Sleep timer off"
+            sleepAtEnd -> "Playback stops at the end of this video"
+            else -> "Pauses in $minutes minutes"
+        }
+    }
+
     // ---- Subtitles -------------------------------------------------------------------------------
 
     private fun applySubtitleStyle() {
         playerView.subtitleView?.apply {
             setFractionalTextSize(SubtitleView.DEFAULT_TEXT_SIZE_FRACTION * container.settings.subtitleScale.value)
             setStyle(
-                CaptionStyleCompat(
-                    Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT,
-                    CaptionStyleCompat.EDGE_TYPE_OUTLINE, Color.BLACK, Typeface.DEFAULT_BOLD,
-                ),
+                if (container.settings.subtitleBox.value) {
+                    CaptionStyleCompat(
+                        Color.WHITE, 0xBB000000.toInt(), Color.TRANSPARENT,
+                        CaptionStyleCompat.EDGE_TYPE_NONE, Color.TRANSPARENT, Typeface.DEFAULT_BOLD,
+                    )
+                } else {
+                    CaptionStyleCompat(
+                        Color.WHITE, Color.TRANSPARENT, Color.TRANSPARENT,
+                        CaptionStyleCompat.EDGE_TYPE_OUTLINE, Color.BLACK, Typeface.DEFAULT_BOLD,
+                    )
+                },
             )
         }
     }
@@ -755,6 +1280,19 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun statisticsText(): CharSequence {
+        val lines = statisticsLines()
+        return android.text.SpannableStringBuilder().apply {
+            lines.forEachIndexed { i, (label, value) ->
+                if (i > 0) append('\n')
+                val start = length
+                append(label)
+                setSpan(android.text.style.StyleSpan(Typeface.BOLD), start, length, 0)
+                append("   ").append(value)
+            }
+        }
+    }
+
+    private fun statisticsLines(): List<Pair<String, String>> {
         val exo = player
         val lines = mutableListOf<Pair<String, String>>()
         val torrent = TorrentLinks.parseLogicalUrl(request.url)
@@ -783,15 +1321,7 @@ class PlayerActivity : ComponentActivity() {
             }
         }
         audioInfo?.let { lines += "Audio" to it.removePrefix("Audio").trim().lines().first() }
-        return android.text.SpannableStringBuilder().apply {
-            lines.forEachIndexed { i, (label, value) ->
-                if (i > 0) append('\n')
-                val start = length
-                append(label)
-                setSpan(android.text.style.StyleSpan(Typeface.BOLD), start, length, 0)
-                append("   ").append(value)
-            }
-        }
+        return lines
     }
 
     private fun showSubtitleOptions() {
@@ -1016,6 +1546,7 @@ class PlayerActivity : ComponentActivity() {
             subtitles = stream.subtitles,
             videoId = next.id,
             bingeGroup = stream.behaviorHints.bingeGroup,
+            quality = StreamFacts.of(stream).label,
         )
     }
 
@@ -1055,13 +1586,16 @@ class PlayerActivity : ComponentActivity() {
         var target = (from + deltaMs).coerceAtLeast(0)
         if (duration != null) target = target.coerceAtMost((duration - 1_000).coerceAtLeast(0))
         seekTarget = target
+        hud?.seekTargetMs = target
         seekView.text = (if (target >= seekFrom) "⏩  " else "⏪  ") + SeekSteps.describe(target - seekFrom) +
             "      " + formatTime(target) + (duration?.let { " / " + formatTime(it) } ?: "")
-        seekView.visibility = View.VISIBLE
+        // With the Cinema controls showing, their timeline shows where the jump goes.
+        seekView.visibility = if (hud?.controlsVisible == true) View.GONE else View.VISIBLE
         seekCommit?.cancel()
         seekCommit = lifecycleScope.launch {
             delay(SEEK_COMMIT_MS)
             seekTarget = null
+            hud?.seekTargetMs = null
             if (player === exo) exo.seekTo(target)
             delay(SEEK_LABEL_MS)
             seekView.visibility = View.GONE
@@ -1071,6 +1605,7 @@ class PlayerActivity : ComponentActivity() {
     /** Shows [info] (or the last one) in the top corner; a new audio format is shown for a few seconds. */
     private fun showAudioInfo(info: String?) {
         if (info != null) audioInfo = info
+        if (hud != null) return
         val text = audioInfo ?: return
         audioInfoView.text = text
         audioInfoView.visibility = View.VISIBLE
@@ -1135,6 +1670,13 @@ class PlayerActivity : ComponentActivity() {
         private const val MIN_EPISODE_MS = 5 * 60_000L
         private const val NEXT_STREAMS_TIMEOUT_MS = 15_000L
         private const val WATCHED_FRACTION = 0.9
+        private const val HUD_HIDE_MS = 6_000L
+        private const val BUFFERING_PROBLEM_MS = 8_000L
+        private const val MAX_SOURCES = 30
+        private val SHOW_KEYS = setOf(
+            KeyEvent.KEYCODE_DPAD_UP, KeyEvent.KEYCODE_DPAD_DOWN, KeyEvent.KEYCODE_DPAD_LEFT, KeyEvent.KEYCODE_DPAD_RIGHT,
+            KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER,
+        )
 
         fun start(context: Context, request: PlayRequest) {
             context.startActivity(request.toIntent(context))
@@ -1157,6 +1699,8 @@ data class PlayRequest(
     val logo: String? = null,
     /** Release group of the stream (addons' behaviorHints.bingeGroup), to keep it for the next episode. */
     val bingeGroup: String? = null,
+    /** What the source is, e.g. "1080p · WEB-DL · DD+ 5.1" (shown by the Cinema player). */
+    val quality: String? = null,
 ) {
     fun toIntent(context: Context): Intent = Intent(context, PlayerActivity::class.java)
         .putExtra("url", url)
@@ -1173,6 +1717,7 @@ data class PlayRequest(
         .putExtra("background", background)
         .putExtra("logo", logo)
         .putExtra("bingeGroup", bingeGroup)
+        .putExtra("quality", quality)
 
     companion object {
         fun fromIntent(intent: Intent): PlayRequest? {
@@ -1194,6 +1739,7 @@ data class PlayRequest(
                 background = intent.getStringExtra("background"),
                 logo = intent.getStringExtra("logo"),
                 bingeGroup = intent.getStringExtra("bingeGroup"),
+                quality = intent.getStringExtra("quality"),
             )
         }
     }

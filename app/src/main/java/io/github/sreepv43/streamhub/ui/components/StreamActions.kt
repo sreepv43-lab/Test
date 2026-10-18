@@ -8,6 +8,7 @@ import android.widget.Toast
 import io.github.sreepv43.streamhub.addon.PlaybackTarget
 import io.github.sreepv43.streamhub.addon.Stream
 import io.github.sreepv43.streamhub.addon.StreamResolver
+import io.github.sreepv43.streamhub.addon.StreamFacts
 import io.github.sreepv43.streamhub.addon.Subtitle
 import io.github.sreepv43.streamhub.container
 import io.github.sreepv43.streamhub.download.DownloadItem
@@ -38,7 +39,7 @@ object StreamActions {
 
     fun play(context: Context, stream: Stream, watch: WatchContext) {
         val target = StreamResolver.resolve(stream) ?: return toast(context, "This stream type is not supported")
-        playTarget(context, target, watch, stream.subtitles, stream.behaviorHints.bingeGroup)
+        playTarget(context, target, watch, stream.subtitles, stream.behaviorHints.bingeGroup, StreamFacts.of(stream).label)
     }
 
     /** Plays a direct URL or a torrent in the built-in player; other links open in their app. */
@@ -48,6 +49,7 @@ object StreamActions {
         watch: WatchContext,
         subtitles: List<Subtitle> = emptyList(),
         bingeGroup: String? = null,
+        quality: String? = null,
     ) {
         val (url, headers) = when (target) {
             is PlaybackTarget.Direct -> target.url to target.headers
@@ -69,6 +71,7 @@ object StreamActions {
                 background = watch.background,
                 logo = watch.logo,
                 bingeGroup = bingeGroup,
+                quality = quality,
             ),
         )
     }

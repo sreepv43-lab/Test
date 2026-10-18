@@ -50,6 +50,11 @@ import io.github.sreepv43.streamhub.ui.components.StreamsState
 import io.github.sreepv43.streamhub.ui.components.streamItems
 import io.github.sreepv43.streamhub.ui.screens.SettingsScreen
 import io.github.sreepv43.streamhub.ui.screens.CinemaHome
+import io.github.sreepv43.streamhub.player.HudPanel
+import io.github.sreepv43.streamhub.player.HudTrack
+import io.github.sreepv43.streamhub.player.PlayerHud
+import io.github.sreepv43.streamhub.player.PlayerHudActions
+import io.github.sreepv43.streamhub.player.PlayerHudState
 import io.github.sreepv43.streamhub.ui.screens.CinemaDownloads
 import io.github.sreepv43.streamhub.download.DownloadItem
 import io.github.sreepv43.streamhub.download.DownloadLocation
@@ -364,6 +369,56 @@ class ScreensTest {
         focus(rule.onNodeWithText("Appearance"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.onNodeWithText("How StreamHub looks").assertExists()
+    }
+
+    @Test
+    fun cinemaPlayerControlsPlayOpenPanelsAndPickTracks() {
+        val calls = mutableListOf<String>()
+        val actions = object : PlayerHudActions {
+            override fun togglePlay() { calls += "play" }
+            override fun seekStep(forward: Boolean, repeat: Boolean) { calls += "seek $forward" }
+            override fun exit() { calls += "exit" }
+            override fun selectAudio(id: String) { calls += "audio $id" }
+            override fun selectSubtitle(id: String?) { calls += "subtitle $id" }
+            override fun shiftSubtitles(deltaMs: Long?) {}
+            override fun setSubtitleScale(scale: Float) {}
+            override fun setSubtitleBox(box: Boolean) {}
+            override fun loadSources() {}
+            override fun switchSource(index: Int) {}
+            override fun setResizeMode(mode: Int) {}
+            override fun setSpeed(speed: Float) {}
+            override fun setStartBuffer(ms: Int) {}
+            override fun copyReport() {}
+            override fun restart() {}
+            override fun download() {}
+            override fun setSleep(minutes: Int) {}
+            override fun retry() {}
+            override fun dismissProblem() {}
+        }
+        val state = PlayerHudState(actions).apply {
+            title = "Dune"
+            durationMs = 9_000_000
+            positionMs = 1_475_000
+            controlsVisible = true
+            audioTracks = listOf(
+                HudTrack("0:0", "English", "Dolby Digital Plus · 5.1", selected = true),
+                HudTrack("0:1", "Hindi", "AAC · stereo", selected = false),
+            )
+        }
+        show { PlayerHud(state) }
+        rule.runOnUiThread { state.focusPlay++ }
+        settle()
+        assertEquals("Pause", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(listOf("play"), calls)
+
+        focus(rule.onNodeWithText("Languages"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(HudPanel.Languages, state.panel)
+        rule.onNodeWithText("Audio & subtitles").assertExists()
+        focus(rule.onNodeWithText("Hindi"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertTrue(calls.toString(), "audio 0:1" in calls)
     }
 
     private fun addon(name: String) = InstalledAddon("https://$name.example/manifest.json".replace(' ', '-'), Manifest(id = name, name = name))

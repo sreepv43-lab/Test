@@ -23,6 +23,9 @@ data class StreamFacts(
     /** The card's title line, e.g. "4K · Blu-ray REMUX · Dolby Vision". */
     val headline: String get() = listOfNotNull(quality, source, hdr).joinToString(" · ")
 
+    /** Headline and audio, e.g. "1080p · WEB-DL · DD+ 5.1", or null when the addon says neither. */
+    val label: String? get() = listOfNotNull(headline.ifEmpty { null }, audio).joinToString(" · ").ifEmpty { null }
+
     companion object {
         fun of(stream: Stream): StreamFacts {
             val text = listOfNotNull(stream.name, stream.details, stream.behaviorHints.filename).joinToString("\n")

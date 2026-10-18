@@ -75,6 +75,8 @@ class Settings(context: Context) {
     /** ISO language code, or "" for no subtitles. */
     val subtitleLanguage = string("subtitle_language", "")
     val subtitleScale = float("subtitle_scale", 1f)
+    /** Subtitles on a dark box instead of outlined text. */
+    val subtitleBox = bool("subtitle_box", false)
     val autoplayNext = bool("autoplay_next", true)
     val introSkipSeconds = int("intro_skip_seconds", 85)
     /** Stream lists: one list best first, instead of grouped by addon. */
