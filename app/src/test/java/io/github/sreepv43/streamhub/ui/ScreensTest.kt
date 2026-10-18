@@ -60,6 +60,7 @@ import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.ui.test.getBoundsInRoot
 import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -270,7 +271,8 @@ class ScreensTest {
         assertEquals("Play", focused())
         rule.onNodeWithText("Downloads").assertExists()
         val width = rule.onNodeWithTag("menu").getBoundsInRoot().let { it.right - it.left }
-        assertEquals(RailCinema, width)
+        // The tagged area is inside the menu's 12 dp side padding.
+        assertEquals(RailCinema - 24.dp, width)
         press(KeyEvent.KEYCODE_DPAD_LEFT)
         assertEquals("Home", focused())
     }
