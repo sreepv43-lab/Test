@@ -63,7 +63,7 @@ fun FlatButton(
             Icon(icon, contentDescription = null, tint = content, modifier = Modifier.size(if (compact) 18.dp else 20.dp))
             Spacer(Modifier.width(8.dp))
         }
-        Text(text, style = MaterialTheme.typography.labelLarge, color = content)
+        Text(text, style = MaterialTheme.typography.labelLarge, color = content, maxLines = 1, softWrap = false)
     }
 }
 

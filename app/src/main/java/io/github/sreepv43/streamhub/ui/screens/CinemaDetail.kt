@@ -288,6 +288,7 @@ private fun ChipRow(content: @Composable () -> Unit) {
     ) { content() }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TitleHeader(
     meta: Meta,
@@ -362,7 +363,12 @@ private fun TitleHeader(
                         Text(meta.director.take(2).joinToString(", "), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = AppColors.accent)
                     }
                 }
-                Row(Modifier.tvRow().padding(top = 8.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                // Wraps onto a second line instead of squeezing the last button when they don't all fit.
+                FlowRow(
+                    Modifier.tvRow().padding(top = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     if (best != null) {
                         FlatButton(if (resumeMs != null) "Resume" else "Play suggested", onClick = onPlay, icon = Icons.Default.PlayArrow, prominent = true)
                     }
@@ -381,7 +387,7 @@ private fun TitleHeader(
                     }
                     val trailer = meta.trailers.firstOrNull { it.type == null || it.type == "Trailer" }?.source
                     if (trailer != null && onTrailer != null) {
-                        FlatButton("Trailer", onClick = { onTrailer(trailer) }, icon = Icons.Default.Movie)
+                        FlatButton("Trailer (YouTube)", onClick = { onTrailer(trailer) }, icon = Icons.Default.Movie)
                     }
                 }
                 val caption = buildList {
