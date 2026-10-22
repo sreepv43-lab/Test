@@ -64,8 +64,12 @@ object Desktop {
         val encoded = java.util.Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE))
         val process = ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
             .redirectErrorStream(true).start()
+        // PowerShell waits for more input while its input is open.
+        process.outputStream.close()
         process.inputStream.readBytes()
-        check(process.waitFor() == 0 && shortcut.isFile) { "Windows didn't create the startup shortcut" }
+        check(process.waitFor(60, java.util.concurrent.TimeUnit.SECONDS) && process.exitValue() == 0 && shortcut.isFile) {
+            "Windows didn't create the startup shortcut"
+        }
     }
 
     fun openBrowser(url: String) {
@@ -89,7 +93,11 @@ object Desktop {
     /** This computer's addresses on the home network (what the TV needs), e.g. "192.168.1.20". */
     fun addresses(): List<String> = runCatching {
         NetworkInterface.getNetworkInterfaces().toList()
-            .filter { it.isUp && !it.isLoopback && !it.isVirtual && VIRTUAL.none { prefix -> it.name.startsWith(prefix) } }
+            .filter { nic ->
+                nic.isUp && !nic.isLoopback && !nic.isVirtual &&
+                    VIRTUAL.none { nic.name.startsWith(it) } &&
+                    VIRTUAL_ADAPTERS.none { nic.displayName.orEmpty().contains(it, ignoreCase = true) }
+            }
             .flatMap { it.inetAddresses.toList() }
             .filterIsInstance<Inet4Address>()
             .filter { it.isSiteLocalAddress }
@@ -120,6 +128,9 @@ object Desktop {
             places = places,
         )
     }
+
+    /** Windows names its adapters only in the display name (WSL / Hyper-V, VPNs, virtual machines). */
+    private val VIRTUAL_ADAPTERS = listOf("Hyper-V", "vEthernet", "VirtualBox", "VMware", "WSL", "TAP-", "Wintun", "WireGuard", "Tailscale", "ZeroTier")
 
     private val VIRTUAL = listOf("docker", "veth", "br-", "virbr", "vmnet", "vboxnet", "tun", "tap", "zt", "tailscale")
 }

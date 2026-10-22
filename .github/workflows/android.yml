@@ -145,8 +145,14 @@ jobs:
           Get-Content "$data\server.log" -ErrorAction SilentlyContinue
           if (-not $ok) { throw "StreamHub Server didn't start" }
           $admin = @{ 'X-StreamHub' = 'admin' }
-          $status = Invoke-RestMethod http://127.0.0.1:8095/admin/api/status -Headers $admin
+          # The first start switches on "Start with Windows" (a Startup shortcut) right after starting.
+          for ($i = 0; $i -lt 20; $i++) {
+            $status = Invoke-RestMethod http://127.0.0.1:8095/admin/api/status -Headers $admin
+            if ($status.autostart -eq $true) { break }
+            Start-Sleep 2
+          }
           $status | ConvertTo-Json
+          Get-Content "$data\server.log"
           if ($status.autostart -ne $true) { throw "Start with Windows wasn't switched on" }
           Invoke-RestMethod http://127.0.0.1:8095/admin/api/stop -Method Post -Headers $admin -Body '{}' -ContentType 'application/json'
           Start-Sleep 3

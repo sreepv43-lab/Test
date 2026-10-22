@@ -53,7 +53,7 @@ fun main(args: Array<String>) {
     // The installed server starts with the computer from its first start (switch it off on the page).
     val firstRun = File(dataDir, ".started-before")
     if (!firstRun.exists()) {
-        if (Desktop.autostart() == false) runCatching { Desktop.setAutostart(true) }
+        if (Desktop.autostart() == false) runCatching { Desktop.setAutostart(true) }.onFailure { log("Couldn't switch on starting with the computer: ${it.message}") }
         runCatching { firstRun.writeText("") }
     }
     if (openBrowser) Desktop.openBrowser("http://localhost:${server.port}/")
