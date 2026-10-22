@@ -32,6 +32,7 @@ import io.github.sreepv43.streamhub.data.WatchHistory
 import io.github.sreepv43.streamhub.download.DownloadRepository
 import io.github.sreepv43.streamhub.download.DownloadStorage
 import io.github.sreepv43.streamhub.download.Downloader
+import io.github.sreepv43.streamhub.download.HomeServer
 import io.github.sreepv43.streamhub.torrent.CacheChoice
 import io.github.sreepv43.streamhub.torrent.CachePolicy
 import io.github.sreepv43.streamhub.torrent.CacheRules
@@ -201,6 +202,9 @@ class AppContainer(context: Context) {
         }
     }
 
+    /** The paired StreamHub Server (Settings → Downloads → Home Server), if any. */
+    val homeServer = HomeServer(http, settings, downloads).also { it.start() }
+
     val downloader = Downloader(
         context, torrentHttp, downloads, storage, settings, ::playableUrl,
         // A torrent download keeps its temporary torrent data on the same drive as the file (in a
@@ -212,6 +216,7 @@ class AppContainer(context: Context) {
             }
         },
         torrentDone = { item -> TorrentLinks.parseLogicalUrl(item.url)?.first?.let(torrents::discard) },
+        homeServer = homeServer,
     )
 
     val updater = Updater(context, mediaHttp)

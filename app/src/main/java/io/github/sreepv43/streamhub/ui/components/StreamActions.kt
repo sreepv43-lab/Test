@@ -76,6 +76,25 @@ object StreamActions {
         )
     }
 
+    /** Plays a finished download: its file on the TV or a drive, or streamed from the Home Server. */
+    fun playDownload(context: Context, item: DownloadItem) {
+        val watch = WatchContext(
+            metaId = item.metaId ?: item.id,
+            type = item.type ?: "movie",
+            videoId = item.videoId ?: item.id,
+            title = item.title,
+            episodeTitle = item.subtitle,
+            poster = item.poster,
+        )
+        if (item.onServer) {
+            val id = item.remoteId ?: return toast(context, "This download isn't on the Home Server")
+            val server = context.container.homeServer
+            playTarget(context, PlaybackTarget.Direct(server.mediaUrl(id), server.mediaHeaders()), watch)
+        } else {
+            item.fileUri?.let { playFile(context, it, watch) }
+        }
+    }
+
     fun playFile(context: Context, uri: String, watch: WatchContext) {
         playTarget(context, PlaybackTarget.Direct(uri, emptyMap()), watch)
     }

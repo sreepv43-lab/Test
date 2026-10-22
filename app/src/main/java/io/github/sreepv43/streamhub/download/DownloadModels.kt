@@ -8,6 +8,8 @@ import kotlinx.serialization.Serializable
  *   internal folder). [value] is the persisted tree URI.
  * - [Kind.DIRECTORY]: this app's folder on a mounted volume (works on TVs without a folder picker).
  *   [value] is an absolute path.
+ * - [Kind.SERVER]: the paired Home Server (StreamHub Server) downloads it; [value] is the id of the
+ *   server's storage, or "" for the server's default.
  */
 @Serializable
 data class DownloadLocation(
@@ -15,7 +17,7 @@ data class DownloadLocation(
     val value: String,
     val label: String,
 ) {
-    enum class Kind { TREE, DIRECTORY }
+    enum class Kind { TREE, DIRECTORY, SERVER }
 }
 
 @Serializable
@@ -39,7 +41,16 @@ data class DownloadItem(
     val status: Status = Status.QUEUED,
     val error: String? = null,
     val createdAt: Long = System.currentTimeMillis(),
+    // Home Server downloads: the server's job, and its live numbers (from the server's libtorrent).
+    val remoteId: String? = null,
+    /** What the download is doing, e.g. "Connecting to peers" (server downloads). */
+    val detail: String? = null,
+    val downloadRate: Long? = null,
+    val peers: Int? = null,
+    val seeds: Int? = null,
 ) {
+    val onServer: Boolean get() = location.kind == DownloadLocation.Kind.SERVER
+
     enum class Status { QUEUED, RUNNING, PAUSED, COMPLETED, FAILED }
 
     val progress: Float

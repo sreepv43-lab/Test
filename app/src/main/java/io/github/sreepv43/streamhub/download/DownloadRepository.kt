@@ -39,6 +39,9 @@ class DownloadRepository(context: Context) {
         save()
     }
 
+    /** Saves the list now (after changes made with persist = false). */
+    fun flush() = synchronized(lock) { save() }
+
     private fun load(): List<DownloadItem> =
         runCatching { StremioJson.decodeFromString(serializer, file.readText()) }.getOrDefault(emptyList())
 

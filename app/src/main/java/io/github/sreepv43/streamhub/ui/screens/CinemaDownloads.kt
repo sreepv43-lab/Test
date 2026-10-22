@@ -118,7 +118,7 @@ internal fun CinemaDownloads(
         items(shown, key = { it.id }) { item ->
             DownloadCard(
                 item,
-                speed = speeds[item.id],
+                speed = speeds[item.id] ?: item.downloadRate,
                 onPlay = { onPlay(item) },
                 onPause = { onPause(item) },
                 onResume = { onResume(item) },
@@ -221,17 +221,18 @@ private fun DownloadCard(
                 )
             }
             val (state, color) = when (item.status) {
-                DownloadItem.Status.QUEUED -> "Queued · $percent%" to AppColors.textDim
-                DownloadItem.Status.RUNNING -> "Downloading · $percent%" to AppColors.accent
+                DownloadItem.Status.QUEUED -> (item.detail ?: "Queued") + " · $percent%" to AppColors.textDim
+                DownloadItem.Status.RUNNING -> (item.detail ?: "Downloading") + " · $percent%" to AppColors.accent
                 DownloadItem.Status.PAUSED -> "Paused · $percent%" to AppColors.textDim
                 DownloadItem.Status.COMPLETED -> "Completed ✓" to Green
-                DownloadItem.Status.FAILED -> "Stopped: ${item.error.orEmpty()}" to MaterialTheme.colorScheme.error
+                DownloadItem.Status.FAILED -> (item.detail ?: "Stopped") + ": ${item.error.orEmpty()}" to MaterialTheme.colorScheme.error
             }
             Text(state, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = color, maxLines = 2, overflow = TextOverflow.Ellipsis)
             val amount = if (item.totalBytes > 0) "${size(item.downloadedBytes)} / ${size(item.totalBytes)}" else size(item.downloadedBytes)
             val rate = if (item.status == DownloadItem.Status.RUNNING) speed?.let { size(it) + "/s" + timeLeft(item, it) } else null
+            val peers = if (item.status == DownloadItem.Status.RUNNING) item.peers?.let { "$it peers" + (item.seeds?.let { s -> " ($s seeds)" } ?: "") } else null
             Text(
-                listOfNotNull(amount, rate, item.location.label).joinToString(" · "),
+                listOfNotNull(amount, rate, peers, item.location.label).joinToString(" · "),
                 style = MaterialTheme.typography.bodySmall,
                 color = AppColors.textDim,
                 maxLines = 1,

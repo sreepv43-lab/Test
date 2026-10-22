@@ -215,7 +215,8 @@ private fun DownloadsTab() {
     }
     SettingsSection("Download location") {
         Text(
-            "Pick internal storage or any connected USB drive or SD card. New drives appear here when plugged in.",
+            "Pick internal storage, any connected USB drive or SD card, or the Home Server. New drives appear here " +
+                "when plugged in. Changing it never moves downloads already started.",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
         Column(Modifier.widthIn(max = 720.dp)) {
@@ -225,6 +226,7 @@ private fun DownloadsTab() {
             )
         }
     }
+    SettingsSection("Home Server") { HomeServerSection() }
     SettingsSection("Download options") {
         val wifiOnly by settings.downloadsWifiOnly.flow.collectAsStateWithLifecycle()
         val speedLimit by settings.downloadSpeedLimitKb.flow.collectAsStateWithLifecycle()

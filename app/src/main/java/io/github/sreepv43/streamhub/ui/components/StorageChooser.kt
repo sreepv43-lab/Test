@@ -33,6 +33,8 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material.icons.filled.Dns
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +66,19 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
     val lifecycleOwner = LocalLifecycleOwner.current
 
     LaunchedEffect(refresh) { options = withContext(Dispatchers.IO) { storage.options() } }
+    // The paired Home Server's storages are download places too.
+    val homeServer = context.container.homeServer
+    val serverStatus by homeServer.status.collectAsState()
+    LaunchedEffect(refresh) { if (homeServer.configured) runCatching { homeServer.loadStatus() } }
+    val serverName = context.container.settings.homeServerName.value.ifEmpty { "Home Server" }
+    val serverOptions = serverStatus?.takeIf { homeServer.configured }?.storages.orEmpty().map { s ->
+        StorageOption(
+            location = DownloadLocation(DownloadLocation.Kind.SERVER, s.id, "$serverName · ${s.label}"),
+            freeBytes = s.freeBytes.takeIf { s.available },
+            removable = false,
+            problem = if (s.available) null else "this drive isn't connected to the server now",
+        )
+    }
     LaunchedEffect(lifecycleOwner) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) { refresh++ }
     }
@@ -81,8 +96,9 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
     var accessPrompt by remember { mutableStateOf<StorageOption?>(null) }
 
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        options.forEach { option ->
-            val isSelected = option.location == selected
+        (options + serverOptions).forEach { option ->
+            val isSelected = option.location == selected ||
+                option.location.kind == DownloadLocation.Kind.SERVER && selected?.kind == DownloadLocation.Kind.SERVER && option.location.value == selected?.value
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -101,6 +117,7 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
                 Icon(
                     when {
                         option.location.kind == DownloadLocation.Kind.TREE -> Icons.Default.Folder
+                        option.location.kind == DownloadLocation.Kind.SERVER -> Icons.Default.Dns
                         option.removable -> Icons.Default.Usb
                         else -> Icons.Default.PhoneAndroid
                     },
@@ -113,6 +130,7 @@ fun StorageChooser(selected: DownloadLocation?, onSelect: (DownloadLocation) -> 
                         when {
                             option.needsAccess -> append("Connected drive · select to allow access")
                             option.location.kind == DownloadLocation.Kind.TREE -> append("Chosen folder")
+                            option.location.kind == DownloadLocation.Kind.SERVER -> append("Home Server: downloads even with the TV off")
                             option.removable -> append("Drive folder")
                             else -> append("App folder")
                         }

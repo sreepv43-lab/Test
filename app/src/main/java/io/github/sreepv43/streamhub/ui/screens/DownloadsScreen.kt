@@ -72,7 +72,9 @@ fun DownloadsScreen(onOpenStorageSettings: () -> Unit = {}) {
     var toDelete by remember { mutableStateOf<DownloadItem?>(null) }
     var toMove by remember { mutableStateOf<DownloadItem?>(null) }
     fun play(item: DownloadItem) {
-        val uri = item.fileUri ?: return
+        // The Home Server checks its own files.
+        if (item.onServer) return StreamActions.playDownload(context, item)
+        item.fileUri ?: return
         scope.launch {
             // A file shorter than its download (e.g. the drive lost data) can't
             // play to the end; it goes back to paused so Resume can finish it.
@@ -80,18 +82,7 @@ fun DownloadsScreen(onOpenStorageSettings: () -> Unit = {}) {
                 StreamActions.toast(context, "This download isn't complete. Press Resume to finish it.")
                 return@launch
             }
-            StreamActions.playFile(
-                context,
-                uri,
-                WatchContext(
-                    metaId = item.metaId ?: item.id,
-                    type = item.type ?: "movie",
-                    videoId = item.videoId ?: item.id,
-                    title = item.title,
-                    episodeTitle = item.subtitle,
-                    poster = item.poster,
-                ),
-            )
+            StreamActions.playDownload(context, item)
         }
     }
 
@@ -142,7 +133,7 @@ fun DownloadsScreen(onOpenStorageSettings: () -> Unit = {}) {
                 items(items, key = { it.id }) { item ->
                     DownloadRow(
                         item,
-                        speed = speeds[item.id],
+                        speed = speeds[item.id] ?: item.downloadRate,
                         onPlay = { play(item) },
                         onPause = { downloader.pause(item.id) },
                         onResume = { downloader.resume(item.id) },
@@ -267,11 +258,12 @@ private fun DownloadRow(
                 if (item.totalBytes > 0) " / " + Formatter.formatShortFileSize(context, item.totalBytes) else ""
             val status = when (item.status) {
                 DownloadItem.Status.QUEUED -> "Waiting"
-                DownloadItem.Status.RUNNING -> "Downloading ${(item.progress * 100).toInt()}%" +
-                    (speed?.let { " · " + Formatter.formatShortFileSize(context, it) + "/s" + timeLeft(item, it) } ?: "")
+                DownloadItem.Status.RUNNING -> (item.detail ?: "Downloading") + " ${(item.progress * 100).toInt()}%" +
+                    (speed?.let { " · " + Formatter.formatShortFileSize(context, it) + "/s" + timeLeft(item, it) } ?: "") +
+                    (item.peers?.let { " · $it peers" } ?: "")
                 DownloadItem.Status.PAUSED -> "Paused"
                 DownloadItem.Status.COMPLETED -> "Completed"
-                DownloadItem.Status.FAILED -> "Failed: ${item.error.orEmpty()}"
+                DownloadItem.Status.FAILED -> (item.detail ?: "Failed") + ": ${item.error.orEmpty()}"
             }
             Text(
                 "$status · $size",

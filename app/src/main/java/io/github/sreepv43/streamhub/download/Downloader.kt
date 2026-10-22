@@ -51,6 +51,8 @@ class Downloader(
     private val torrentStarting: (DownloadItem) -> Unit = {},
     /** A torrent download finished or was removed: its temporary torrent data can go. */
     private val torrentDone: (DownloadItem) -> Unit = {},
+    /** Downloads to [DownloadLocation.Kind.SERVER] are done by the Home Server, not here. */
+    private val homeServer: HomeServer? = null,
 ) {
     // Downloads can take hours: no read timeout, but notice dead connections.
     private val http = http.newBuilder()
@@ -113,7 +115,7 @@ class Downloader(
             repository.update(id) { it.copy(status = DownloadItem.Status.QUEUED) }
         }
         refreshActive()
-        _waitingForWifi.value = repository.items.value.any { it.status == DownloadItem.Status.QUEUED }
+        _waitingForWifi.value = repository.items.value.any { !it.onServer && it.status == DownloadItem.Status.QUEUED }
     }
 
     fun enqueue(
@@ -140,13 +142,19 @@ class Downloader(
             headers = headers,
             suggestedFileName = suggestedFileName,
             location = location,
+            detail = if (location.kind == DownloadLocation.Kind.SERVER) "Sending to the Home Server…" else null,
         )
         repository.add(item)
-        schedule()
+        if (location.kind == DownloadLocation.Kind.SERVER) homeServer?.send(item) else schedule()
         return item
     }
 
     fun pause(id: String) {
+        repository.get(id)?.takeIf { it.onServer }?.let { item ->
+            repository.update(id) { it.copy(status = DownloadItem.Status.PAUSED, downloadRate = 0, detail = null) }
+            homeServer?.pause(item)
+            return
+        }
         synchronized(jobs) { jobs.remove(id) }?.cancel()
         calls.remove(id)?.cancel()
         repository.update(id) { it.copy(status = DownloadItem.Status.PAUSED) }
@@ -155,6 +163,11 @@ class Downloader(
     }
 
     fun resume(id: String) {
+        repository.get(id)?.takeIf { it.onServer }?.let { item ->
+            repository.update(id) { it.copy(status = DownloadItem.Status.QUEUED, error = null) }
+            homeServer?.resume(item)
+            return
+        }
         repository.update(id) { it.copy(status = DownloadItem.Status.QUEUED, error = null) }
         schedule()
     }
@@ -163,6 +176,11 @@ class Downloader(
         synchronized(jobs) { jobs.remove(id) }?.cancel()
         calls.remove(id)?.cancel()
         val item = repository.get(id)
+        if (item != null && item.onServer) {
+            homeServer?.remove(item, deleteFile)
+            repository.remove(id)
+            return
+        }
         if (item != null && TorrentLinks.isLogicalUrl(item.url)) torrentDone(item)
         repository.remove(id)
         if (deleteFile) item?.fileUri?.let(storage::delete)
@@ -174,7 +192,7 @@ class Downloader(
     fun resumeAll() {
         repository.items.value
             .filter { it.status == DownloadItem.Status.PAUSED || it.status == DownloadItem.Status.FAILED }
-            .forEach { item -> repository.update(item.id) { it.copy(status = DownloadItem.Status.QUEUED, error = null) } }
+            .forEach { item -> if (item.onServer) resume(item.id) else repository.update(item.id) { it.copy(status = DownloadItem.Status.QUEUED, error = null) } }
         schedule()
     }
 
@@ -183,8 +201,8 @@ class Downloader(
         synchronized(jobs) { jobs.remove(id) }?.cancel()
         calls.remove(id)?.cancel()
         val old = repository.get(id) ?: return
-        old.fileUri?.let { runCatching { storage.delete(it) } }
-        repository.update(id) {
+        if (old.onServer) homeServer?.remove(old, deleteFile = true) else old.fileUri?.let { runCatching { storage.delete(it) } }
+        val moved = repository.update(id) {
             it.copy(
                 location = location,
                 fileUri = null,
@@ -192,10 +210,15 @@ class Downloader(
                 totalBytes = -1,
                 status = DownloadItem.Status.QUEUED,
                 error = null,
+                remoteId = null,
+                detail = if (location.kind == DownloadLocation.Kind.SERVER) "Sending to the Home Server…" else null,
+                downloadRate = null,
+                peers = null,
+                seeds = null,
             )
         }
         refreshActive()
-        schedule()
+        if (moved != null && location.kind == DownloadLocation.Kind.SERVER) homeServer?.send(moved) else schedule()
     }
 
     /**
@@ -224,7 +247,7 @@ class Downloader(
         calls.values.forEach { it.cancel() }
         calls.clear()
         repository.items.value
-            .filter { it.status == DownloadItem.Status.RUNNING || it.status == DownloadItem.Status.QUEUED }
+            .filter { !it.onServer && (it.status == DownloadItem.Status.RUNNING || it.status == DownloadItem.Status.QUEUED) }
             .forEach { item -> repository.update(item.id) { it.copy(status = DownloadItem.Status.PAUSED) } }
         refreshActive()
     }
@@ -232,14 +255,14 @@ class Downloader(
     /** Called when the UI starts: downloads interrupted by a process death continue. */
     fun resumeInterrupted() {
         repository.items.value
-            .filter { it.status == DownloadItem.Status.RUNNING && !synchronized(jobs) { it.id in jobs } }
+            .filter { !it.onServer && it.status == DownloadItem.Status.RUNNING && !synchronized(jobs) { it.id in jobs } }
             .forEach { item -> repository.update(item.id) { it.copy(status = DownloadItem.Status.QUEUED) } }
         schedule()
     }
 
     private fun schedule() {
         if (!networkAllowed()) {
-            _waitingForWifi.value = repository.items.value.any { it.status == DownloadItem.Status.QUEUED }
+            _waitingForWifi.value = repository.items.value.any { !it.onServer && it.status == DownloadItem.Status.QUEUED }
             return
         }
         _waitingForWifi.value = false
@@ -247,7 +270,7 @@ class Downloader(
             val free = MAX_PARALLEL - jobs.size
             if (free <= 0) return
             repository.items.value
-                .filter { it.status == DownloadItem.Status.QUEUED && it.id !in jobs }
+                .filter { !it.onServer && it.status == DownloadItem.Status.QUEUED && it.id !in jobs }
                 .reversed() // oldest first
                 .take(free)
                 .onEach { item ->

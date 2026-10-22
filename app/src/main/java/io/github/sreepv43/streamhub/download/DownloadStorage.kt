@@ -355,6 +355,8 @@ class DownloadStorage(private val context: Context) {
         DownloadLocation.Kind.TREE ->
             if (DocumentFile.fromTreeUri(context, Uri.parse(location.value))?.canWrite() == true) null
             else "the folder is gone or access was removed"
+        // The Home Server checks its own storage.
+        DownloadLocation.Kind.SERVER -> null
     }
 
     private fun isOnRemovablePath(dir: File): Boolean =
@@ -395,6 +397,7 @@ class DownloadStorage(private val context: Context) {
                 ?: throw IOException("Cannot create $fileName in ${location.label}")
             doc.uri.toString()
         }
+        DownloadLocation.Kind.SERVER -> throw IOException("Home Server downloads are stored on the server, not on the TV")
     }
 
     fun length(uri: String): Long {

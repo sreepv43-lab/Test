@@ -236,7 +236,7 @@ internal fun TorrentsTab() {
 }
 
 @Composable
-private fun StatusLine(label: String, value: String) {
+internal fun StatusLine(label: String, value: String) {
     Column(Modifier.padding(vertical = 2.dp)) {
         Text(label, style = MaterialTheme.typography.titleSmall)
         Text(value, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)

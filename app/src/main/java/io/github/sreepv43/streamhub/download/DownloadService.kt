@@ -60,8 +60,9 @@ class DownloadService : Service() {
             combine(downloader.items, downloader.waitingForWifi) { items, waiting -> items to waiting }
                 .sample(1_000)
                 .collect { (items, waiting) ->
-                    val running = items.filter { it.status == DownloadItem.Status.RUNNING }
-                    val queued = items.any { it.status == DownloadItem.Status.QUEUED }
+                    // (Home Server downloads run on the server: the TV needn't stay awake for them.)
+                    val running = items.filter { !it.onServer && it.status == DownloadItem.Status.RUNNING }
+                    val queued = items.any { !it.onServer && it.status == DownloadItem.Status.QUEUED }
                     // Stay alive while anything is left to do: a download between retries or waiting
                     // for Wi-Fi must not lose its foreground service (it can't be started again
                     // once the app is in the background).

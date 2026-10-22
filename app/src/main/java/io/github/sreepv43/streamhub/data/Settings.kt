@@ -64,6 +64,13 @@ class Settings(context: Context) {
     /** Home rows the user hid ("Customize Home"): catalog keys (CatalogRef.key), one per line. */
     val hiddenHomeRows = string("hidden_home_rows", "")
 
+    // Home Server (StreamHub Server on a computer or NAS), set up in Settings → Downloads.
+    /** "192.168.1.100:8095"; empty = not set up. */
+    val homeServerAddress = string("home_server_address", "")
+    /** Key from pairing (sent with every request). */
+    val homeServerToken = string("home_server_token", "")
+    val homeServerName = string("home_server_name", "")
+
     /** "classic" or "cinema" (see ui.Interfaces). */
     val interfaceStyle = string("interface_style", "classic")
 
