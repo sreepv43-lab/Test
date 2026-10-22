@@ -59,40 +59,89 @@ distributions {
     }
 }
 
-// A Linux installer (.deb) with its own Java inside: double-click to install, then "StreamHub Server"
-// in the app menu opens the control page. Built with the JDK's jpackage (needs fakeroot).
-val installerInput by tasks.registering(Sync::class) {
+// Installers with their own Java inside (built with the JDK's jpackage on the matching system):
+// Linux .deb (needs fakeroot) and Windows .exe (needs WiX 3). Started from the menu, the program
+// opens the control page (starting the server if needed).
+val jpackage = File(System.getProperty("java.home"), "bin/jpackage" + if (System.getProperty("os.name").startsWith("Windows")) ".exe" else "").path
+// Only what the server uses (no desktop graphics libraries, so the .deb installs on any recent distro).
+val installerModules = "java.base,java.logging,java.net.http,jdk.httpserver,jdk.crypto.ec,jdk.unsupported,java.management,java.naming"
+val installerDescription = "StreamHub Server: downloads for the StreamHub TV app, even with the TV off"
+
+fun installerInput(name: String, platform: String) = tasks.register<Sync>(name) {
     from(tasks.jar)
     from(configurations.runtimeClasspath)
-    from({ natives.filter { "linux" in it.name } }) { into("natives") }
-    into(layout.buildDirectory.dir("installer/input"))
+    from({ natives.filter { platform in it.name } }) { into("natives") }
+    into(layout.buildDirectory.dir("installer/input-$platform"))
 }
 
+val linuxInstallerInput = installerInput("linuxInstallerInput", "linux")
+val windowsInstallerInput = installerInput("windowsInstallerInput", "windows")
+
+fun launcherOptions(platform: String, icon: String) = listOf(
+    "--input", layout.buildDirectory.dir("installer/input-$platform").get().asFile.path,
+    "--main-jar", tasks.jar.get().archiveFileName.get(),
+    "--main-class", application.mainClass.get(),
+    "--arguments", "--open-browser",
+    "--java-options", "-Xmx768m",
+    "--add-modules", installerModules,
+    "--icon", file(icon).path,
+)
+
 val linuxInstaller by tasks.registering(Exec::class) {
-    dependsOn(installerInput)
-    val input = layout.buildDirectory.dir("installer/input").get().asFile
+    dependsOn(linuxInstallerInput)
     val out = layout.buildDirectory.dir("installer/out").get().asFile
-    val jpackage = File(System.getProperty("java.home"), "bin/jpackage").path
     doFirst { out.deleteRecursively() }
     commandLine(
-        jpackage, "--type", "deb",
-        "--name", "streamhub-server",
+        listOf(
+            jpackage, "--type", "deb",
+            "--name", "streamhub-server",
+            "--app-version", project.version.toString(),
+            "--description", installerDescription,
+            "--vendor", "StreamHub",
+        ) + launcherOptions("linux", "packaging/streamhub-server.png") + listOf(
+            "--resource-dir", file("packaging").path,
+            "--linux-shortcut",
+            "--linux-menu-group", "AudioVideo;Network;",
+            "--linux-app-category", "video",
+            "--dest", out.path,
+        ),
+    )
+}
+
+// The Windows program on its own (CI starts it once as a check before packing it into the .exe).
+val windowsAppImage by tasks.registering(Exec::class) {
+    dependsOn(windowsInstallerInput)
+    val out = layout.buildDirectory.dir("installer/windows-image").get().asFile
+    doFirst { out.deleteRecursively() }
+    commandLine(
+        listOf(
+            jpackage, "--type", "app-image",
+            "--name", "StreamHub Server",
+            "--app-version", project.version.toString(),
+            "--description", installerDescription,
+            "--vendor", "StreamHub",
+        ) + launcherOptions("windows", "packaging/streamhub-server.ico") + listOf("--dest", out.path),
+    )
+}
+
+val windowsInstaller by tasks.registering(Exec::class) {
+    dependsOn(windowsAppImage)
+    val image = layout.buildDirectory.dir("installer/windows-image/StreamHub Server").get().asFile
+    val out = layout.buildDirectory.dir("installer/out").get().asFile
+    doFirst { out.deleteRecursively() }
+    commandLine(
+        jpackage, "--type", "exe",
+        "--app-image", image.path,
+        "--name", "StreamHub Server",
         "--app-version", project.version.toString(),
-        "--description", "StreamHub Server: downloads for the StreamHub TV app, even with the TV off",
+        "--description", installerDescription,
         "--vendor", "StreamHub",
-        "--input", input.path,
-        "--main-jar", tasks.jar.get().archiveFileName.get(),
-        "--main-class", application.mainClass.get(),
-        // Started from the menu: show the control page (starting the server if needed).
-        "--arguments", "--open-browser",
-        "--java-options", "-Xmx768m",
-        // Only what the server uses (no desktop graphics libraries, so it installs on any recent distro).
-        "--add-modules", "java.base,java.logging,java.net.http,jdk.httpserver,jdk.crypto.ec,jdk.unsupported,java.management,java.naming",
-        "--icon", file("packaging/streamhub-server.png").path,
-        "--resource-dir", file("packaging").path,
-        "--linux-shortcut",
-        "--linux-menu-group", "AudioVideo;Network;",
-        "--linux-app-category", "video",
+        // Installs for the current user (no administrator needed) into %LOCALAPPDATA%; a newer
+        // installer replaces the old version (same upgrade id).
+        "--win-per-user-install",
+        "--win-upgrade-uuid", "6f1d6a3e-2b8c-4c55-9a3e-5e1b7c2d9f40",
+        "--win-menu", "--win-menu-group", "StreamHub",
+        "--win-shortcut",
         "--dest", out.path,
     )
 }

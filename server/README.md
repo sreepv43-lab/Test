@@ -7,6 +7,20 @@ finished files from the server. Other players (VLC…) can play them too.
 Supported: Windows (64-bit), Linux (Intel/AMD 64-bit, 32-bit ARM such as Raspberry Pi OS 32-bit),
 macOS, and NAS boxes that run Docker on an Intel/AMD processor.
 
+## Easiest: Windows PC
+
+1. Download **`streamhub-server-windows.exe`** from the latest StreamHub release:
+   https://github.com/sreepv43-lab/Test/releases/latest/download/streamhub-server-windows.exe
+2. Run it and follow the steps (no administrator needed; Java comes inside). If Windows SmartScreen
+   says "Windows protected your PC", choose **More info → Run anyway** (the installer isn't signed
+   with a paid certificate).
+3. Open **StreamHub Server** from the Start menu or the desktop. Your browser opens the control page
+   (see below). When Windows asks whether StreamHub Server may use the network, choose **Allow**
+   (private networks), otherwise the TV can't reach it.
+
+It starts with Windows from then on (switch that off on the control page). To update, run the newer
+installer. To uninstall: Settings → Apps → StreamHub Server (downloads and settings stay).
+
 ## Easiest: Linux PC (Ubuntu, Linux Mint, Debian, Pop!_OS…)
 
 1. Download **`streamhub-server-linux.deb`** from the latest StreamHub release:
@@ -29,7 +43,7 @@ To update, install the newer `.deb` the same way. To uninstall: `sudo apt remove
 2. Download `streamhub-server.zip` from the latest StreamHub release and unzip it, e.g. to
    `C:\StreamHub Server` or `/opt/streamhub-server`.
 3. Start it:
-   * **Windows:** double-click `bin\streamhub-server.bat`. To start it with Windows, press Win+R, type
+   * **Windows (without the installer):** double-click `bin\streamhub-server.bat`. To start it with Windows, press Win+R, type
      `shell:startup`, and put a shortcut to `streamhub-server.bat` in that folder.
    * **macOS / Linux:** run `bin/streamhub-server --open-browser`. To start it with the computer, see `streamhub-server.service`.
    * **NAS (Docker):** see `Dockerfile`.

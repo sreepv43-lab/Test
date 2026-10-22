@@ -198,6 +198,7 @@ data class AdminStatus(
     /** Null where starting with the computer isn't something the page can switch (not a Linux desktop). */
     val autostart: Boolean?,
     val ffprobe: Boolean,
+    val windows: Boolean = false,
 )
 
 @Serializable

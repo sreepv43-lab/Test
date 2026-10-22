@@ -10,6 +10,7 @@ import java.net.URI
 object Desktop {
     private val os = System.getProperty("os.name").lowercase()
     private val linux = "linux" in os
+    val windows = "win" in os
 
     /** The installed program (set by the installer's launcher); null when run from the zip. */
     private val launcher: String? = System.getProperty("jpackage.app-path")?.takeIf { File(it).canExecute() }
@@ -17,11 +18,24 @@ object Desktop {
     private val autostartFile: File
         get() = File(System.getenv("XDG_CONFIG_HOME") ?: File(System.getProperty("user.home"), ".config").path, "autostart/streamhub-server.desktop")
 
+    /** Windows: a shortcut in the user's Startup folder. */
+    private val startupShortcut: File
+        get() = File(System.getenv("APPDATA").orEmpty(), "Microsoft\\Windows\\Start Menu\\Programs\\Startup\\StreamHub Server.lnk")
+
     /** Whether the server starts when the user logs in; null when the page can't switch it here. */
-    fun autostart(): Boolean? = if (linux && launcher != null) autostartFile.isFile else null
+    fun autostart(): Boolean? = when {
+        launcher == null -> null
+        linux -> autostartFile.isFile
+        windows -> startupShortcut.isFile
+        else -> null
+    }
 
     fun setAutostart(enabled: Boolean) {
         val program = checkNotNull(launcher) { "Starting with the computer can be switched only in the installed server" }
+        if (windows) {
+            if (enabled) windowsShortcut(startupShortcut, program, "--background") else startupShortcut.delete()
+            return
+        }
         if (!enabled) {
             autostartFile.delete()
             return
@@ -38,6 +52,20 @@ object Desktop {
             X-GNOME-Autostart-enabled=true
             """.trimIndent() + "\n",
         )
+    }
+
+    /** Makes a Windows shortcut with PowerShell (the script goes encoded, so paths need no quoting). */
+    private fun windowsShortcut(shortcut: File, target: String, arguments: String) {
+        fun quoted(value: String) = "'" + value.replace("'", "''") + "'"
+        shortcut.parentFile.mkdirs()
+        val script = "\$s = (New-Object -ComObject WScript.Shell).CreateShortcut(${quoted(shortcut.path)}); " +
+            "\$s.TargetPath = ${quoted(target)}; \$s.Arguments = ${quoted(arguments)}; " +
+            "\$s.WorkingDirectory = ${quoted(File(target).parent)}; \$s.Save()"
+        val encoded = java.util.Base64.getEncoder().encodeToString(script.toByteArray(Charsets.UTF_16LE))
+        val process = ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
+            .redirectErrorStream(true).start()
+        process.inputStream.readBytes()
+        check(process.waitFor() == 0 && shortcut.isFile) { "Windows didn't create the startup shortcut" }
     }
 
     fun openBrowser(url: String) {

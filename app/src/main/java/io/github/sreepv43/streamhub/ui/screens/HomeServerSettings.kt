@@ -129,8 +129,8 @@ internal fun HomeServerSection() {
                 if (paired) FlatButton("Cancel", onClick = { configuring = false })
             }
             Text(
-                "Get StreamHub Server from the same place as the app's updates (Linux PC: streamhub-server-linux.deb, " +
-                    "double-click to install; other computers: streamhub-server.zip). Its control page on that computer " +
+                "Get StreamHub Server from the same place as the app's updates (Windows: streamhub-server-windows.exe; " +
+                    "Linux PC: streamhub-server-linux.deb; others: streamhub-server.zip). Its control page on that computer " +
                     "shows the address and pairing code.",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,

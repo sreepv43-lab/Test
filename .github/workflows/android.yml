@@ -86,9 +86,10 @@ jobs:
             Newer 64-bit devices can use `app-arm64-v8a-release.apk`. `app-universal-release.apk` works
             everywhere but is about 65 MB because it carries the torrent engine for every processor type.
 
-            **Home Server** (downloads for StreamHub while the TV is off): on a Linux PC (Ubuntu, Mint, Debian…)
-            install `streamhub-server-linux.deb` by double-clicking it, then open "StreamHub Server" from the
-            app menu. On Windows, macOS or a NAS use `streamhub-server.zip` (needs Java 17; see README.md inside).
+            **Home Server** (downloads for StreamHub while the TV is off): on Windows run
+            `streamhub-server-windows.exe` (added a few minutes after the APKs); on a Linux PC (Ubuntu, Mint,
+            Debian…) double-click `streamhub-server-linux.deb`. Then open "StreamHub Server" from the Start /
+            app menu. On macOS or a NAS use `streamhub-server.zip` (needs Java 17; see README.md inside).
 
             Newest build, e.g. for the Downloader app on Android TV:
             https://github.com/${{ github.repository }}/releases/latest/download/app-armeabi-v7a-release.apk
@@ -104,3 +105,79 @@ jobs:
           path: |
             app/build/reports/tests/
             server/build/reports/tests/
+
+  # The Windows installer for StreamHub Server, built on Windows (jpackage + WiX). The program is
+  # started once and checked before it is packed.
+  server-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      - name: WiX Toolset
+        shell: pwsh
+        run: |
+          if (-not (Get-Command candle.exe -ErrorAction SilentlyContinue)) {
+            choco install wixtoolset --version 3.14.1 -y --no-progress
+            "C:\Program Files (x86)\WiX Toolset v3.14\bin" | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+          }
+
+      - name: Windows program
+        run: ./gradlew.bat --no-daemon -p server windowsAppImage
+
+      - name: Check that it starts
+        shell: pwsh
+        run: |
+          $exe = "server/build/installer/windows-image/StreamHub Server/StreamHub Server.exe"
+          $data = "$env:RUNNER_TEMP\streamhub-data"
+          Start-Process -FilePath $exe -ArgumentList "--background", "--data=$data"
+          $ok = $false
+          for ($i = 0; $i -lt 30 -and -not $ok; $i++) {
+            Start-Sleep 2
+            try { $ok = (Invoke-RestMethod http://127.0.0.1:8095/api/hello).app -eq 'streamhub-server' } catch {}
+          }
+          Get-Content "$data\server.log" -ErrorAction SilentlyContinue
+          if (-not $ok) { throw "StreamHub Server didn't start" }
+          $admin = @{ 'X-StreamHub' = 'admin' }
+          $status = Invoke-RestMethod http://127.0.0.1:8095/admin/api/status -Headers $admin
+          $status | ConvertTo-Json
+          if ($status.autostart -ne $true) { throw "Start with Windows wasn't switched on" }
+          Invoke-RestMethod http://127.0.0.1:8095/admin/api/stop -Method Post -Headers $admin -Body '{}' -ContentType 'application/json'
+          Start-Sleep 3
+
+      - name: Windows installer
+        shell: pwsh
+        run: |
+          ./gradlew.bat --no-daemon -p server windowsInstaller -x windowsAppImage
+          Copy-Item (Get-ChildItem "server/build/installer/out/*.exe" | Select-Object -First 1).FullName server/build/installer/out/streamhub-server-windows.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: streamhub-server-windows
+          path: server/build/installer/out/streamhub-server-windows.exe
+
+  # Adds the Windows installer to the release the build job published.
+  publish-windows:
+    needs: [build, server-windows]
+    if: >-
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      (github.ref_name == github.event.repository.default_branch ||
+       github.ref_name == 'claude/stremio-android-tv-app-by6t0b')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: streamhub-server-windows
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          files: streamhub-server-windows.exe

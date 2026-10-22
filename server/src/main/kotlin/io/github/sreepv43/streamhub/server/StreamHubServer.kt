@@ -94,6 +94,7 @@ class StreamHubServer(
             dataFolder = dataDir.absolutePath,
             autostart = Desktop.autostart(),
             ffprobe = MediaProbe.available,
+            windows = Desktop.windows,
         )
     }
 

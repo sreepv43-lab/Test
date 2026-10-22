@@ -67,6 +67,8 @@
       <div class="dim small" style="margin-top:10px">and this pairing code:</div>
       <div class="code" id="code">······</div>
       <div class="dim small">Each code works once; a new one appears after a device pairs.</div>
+      <div class="dim small" id="firewall" style="display:none;margin-top:8px">If the TV can't connect: when Windows asks whether
+        StreamHub Server may use the network, choose <b>Allow</b> (private networks).</div>
     </section>
     <section>
       <h2>Paired devices</h2>
@@ -166,6 +168,7 @@ async function refresh() {
 function render(downloads) {
   const s = status;
   document.getElementById('version').textContent = 'Version ' + s.version;
+  document.getElementById('firewall').style.display = s.windows ? '' : 'none';
   document.getElementById('code').textContent = s.pairingCode;
   document.getElementById('addresses').innerHTML = s.addresses.length
     ? s.addresses.map(a => esc(s.port === 8095 ? a : a + ':' + s.port)).join('<br>')
