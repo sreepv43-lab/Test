@@ -24,6 +24,12 @@ jobs:
       - name: Unit tests
         run: ./gradlew --no-daemon testDebugUnitTest
 
+      # StreamHub Server (separate build in server/): tests, then the zip people install at home.
+      - name: Home server
+        run: |
+          ./gradlew --no-daemon -p server test distZip
+          cp server/build/distributions/streamhub-server-*.zip server/build/distributions/streamhub-server.zip
+
       # The permanent signing key (secret STREAMHUB_KEYSTORE = base64 of the .jks file, and
       # STREAMHUB_KEYSTORE_PASSWORD). Without it the APKs use a throwaway key, and installing a new
       # build means uninstalling the old one first.
@@ -73,13 +79,19 @@ jobs:
             Newer 64-bit devices can use `app-arm64-v8a-release.apk`. `app-universal-release.apk` works
             everywhere but is about 65 MB because it carries the torrent engine for every processor type.
 
+            **Home Server:** `streamhub-server.zip` runs on a Windows / Linux computer or a NAS and downloads for
+            StreamHub while the TV is off (see README.md inside the zip).
+
             Newest build, e.g. for the Downloader app on Android TV:
             https://github.com/${{ github.repository }}/releases/latest/download/app-armeabi-v7a-release.apk
           files: |
             app/build/outputs/apk/release/*.apk
+            server/build/distributions/streamhub-server.zip
 
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
           name: test-reports
-          path: app/build/reports/tests/
+          path: |
+            app/build/reports/tests/
+            server/build/reports/tests/

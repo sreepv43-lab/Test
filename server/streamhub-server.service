@@ -1,0 +1,20 @@
+# Starts StreamHub Server with the computer (Linux with systemd).
+# 1. Unzip streamhub-server to /opt/streamhub-server
+# 2. Edit User= below (the account that owns your movie folders)
+# 3. sudo cp streamhub-server.service /etc/systemd/system/
+#    sudo systemctl enable --now streamhub-server
+# The pairing code is then in ~/.streamhub-server/pairing-code.txt of that user,
+# or: journalctl -u streamhub-server
+[Unit]
+Description=StreamHub Server
+After=network-online.target local-fs.target
+Wants=network-online.target
+
+[Service]
+User=streamhub
+ExecStart=/opt/streamhub-server/bin/streamhub-server
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target
