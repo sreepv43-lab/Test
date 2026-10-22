@@ -14,8 +14,8 @@ macOS, and NAS boxes that run Docker on an Intel/AMD processor.
 2. Run it and follow the steps (no administrator needed; Java comes inside). If Windows SmartScreen
    says "Windows protected your PC", choose **More info → Run anyway** (the installer isn't signed
    with a paid certificate).
-3. Open **StreamHub Server** from the Start menu or the desktop. Your browser opens the control page
-   (see below). When Windows asks whether StreamHub Server may use the network, choose **Allow**
+3. Open **StreamHub Server** from the Start menu or the desktop. Its control page opens in its own
+   window (see below; closing it keeps the server running). When Windows asks whether StreamHub Server may use the network, choose **Allow**
    (private networks), otherwise the TV can't reach it.
 
 It starts with Windows from then on (switch that off on the control page). To update, run the newer
@@ -27,8 +27,9 @@ installer. To uninstall: Settings → Apps → StreamHub Server (downloads and s
    https://github.com/sreepv43-lab/Test/releases/latest/download/streamhub-server-linux.deb
 2. Double-click it and press **Install** (or in a terminal: `sudo apt install ./streamhub-server-linux.deb`).
    Java comes inside; nothing else is needed. For Intel/AMD 64-bit PCs.
-3. Open **StreamHub Server** from the app menu. Your web browser opens its **control page**
-   (also at http://localhost:8095 on that computer), showing:
+3. Open **StreamHub Server** from the app menu. Its **control page** opens in its own window
+   (also at http://localhost:8095 in a browser on that computer). Closing the window keeps the server
+   running; open it again from the menu. It shows:
    * the address and **pairing code** to type on the TV,
    * where downloads are stored: **+ Add a drive or folder** to pick your USB drive,
    * the downloads with their progress, pause / resume / remove,
