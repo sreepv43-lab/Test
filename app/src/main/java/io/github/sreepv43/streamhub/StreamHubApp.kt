@@ -33,6 +33,7 @@ import io.github.sreepv43.streamhub.download.DownloadRepository
 import io.github.sreepv43.streamhub.download.DownloadStorage
 import io.github.sreepv43.streamhub.download.Downloader
 import io.github.sreepv43.streamhub.download.HomeServer
+import io.github.sreepv43.streamhub.download.MediaAvailability
 import io.github.sreepv43.streamhub.torrent.CacheChoice
 import io.github.sreepv43.streamhub.torrent.CachePolicy
 import io.github.sreepv43.streamhub.torrent.CacheRules
@@ -204,6 +205,9 @@ class AppContainer(context: Context) {
 
     /** The paired StreamHub Server (Settings → Downloads → Home Server), if any. */
     val homeServer = HomeServer(http, settings, downloads).also { it.start() }
+
+    /** Downloaded copies of titles, wherever they are (Play downloaded, poster badges). */
+    val availability = MediaAvailability(downloads, homeServer, storage)
 
     val downloader = Downloader(
         context, torrentHttp, downloads, storage, settings, ::playableUrl,

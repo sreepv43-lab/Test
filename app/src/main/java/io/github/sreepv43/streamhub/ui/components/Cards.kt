@@ -50,6 +50,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -62,6 +65,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
 import io.github.sreepv43.streamhub.addon.Meta
+import io.github.sreepv43.streamhub.StreamHubApp
+import io.github.sreepv43.streamhub.download.CopyMatch
+import io.github.sreepv43.streamhub.download.MediaAvailability
 
 val PosterWidth = 132.dp
 
@@ -78,6 +84,8 @@ fun PosterCard(
     onFocused: (() -> Unit)? = null,
     focusKey: Any? = null,
     onLongClick: (() -> Unit)? = null,
+    /** "Downloaded" or "42%", shown in the corner. */
+    badge: String? = null,
 ) {
     val shape = RoundedCornerShape(16.dp)
     Column(modifier.width(width)) {
@@ -103,6 +111,18 @@ fun PosterCard(
                     title,
                     style = MaterialTheme.typography.titleSmall,
                     modifier = Modifier.align(Alignment.Center).padding(8.dp),
+                )
+            }
+            if (badge != null) {
+                Text(
+                    badge,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = AppColors.onAccent,
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(6.dp)
+                        .background(AppColors.accent, RoundedCornerShape(6.dp))
+                        .padding(horizontal = 6.dp, vertical = 2.dp),
                 )
             }
             if (progress != null) {
@@ -206,6 +226,7 @@ fun MetaCard(
     onFocused: (() -> Unit)? = null,
     onLongClick: (() -> Unit)? = null,
 ) {
+    val badge = downloadBadge(meta.id, meta.name, meta.releaseInfo)
     PosterCard(
         title = meta.name,
         image = meta.poster,
@@ -216,7 +237,23 @@ fun MetaCard(
         onFocused = onFocused,
         focusKey = meta.type + meta.id,
         onLongClick = onLongClick,
+        badge = badge,
     )
+}
+
+/** "Downloaded" or "↓ 42%" when StreamHub has (or is getting) a copy of the title anywhere. */
+@Composable
+fun downloadBadge(id: String, name: String, releaseInfo: String?): String? {
+    // (Previews and tests may run without the app's container.)
+    val availability = (LocalContext.current.applicationContext as? StreamHubApp)?.container?.availability ?: return null
+    val copies by availability.copies.collectAsState()
+    return remember(id, name, releaseInfo, copies) {
+        when (val b = availability.badgeFor(id, name, CopyMatch.yearOf(releaseInfo), copies)) {
+            MediaAvailability.Badge.Downloaded -> "Downloaded"
+            is MediaAvailability.Badge.Downloading -> "↓ ${b.percent}%"
+            null -> null
+        }
+    }
 }
 
 sealed interface RowState {

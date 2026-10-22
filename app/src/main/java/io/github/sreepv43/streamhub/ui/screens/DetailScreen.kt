@@ -5,6 +5,7 @@ import io.github.sreepv43.streamhub.data.LibraryItem
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
 import io.github.sreepv43.streamhub.container
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -58,6 +59,9 @@ import io.github.sreepv43.streamhub.addon.Video
 import io.github.sreepv43.streamhub.ui.appViewModel
 import io.github.sreepv43.streamhub.ui.rememberHistory
 import io.github.sreepv43.streamhub.ui.components.resumeNote
+import io.github.sreepv43.streamhub.ui.components.DownloadedCopies
+import io.github.sreepv43.streamhub.ui.components.rememberCopies
+import io.github.sreepv43.streamhub.ui.components.titleRef
 import io.github.sreepv43.streamhub.ui.components.CenteredLoading
 import io.github.sreepv43.streamhub.ui.components.CenteredMessage
 import io.github.sreepv43.streamhub.ui.components.StreamActions
@@ -165,6 +169,7 @@ fun DetailScreen(
         }
     }
     val resumeMs = meta?.let { m -> history.firstOrNull { it.videoId == m.movieVideoId && !it.isFinished && it.positionMs > 30_000 }?.positionMs }
+    val copies = rememberCopies(remember(meta) { meta?.takeUnless { it.isSeries }?.let { titleRef(it, it.movieVideoId) } })
     when {
         state.loading -> CenteredLoading()
         meta == null -> CenteredMessage(state.error ?: "Not found")
@@ -197,6 +202,7 @@ fun DetailScreen(
                 item(key = "streams-title") {
                     Text("Streams", style = MaterialTheme.typography.titleLarge, modifier = Modifier.padding(horizontal = 24.dp, vertical = 8.dp))
                 }
+                item(key = "downloaded") { DownloadedCopies(copies, watch(), resumeMs) }
                 resumeNote(resumeMs)
                 streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution, passthrough)
             }

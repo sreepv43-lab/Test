@@ -279,6 +279,8 @@ class HomeServer(
         }
     }
 
+    fun name(): String = settings.homeServerName.value.ifEmpty { "Home Server" }
+
     /** Where the player streams a server file from, and the key it sends. */
     fun mediaUrl(id: String): String = baseUrl() + "/media/" + id
 
@@ -298,6 +300,8 @@ class HomeServer(
         val jobs = get("/api/downloads", ListSerializer(ServerJob.serializer()))
         val byRemote = jobs.associateBy { it.id }
         val local = repository.items.value
+        // A download just finished: its library entry (for Play downloaded) is wanted now, not in 30 s.
+        if (jobs.any { job -> job.state == "completed" && local.any { it.remoteId == job.id && it.status != DownloadItem.Status.COMPLETED } }) refresh()
         for (item in local.filter { it.onServer && it.remoteId != null }) {
             val job = byRemote[item.remoteId]
             repository.update(item.id, persist = false) { current ->

@@ -88,7 +88,10 @@ import kotlinx.coroutines.delay
 import androidx.activity.compose.BackHandler
 import androidx.compose.runtime.LaunchedEffect
 import io.github.sreepv43.streamhub.download.DownloadItem
+import io.github.sreepv43.streamhub.ui.components.DownloadedCopies
 import io.github.sreepv43.streamhub.ui.components.StreamActions
+import io.github.sreepv43.streamhub.ui.components.rememberCopies
+import io.github.sreepv43.streamhub.ui.components.titleRef
 import io.github.sreepv43.streamhub.ui.components.WatchContext
 
 /** How the source list is ordered. */
@@ -180,8 +183,10 @@ internal fun CinemaTitlePage(
     val scope = rememberCoroutineScope()
     val firstSource = remember { FocusRequester() }
     val hasCredits = meta.director.isNotEmpty() || meta.cast.isNotEmpty()
-    // List positions: header, (credits), sources title, filters, then the cards.
-    val sourcesTitleIndex = if (hasCredits) 2 else 1
+    // Copies already downloaded (TV, drives, Home Server) come before the sources.
+    val copies = rememberCopies(remember(meta, watch?.videoId) { watch?.takeIf { streams != null }?.let { titleRef(meta, it.videoId) } })
+    // List positions: header, (credits), (downloaded), sources title, filters, then the cards.
+    val sourcesTitleIndex = 1 + (if (hasCredits) 1 else 0) + (if (copies.isNotEmpty()) 1 else 0)
 
     details?.let { source ->
         SourceDetails(
@@ -217,6 +222,9 @@ internal fun CinemaTitlePage(
         }
         if (hasCredits) {
             item(key = "credits") { Credits(meta, onOpenPerson) }
+        }
+        if (copies.isNotEmpty()) {
+            item(key = "downloaded") { DownloadedCopies(copies, watch, resumeMs) }
         }
         if (streams != null) {
             item(key = "sources-title") {

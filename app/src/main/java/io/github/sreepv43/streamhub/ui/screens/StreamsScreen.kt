@@ -2,6 +2,7 @@ package io.github.sreepv43.streamhub.ui.screens
 
 import io.github.sreepv43.streamhub.container
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.collectAsState
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
@@ -15,6 +16,9 @@ import io.github.sreepv43.streamhub.ui.appViewModel
 import io.github.sreepv43.streamhub.ui.LocalCinema
 import io.github.sreepv43.streamhub.ui.rememberHistory
 import io.github.sreepv43.streamhub.ui.components.resumeNote
+import io.github.sreepv43.streamhub.ui.components.DownloadedCopies
+import io.github.sreepv43.streamhub.ui.components.rememberCopies
+import io.github.sreepv43.streamhub.ui.components.titleRef
 import io.github.sreepv43.streamhub.ui.components.CenteredLoading
 import io.github.sreepv43.streamhub.ui.components.StreamDialogs
 import io.github.sreepv43.streamhub.ui.components.WatchContext
@@ -49,6 +53,7 @@ fun StreamsScreen(onOpenPerson: (String) -> Unit = {}) {
     val handlers = rememberStreamHandlers(dialogs, watch)
     StreamDialogs(dialogs, watch())
 
+    val copies = rememberCopies(remember(meta, vm.videoId) { meta?.let { m -> vm.videoId?.let { titleRef(m, it) } } })
     if (state.loading || meta == null) {
         CenteredLoading()
         return
@@ -60,6 +65,7 @@ fun StreamsScreen(onOpenPerson: (String) -> Unit = {}) {
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 32.dp)) {
         item(key = "header") { MetaHeader(meta, subtitle = episodeTitle) }
+        item(key = "downloaded") { DownloadedCopies(copies, watch(), resumeMs) }
         resumeNote(resumeMs)
         streamItems(streamsState, handlers.onPlay, handlers.onDownload, handlers.onExternal, bestFirst, maxResolution, passthrough)
     }

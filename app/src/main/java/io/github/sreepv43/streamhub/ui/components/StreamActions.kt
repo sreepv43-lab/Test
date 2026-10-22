@@ -12,6 +12,7 @@ import io.github.sreepv43.streamhub.addon.StreamFacts
 import io.github.sreepv43.streamhub.addon.Subtitle
 import io.github.sreepv43.streamhub.container
 import io.github.sreepv43.streamhub.download.DownloadItem
+import io.github.sreepv43.streamhub.download.MediaAvailability
 import io.github.sreepv43.streamhub.download.DownloadLocation
 import io.github.sreepv43.streamhub.player.PlayRequest
 import io.github.sreepv43.streamhub.player.PlayerActivity
@@ -92,6 +93,19 @@ object StreamActions {
             playTarget(context, PlaybackTarget.Direct(server.mediaUrl(id), server.mediaHeaders()), watch)
         } else {
             item.fileUri?.let { playFile(context, it, watch) }
+        }
+    }
+
+    /** Plays a downloaded copy found for a title page (on the TV, a drive or the Home Server). */
+    fun playCopy(context: Context, copy: MediaAvailability.Copy, watch: WatchContext) {
+        val serverId = copy.serverId
+        val uri = copy.download?.fileUri
+        when {
+            serverId != null -> {
+                val server = context.container.homeServer
+                playTarget(context, PlaybackTarget.Direct(server.mediaUrl(serverId), server.mediaHeaders()), watch)
+            }
+            uri != null -> playFile(context, uri, watch)
         }
     }
 

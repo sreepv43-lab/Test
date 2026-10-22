@@ -39,6 +39,7 @@ import io.github.sreepv43.streamhub.ui.rememberHistory
 import io.github.sreepv43.streamhub.ui.components.CenteredLoading
 import io.github.sreepv43.streamhub.ui.components.MetaRow
 import io.github.sreepv43.streamhub.ui.components.PosterCard
+import io.github.sreepv43.streamhub.ui.components.downloadBadge
 import io.github.sreepv43.streamhub.ui.components.RowState
 import io.github.sreepv43.streamhub.ui.components.LocalFocusKeyScope
 import io.github.sreepv43.streamhub.ui.components.PosterRow
@@ -208,6 +209,7 @@ fun HomeScreen(
                                         onClick = { onOpenMeta(Meta(id = item.id, type = item.type, name = item.name, poster = item.poster)) },
                                         focusKey = item.id,
                                         onLongClick = { posterMenu.target = PosterTarget.of(item) },
+                                        badge = downloadBadge(item.id, item.name, null),
                                     )
                                 }
                             }

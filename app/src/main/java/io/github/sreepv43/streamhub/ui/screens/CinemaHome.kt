@@ -69,6 +69,7 @@ import androidx.compose.foundation.verticalScroll
 import io.github.sreepv43.streamhub.ui.components.LocalFocusKeyScope
 import io.github.sreepv43.streamhub.ui.components.MetaRow
 import io.github.sreepv43.streamhub.ui.components.PosterCard
+import io.github.sreepv43.streamhub.ui.components.downloadBadge
 import io.github.sreepv43.streamhub.ui.components.PosterMenu
 import io.github.sreepv43.streamhub.ui.components.PosterRow
 import io.github.sreepv43.streamhub.ui.components.PosterTarget
@@ -185,6 +186,7 @@ internal fun CinemaHome(
                                         onClick = { onOpenMeta(Meta(id = item.id, type = item.type, name = item.name, poster = item.poster)) },
                                         focusKey = item.id,
                                         onLongClick = { posterMenu.target = PosterTarget.of(item) },
+                                        badge = downloadBadge(item.id, item.name, null),
                                     )
                                 }
                             }
