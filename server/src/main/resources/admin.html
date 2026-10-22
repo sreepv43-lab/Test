@@ -1,0 +1,265 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StreamHub Server</title>
+<style>
+  :root {
+    --bg: #0f1115; --panel: #181b22; --raised: #222631; --line: #2c313d;
+    --text: #eceef2; --dim: #9aa1ae; --gold: #e2b55a; --on-gold: #1b1406;
+    --good: #6fcf8f; --bad: #ef7d6f;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text); font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 28px 16px 60px; }
+  header { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 22px; }
+  h1 { font: 600 28px/1.1 Georgia, serif; margin: 0; }
+  h1 b { color: var(--gold); font-weight: 600; }
+  h2 { font-size: 17px; margin: 0 0 12px; }
+  .pill { padding: 3px 10px; border-radius: 99px; background: var(--raised); color: var(--dim); font-size: 13px; }
+  .pill.ok { color: var(--good); }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 18px; margin-bottom: 16px; }
+  .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid { grid-template-columns: 1fr; } }
+  .dim { color: var(--dim); }
+  .small { font-size: 13px; }
+  .code { font: 600 44px/1 ui-monospace, Menlo, Consolas, monospace; letter-spacing: 6px; color: var(--gold); margin: 6px 0 4px; }
+  .addr { font: 600 20px/1.3 ui-monospace, Menlo, Consolas, monospace; }
+  .row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); flex-wrap: wrap; }
+  .row:first-of-type { border-top: 0; }
+  .grow { flex: 1; min-width: 180px; }
+  .title { font-weight: 600; overflow-wrap: anywhere; }
+  button { font: inherit; border: 1px solid var(--line); background: var(--raised); color: var(--text); padding: 7px 14px; border-radius: 99px; cursor: pointer; }
+  button:hover { border-color: var(--gold); }
+  button.primary { background: var(--gold); color: var(--on-gold); border-color: var(--gold); font-weight: 600; }
+  button.danger:hover { border-color: var(--bad); color: var(--bad); }
+  input[type=text] { font: inherit; background: var(--bg); color: var(--text); border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; width: 100%; }
+  label.switch { display: flex; gap: 10px; align-items: center; cursor: pointer; }
+  .bar { height: 6px; background: var(--raised); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+  .bar > i { display: block; height: 100%; background: var(--gold); }
+  .bad { color: var(--bad); }
+  .good { color: var(--good); }
+  .empty { color: var(--dim); padding: 6px 0; }
+  dialog { background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 16px; width: min(640px, calc(100vw - 32px)); padding: 18px; }
+  dialog::backdrop { background: rgba(0,0,0,.6); }
+  .folders { max-height: 46vh; overflow: auto; border: 1px solid var(--line); border-radius: 10px; margin: 10px 0; }
+  .folders div { padding: 8px 12px; cursor: pointer; border-top: 1px solid var(--line); }
+  .folders div:first-child { border-top: 0; }
+  .folders div:hover { background: var(--raised); }
+  .chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  #toast { position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); background: var(--raised); border: 1px solid var(--gold); padding: 10px 18px; border-radius: 12px; display: none; max-width: calc(100vw - 32px); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Stream<b>Hub</b> Server</h1>
+    <span class="pill ok" id="state">● Running</span>
+    <span class="pill" id="version"></span>
+  </header>
+
+  <div class="grid">
+    <section>
+      <h2>Connect your TV</h2>
+      <div class="dim small">In StreamHub on the TV: Settings → Downloads → Home Server. Type this address:</div>
+      <div id="addresses" class="addr"></div>
+      <div class="dim small" style="margin-top:10px">and this pairing code:</div>
+      <div class="code" id="code">······</div>
+      <div class="dim small">Each code works once; a new one appears after a device pairs.</div>
+    </section>
+    <section>
+      <h2>Paired devices</h2>
+      <div id="devices"></div>
+    </section>
+  </div>
+
+  <section>
+    <h2>Where downloads are stored</h2>
+    <div id="storages"></div>
+    <div style="margin-top:12px"><button class="primary" onclick="openPicker()">+ Add a drive or folder</button></div>
+    <div class="dim small" style="margin-top:10px">If a drive is unplugged, its downloads wait until it is back. StreamHub never puts them anywhere else.</div>
+  </section>
+
+  <section>
+    <h2>Downloads</h2>
+    <div id="downloads"></div>
+  </section>
+
+  <section>
+    <h2>Settings</h2>
+    <div class="row">
+      <div class="grow"><div class="title">Server name</div><div class="dim small">Shown on the TV.</div></div>
+      <div style="display:flex;gap:8px;flex:1;min-width:240px"><input type="text" id="name"><button onclick="saveName()">Save</button></div>
+    </div>
+    <div class="row" id="autostartRow">
+      <div class="grow"><div class="title">Start with this computer</div><div class="dim small">Downloads continue after a restart without opening anything.</div></div>
+      <label class="switch"><input type="checkbox" id="autostart" onchange="setAutostart(this.checked)"> <span id="autostartText"></span></label>
+    </div>
+    <div class="row">
+      <div class="grow"><div class="title">Library</div><div class="dim small" id="library"></div></div>
+      <button onclick="post('library/scan').then(() => toast('Looking for new files…'))">Look for new files</button>
+    </div>
+    <div class="row">
+      <div class="grow"><div class="title">Other players (VLC…)</div><div class="dim small">Optional: the network share of your downloads folder, e.g. smb://192.168.1.20/Movies. Shown on the TV.</div></div>
+      <div style="display:flex;gap:8px;flex:1;min-width:240px"><input type="text" id="smb" placeholder="smb://…"><button onclick="saveSmb()">Save</button></div>
+    </div>
+    <div class="row">
+      <div class="grow"><div class="title">Stop the server</div><div class="dim small">Downloads pause until it starts again (from the app menu, or at the next start of the computer).</div></div>
+      <button class="danger" onclick="stopServer()">Stop server</button>
+    </div>
+    <div class="dim small" style="margin-top:10px" id="about"></div>
+  </section>
+</main>
+
+<dialog id="picker">
+  <h2>Choose a drive or folder</h2>
+  <div class="chips" id="places"></div>
+  <div class="small dim" style="margin-top:12px">Open folders below; the folder shown here is the one that will be used:</div>
+  <div class="title" id="current" style="margin-top:4px"></div>
+  <div class="folders" id="folders"></div>
+  <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+    <input type="text" id="label" placeholder="Name (e.g. Elements drive)" style="flex:1;min-width:200px">
+    <button onclick="document.getElementById('picker').close()">Cancel</button>
+    <button class="primary" onclick="addStorage()">Use this folder</button>
+  </div>
+</dialog>
+
+<div id="toast"></div>
+
+<script>
+const H = { 'X-StreamHub': 'admin', 'Content-Type': 'application/json' };
+let status = null, pickerPath = null;
+
+function esc(s) {
+  return (s == null ? '' : String(s)).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+function size(b) { if (!(b > 0)) return '0 B'; const u = ['B','KB','MB','GB','TB']; let i = 0; while (b >= 1024 && i < 4) { b /= 1024; i++; } return b.toFixed(i > 2 ? 1 : 0) + ' ' + u[i]; }
+function toast(text) { const t = document.getElementById('toast'); t.textContent = text; t.style.display = 'block'; clearTimeout(t.timer); t.timer = setTimeout(() => t.style.display = 'none', 3500); }
+
+async function get(path) {
+  const r = await fetch('/admin/api/' + path, { headers: H });
+  if (!r.ok) throw new Error((await r.json().catch(() => ({}))).error || r.status);
+  return r.json();
+}
+async function post(path, body) {
+  const r = await fetch('/admin/api/' + path, { method: 'POST', headers: H, body: JSON.stringify(body || {}) });
+  const json = await r.json().catch(() => ({}));
+  if (!r.ok) { toast(json.error || 'That didn\'t work'); throw new Error(json.error); }
+  refresh();
+  return json;
+}
+
+async function refresh() {
+  try {
+    status = await get('status');
+    const downloads = await get('downloads');
+    document.getElementById('state').textContent = '● Running';
+    document.getElementById('state').className = 'pill ok';
+    render(downloads);
+  } catch (e) {
+    document.getElementById('state').textContent = '● Not running';
+    document.getElementById('state').className = 'pill bad';
+  }
+}
+
+function render(downloads) {
+  const s = status;
+  document.getElementById('version').textContent = 'Version ' + s.version;
+  document.getElementById('code').textContent = s.pairingCode;
+  document.getElementById('addresses').innerHTML = s.addresses.length
+    ? s.addresses.map(a => esc(s.port === 8095 ? a : a + ':' + s.port)).join('<br>')
+    : '<span class="bad small">This computer isn\'t connected to a network.</span>';
+
+  document.getElementById('devices').innerHTML = s.devices.length ? s.devices.map(d =>
+    `<div class="row"><div class="grow"><div class="title">${esc(d.name)}</div><div class="dim small">Paired ${new Date(d.pairedAt).toLocaleDateString()}</div></div>
+     <button class="danger" onclick="unpair(${Number(d.pairedAt)})">Unpair</button></div>`).join('')
+    : '<div class="empty">No TV paired yet.</div>';
+
+  document.getElementById('storages').innerHTML = s.storages.length ? s.storages.map(st => {
+    const isDefault = st.id === s.defaultStorage;
+    const used = st.totalBytes > 0 ? (1 - st.freeBytes / st.totalBytes) * 100 : 0;
+    return `<div class="row"><div class="grow">
+        <div class="title">${esc(st.label)} ${isDefault ? '<span class="pill">Default</span>' : ''}</div>
+        <div class="dim small">${esc(st.path)}</div>
+        ${st.available ? `<div class="small">${size(st.freeBytes)} free of ${size(st.totalBytes)}</div><div class="bar"><i style="width:${used.toFixed(1)}%"></i></div>`
+                       : '<div class="small bad">Not connected: plug the drive in</div>'}
+      </div>
+      ${isDefault ? '' : `<button onclick="post('storages/default', {id: '${esc(st.id)}'})">Make default</button>`}
+      <button class="danger" onclick="removeStorage('${esc(st.id)}')">Remove</button></div>`;
+  }).join('') : '<div class="empty">No storage yet. Add a drive or folder.</div>';
+
+  const states = { queued: 'Waiting', metadata: 'Getting torrent details', connecting: 'Connecting to peers', downloading: 'Downloading',
+    stalled: 'Waiting for peers', paused: 'Paused', checking: 'Checking files', completed: 'Completed', error: 'Error', storage_unavailable: 'Storage unavailable' };
+  document.getElementById('downloads').innerHTML = downloads.length ? downloads.map(j => {
+    const pct = j.totalBytes > 0 ? Math.floor(j.downloadedBytes * 100 / j.totalBytes) : 0;
+    const active = !['completed', 'paused', 'error'].includes(j.state);
+    const line = [states[j.state] || j.state,
+      j.state !== 'completed' ? pct + '%' : null,
+      j.totalBytes > 0 ? size(j.downloadedBytes) + ' of ' + size(j.totalBytes) : null,
+      active && j.downloadRate > 0 ? size(j.downloadRate) + '/s' : null,
+      active ? j.peers + ' peers' : null,
+      j.storageLabel].filter(Boolean).join(' · ');
+    return `<div class="row"><div class="grow">
+        <div class="title">${esc(j.title)}${j.subtitle ? ' <span class="dim">' + esc(j.subtitle) + '</span>' : ''}</div>
+        <div class="small ${j.state === 'error' || j.state === 'storage_unavailable' ? 'bad' : 'dim'}">${esc(line)}${j.error ? ' — ' + esc(j.error) : ''}</div>
+        ${j.state !== 'completed' ? `<div class="bar"><i style="width:${pct}%"></i></div>` : ''}
+      </div>
+      ${j.state === 'paused' || j.state === 'error' ? `<button onclick="post('downloads/resume', {id: '${esc(j.id)}'})">Resume</button>`
+        : j.state !== 'completed' ? `<button onclick="post('downloads/pause', {id: '${esc(j.id)}'})">Pause</button>` : ''}
+      <button class="danger" onclick="removeDownload('${esc(j.id)}')">Remove</button></div>`;
+  }).join('') : '<div class="empty">Nothing yet. Choose this server as the download location on the TV, then press Download on a film.</div>';
+
+  const name = document.getElementById('name');
+  if (document.activeElement !== name) name.value = s.name;
+  const smb = document.getElementById('smb');
+  if (document.activeElement !== smb) smb.value = s.smbPath || '';
+  document.getElementById('library').textContent = s.libraryCount + ' video file(s) available to StreamHub';
+  const row = document.getElementById('autostartRow');
+  row.style.display = s.autostart === null ? 'none' : '';
+  document.getElementById('autostart').checked = !!s.autostart;
+  document.getElementById('autostartText').textContent = s.autostart ? 'On' : 'Off';
+  document.getElementById('about').innerHTML = 'Settings and logs: ' + esc(s.dataFolder) +
+    (s.ffprobe ? '' : '<br>Tip: install <b>ffmpeg</b> on this computer so StreamHub can show the resolution, HDR and audio of each file.');
+}
+
+function saveName() { post('name', { name: document.getElementById('name').value }).then(() => toast('Saved')); }
+function saveSmb() { post('smb', { path: document.getElementById('smb').value }).then(() => toast('Saved')); }
+function setAutostart(on) { post('autostart', { enabled: on }).then(() => toast(on ? 'The server will start with this computer' : 'The server won\'t start by itself')); }
+function unpair(pairedAt) {
+  const name = (status.devices.find(d => d.pairedAt === pairedAt) || {}).name || 'this device';
+  if (confirm('Unpair ' + name + '? It will need a new code to connect again.')) post('devices/remove', { pairedAt });
+}
+function removeStorage(id) { if (confirm('Remove this storage from StreamHub? Files on it are not deleted.')) post('storages/remove', { id }); }
+function removeDownload(id) {
+  if (!confirm('Remove this download from the list?')) return;
+  const deleteFile = confirm('Also delete the downloaded file? (OK = delete the file, Cancel = keep it)');
+  post('downloads/remove', { id, deleteFile });
+}
+function stopServer() {
+  if (!confirm('Stop StreamHub Server? Downloads pause and the TV can\'t reach it until it starts again.')) return;
+  post('stop').finally(() => setTimeout(refresh, 1500));
+}
+
+async function openPicker() { document.getElementById('label').value = ''; await browse(null); document.getElementById('picker').showModal(); }
+async function browse(path) {
+  const list = await get('folders' + (path ? '?path=' + encodeURIComponent(path) : ''));
+  pickerPath = list.path;
+  document.getElementById('current').textContent = list.path;
+  document.getElementById('places').innerHTML = list.places.map(p => `<button data-path="${esc(p.path)}">${esc(p.name)}</button>`).join('');
+  const rows = (list.parent ? [{ name: '⬑ Up one level', path: list.parent }] : []).concat(list.folders.map(f => ({ name: '📁 ' + f.name, path: f.path })));
+  document.getElementById('folders').innerHTML = rows.length ? rows.map(f => `<div data-path="${esc(f.path)}">${esc(f.name)}</div>`).join('') : '<div class="dim">No folders inside</div>';
+}
+document.getElementById('places').addEventListener('click', e => { const p = e.target.closest('[data-path]'); if (p) browse(p.dataset.path); });
+document.getElementById('folders').addEventListener('click', e => { const p = e.target.closest('[data-path]'); if (p) browse(p.dataset.path); });
+async function addStorage() {
+  await post('storages/add', { path: pickerPath, label: document.getElementById('label').value });
+  document.getElementById('picker').close();
+  toast('Added. Downloads can go there now.');
+}
+
+refresh();
+setInterval(refresh, 2000);
+</script>
+</body>
+</html>

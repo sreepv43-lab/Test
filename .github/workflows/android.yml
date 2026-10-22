@@ -30,6 +30,13 @@ jobs:
           ./gradlew --no-daemon -p server test distZip
           cp server/build/distributions/streamhub-server-*.zip server/build/distributions/streamhub-server.zip
 
+      # The Linux installer (.deb with its own Java): double-click to install on Ubuntu, Mint, Debian…
+      - name: Home server Linux installer
+        run: |
+          command -v fakeroot || (sudo apt-get update -q && sudo apt-get install -y -q fakeroot)
+          ./gradlew --no-daemon -p server linuxInstaller
+          cp server/build/installer/out/streamhub-server_*.deb server/build/installer/out/streamhub-server-linux.deb
+
       # The permanent signing key (secret STREAMHUB_KEYSTORE = base64 of the .jks file, and
       # STREAMHUB_KEYSTORE_PASSWORD). Without it the APKs use a throwaway key, and installing a new
       # build means uninstalling the old one first.
@@ -79,14 +86,16 @@ jobs:
             Newer 64-bit devices can use `app-arm64-v8a-release.apk`. `app-universal-release.apk` works
             everywhere but is about 65 MB because it carries the torrent engine for every processor type.
 
-            **Home Server:** `streamhub-server.zip` runs on a Windows / Linux computer or a NAS and downloads for
-            StreamHub while the TV is off (see README.md inside the zip).
+            **Home Server** (downloads for StreamHub while the TV is off): on a Linux PC (Ubuntu, Mint, Debian…)
+            install `streamhub-server-linux.deb` by double-clicking it, then open "StreamHub Server" from the
+            app menu. On Windows, macOS or a NAS use `streamhub-server.zip` (needs Java 17; see README.md inside).
 
             Newest build, e.g. for the Downloader app on Android TV:
             https://github.com/${{ github.repository }}/releases/latest/download/app-armeabi-v7a-release.apk
           files: |
             app/build/outputs/apk/release/*.apk
             server/build/distributions/streamhub-server.zip
+            server/build/installer/out/streamhub-server-linux.deb
 
       - uses: actions/upload-artifact@v4
         if: failure()

@@ -56,10 +56,18 @@ class ServerTest {
         return s
     }
 
-    private fun request(method: String, path: String, token: String? = null, body: String? = null, range: String? = null): Pair<Int, ByteArray> {
+    private fun request(
+        method: String,
+        path: String,
+        token: String? = null,
+        body: String? = null,
+        range: String? = null,
+        headers: Map<String, String> = emptyMap(),
+    ): Pair<Int, ByteArray> {
         val connection = URI("http://127.0.0.1:${server!!.port}$path").toURL().openConnection() as HttpURLConnection
         connection.requestMethod = method
         token?.let { connection.setRequestProperty("Authorization", "Bearer $it") }
+        headers.forEach { (k, v) -> connection.setRequestProperty(k, v) }
         range?.let { connection.setRequestProperty("Range", it) }
         if (body != null) {
             connection.doOutput = true
@@ -197,6 +205,38 @@ class ServerTest {
         Thread.sleep(1_500)
         assertEquals(JobState.STORAGE_UNAVAILABLE, s.downloads.get(id)!!.state)
         assertTrue(!storage.exists())
+    }
+
+    @Test
+    fun theControlPageWorksOnTheServerComputer() {
+        val s = startServer(47419)
+        val (code, page) = request("GET", "/")
+        assertEquals(200, code)
+        assertTrue(page.decodeToString().contains("StreamHub"))
+        val admin = mapOf("X-StreamHub" to "admin")
+        // Other websites in the browser can't send the page's header.
+        assertEquals(403, request("GET", "/admin/api/status").first)
+        val (_, statusBody) = request("GET", "/admin/api/status", headers = admin)
+        val status = ServerJson.decodeFromString(AdminStatus.serializer(), statusBody.decodeToString())
+        assertEquals(s.pairingCode, status.pairingCode)
+
+        val drive = File(root, "drive").apply { mkdirs() }
+        val (added, _) = request("POST", "/admin/api/storages/add", body = """{"path":"${drive.path}","label":"Elements"}""", headers = admin)
+        assertEquals(200, added)
+        val elements = s.config().storages.single { it.label == "Elements" }
+        assertTrue(File(drive, Storages.MARKER).isFile)
+        assertEquals(200, request("POST", "/admin/api/storages/default", body = """{"id":"${elements.id}"}""", headers = admin).first)
+        assertEquals(elements.id, s.status().defaultStorage)
+        val folders = ServerJson.decodeFromString(
+            FolderListing.serializer(),
+            request("GET", "/admin/api/folders?path=" + java.net.URLEncoder.encode(root.path, "UTF-8"), headers = admin).second.decodeToString(),
+        )
+        assertTrue(folders.folders.any { it.name == "drive" })
+
+        val token = pair(s)
+        val device = s.config().devices.single()
+        assertEquals(200, request("POST", "/admin/api/devices/remove", body = """{"pairedAt":${device.pairedAt}}""", headers = admin).first)
+        assertEquals("an unpaired TV is shut out", 401, request("GET", "/api/status", token).first)
     }
 
     private fun seed(movie: ByteArray, port: Int): String {

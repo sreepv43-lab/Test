@@ -59,6 +59,44 @@ distributions {
     }
 }
 
+// A Linux installer (.deb) with its own Java inside: double-click to install, then "StreamHub Server"
+// in the app menu opens the control page. Built with the JDK's jpackage (needs fakeroot).
+val installerInput by tasks.registering(Sync::class) {
+    from(tasks.jar)
+    from(configurations.runtimeClasspath)
+    from({ natives.filter { "linux" in it.name } }) { into("natives") }
+    into(layout.buildDirectory.dir("installer/input"))
+}
+
+val linuxInstaller by tasks.registering(Exec::class) {
+    dependsOn(installerInput)
+    val input = layout.buildDirectory.dir("installer/input").get().asFile
+    val out = layout.buildDirectory.dir("installer/out").get().asFile
+    val jpackage = File(System.getProperty("java.home"), "bin/jpackage").path
+    doFirst { out.deleteRecursively() }
+    commandLine(
+        jpackage, "--type", "deb",
+        "--name", "streamhub-server",
+        "--app-version", project.version.toString(),
+        "--description", "StreamHub Server: downloads for the StreamHub TV app, even with the TV off",
+        "--vendor", "StreamHub",
+        "--input", input.path,
+        "--main-jar", tasks.jar.get().archiveFileName.get(),
+        "--main-class", application.mainClass.get(),
+        // Started from the menu: show the control page (starting the server if needed).
+        "--arguments", "--open-browser",
+        "--java-options", "-Xmx768m",
+        // Only what the server uses (no desktop graphics libraries, so it installs on any recent distro).
+        "--add-modules", "java.base,java.logging,java.net.http,jdk.httpserver,jdk.crypto.ec,jdk.unsupported,java.management,java.naming",
+        "--icon", file("packaging/streamhub-server.png").path,
+        "--resource-dir", file("packaging").path,
+        "--linux-shortcut",
+        "--linux-menu-group", "AudioVideo;Network;",
+        "--linux-app-category", "video",
+        "--dest", out.path,
+    )
+}
+
 // Tests run the real torrent engine (desktop Linux x86-64 build); -PlibtorrentNative=/path/libtorrent4j.so
 // uses an already unpacked one.
 val unpackTestNative by tasks.registering(Copy::class) {

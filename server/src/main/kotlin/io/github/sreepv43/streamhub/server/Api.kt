@@ -46,6 +46,7 @@ class Api(private val server: StreamHubServer) : HttpHandler {
                 }
             }
         }
+        if (path.isEmpty() || path == "/admin" || path.startsWith("/admin/")) return admin(exchange, method, path)
         if (!server.authorized(token(exchange))) {
             return reply(exchange, 401, ErrorResponse("This device isn't paired with the server. Pair it in StreamHub's settings."))
         }
@@ -72,6 +73,69 @@ class Api(private val server: StreamHubServer) : HttpHandler {
             parts.size == 2 && parts[0] == "media" && (method == "GET" || method == "HEAD") -> media(exchange, parts[1], head = method == "HEAD")
             else -> notFound(exchange)
         }
+    }
+
+    /**
+     * The control page and its actions. Only for the server computer itself (or, with
+     * adminFromNetwork, the home network); its actions need the page's own header, which other
+     * websites open in the same browser can't send, and a Host that is an address, not a name
+     * (so a website can't reach it by pointing its own name at this computer).
+     */
+    private fun admin(exchange: HttpExchange, method: String, path: String) {
+        val remote = exchange.remoteAddress.address
+        val fromHere = remote.isLoopbackAddress ||
+            server.config().adminFromNetwork && (remote.isSiteLocalAddress || remote.isLinkLocalAddress)
+        val host = exchange.requestHeaders.getFirst("Host").orEmpty().let { h ->
+            if (h.startsWith("[")) h.substringAfter('[').substringBefore(']') else h.substringBefore(':')
+        }
+        val hostOk = host == "localhost" || host.matches(Regex("\\d{1,3}(\\.\\d{1,3}){3}")) || host.contains(':')
+        if (!fromHere || !hostOk) {
+            return page(exchange, 403, NOT_HERE)
+        }
+        if (path.isEmpty() || path == "/admin") {
+            val html = Api::class.java.getResourceAsStream("/admin.html")!!.use { it.readBytes() }
+            return page(exchange, 200, html.decodeToString())
+        }
+        if (exchange.requestHeaders.getFirst("X-StreamHub") != "admin") return reply(exchange, 403, ErrorResponse("Use the control page"))
+        val request = if (method == "POST") ServerJson.decodeFromString(AdminRequest.serializer(), body(exchange).ifEmpty { "{}" }) else AdminRequest()
+        fun ok() = reply(exchange, 200, ErrorResponse("ok"))
+        fun need(value: String?, what: String): String = requireNotNull(value?.takeIf { it.isNotBlank() }) { "Missing $what" }
+        when (path.removePrefix("/admin/api/")) {
+            "status" -> reply(exchange, 200, server.adminStatus())
+            "downloads" -> reply(exchange, 200, server.downloads.list())
+            "folders" -> reply(exchange, 200, Desktop.folders(query(exchange)["path"]))
+            "downloads/pause" -> { server.downloads.pause(need(request.id, "id")); ok() }
+            "downloads/resume" -> { server.downloads.resume(need(request.id, "id")); ok() }
+            "downloads/remove" -> { server.downloads.remove(need(request.id, "id"), request.deleteFile); ok() }
+            "storages/add" -> {
+                val folder = need(request.path, "folder")
+                val label = request.label?.trim()?.ifEmpty { null } ?: java.io.File(folder).name.ifEmpty { folder }
+                server.addStorage(label, folder)
+                server.library.requestScan()
+                ok()
+            }
+            "storages/remove" -> { server.removeStorage(need(request.id, "id")); ok() }
+            "storages/default" -> { server.setDefaultStorage(need(request.id, "id")); ok() }
+            "name" -> { server.rename(need(request.name, "name")); ok() }
+            "smb" -> { server.setSmbPath(request.path); ok() }
+            "devices/remove" -> { server.removeDevice(requireNotNull(request.pairedAt) { "Missing device" }); ok() }
+            "autostart" -> { Desktop.setAutostart(request.enabled == true); ok() }
+            "library/scan" -> { server.library.requestScan(); ok() }
+            "stop" -> {
+                ok()
+                server.requestStop()
+            }
+            else -> notFound(exchange)
+        }
+    }
+
+    private fun page(exchange: HttpExchange, code: Int, html: String) {
+        val bytes = html.toByteArray()
+        exchange.responseHeaders.add("Content-Type", "text/html; charset=utf-8")
+        exchange.responseHeaders.add("Cache-Control", "no-store")
+        exchange.responseHeaders.add("X-Frame-Options", "DENY")
+        exchange.sendResponseHeaders(code, bytes.size.toLong())
+        exchange.responseBody.use { it.write(bytes) }
     }
 
     /** Streams a library file with byte ranges, so players can start anywhere in a 100 GB file. */
@@ -163,5 +227,8 @@ class Api(private val server: StreamHubServer) : HttpHandler {
     companion object {
         private const val BUFFER = 256 * 1024
         private const val MAX_BODY = 64 * 1024
+        private const val NOT_HERE = "<!doctype html><meta charset=utf-8><meta name=viewport content='width=device-width'>" +
+            "<body style='font-family:sans-serif;background:#111;color:#eee;padding:40px'><h2>StreamHub Server is running</h2>" +
+            "<p>Its control page opens only on the server computer itself: open <b>http://localhost:8095</b> there.</p></body>"
     }
 }

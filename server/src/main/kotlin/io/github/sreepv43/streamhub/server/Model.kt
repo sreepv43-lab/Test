@@ -28,6 +28,11 @@ data class ServerConfig(
     val devices: List<PairedDevice> = emptyList(),
     /** How other players reach the downloads folder, e.g. "smb://192.168.1.100/Movies" (shown in the app). */
     val smbPath: String? = null,
+    /**
+     * The control page normally opens only on the server computer itself; true lets every device on
+     * the home network open it (for a NAS without a screen).
+     */
+    val adminFromNetwork: Boolean = false,
 ) {
     companion object {
         const val DEFAULT_PORT = 8095
@@ -173,4 +178,44 @@ data class ScannedFile(
     val season: Int? = null,
     val episode: Int? = null,
     val media: MediaInfo? = null,
+)
+
+/** What the control page shows. */
+@Serializable
+data class AdminStatus(
+    val name: String,
+    val version: String,
+    val port: Int,
+    /** Addresses to type into StreamHub on the TV. */
+    val addresses: List<String>,
+    val pairingCode: String,
+    val storages: List<StorageView>,
+    val defaultStorage: String?,
+    val devices: List<AdminDevice>,
+    val libraryCount: Int,
+    val smbPath: String?,
+    val dataFolder: String,
+    /** Null where starting with the computer isn't something the page can switch (not a Linux desktop). */
+    val autostart: Boolean?,
+    val ffprobe: Boolean,
+)
+
+@Serializable
+data class AdminDevice(val name: String, val pairedAt: Long)
+
+@Serializable
+data class FolderEntry(val name: String, val path: String)
+
+@Serializable
+data class FolderListing(val path: String, val parent: String?, val folders: List<FolderEntry>, val places: List<FolderEntry>)
+
+@Serializable
+data class AdminRequest(
+    val id: String? = null,
+    val label: String? = null,
+    val path: String? = null,
+    val name: String? = null,
+    val enabled: Boolean? = null,
+    val deleteFile: Boolean = false,
+    val pairedAt: Long? = null,
 )

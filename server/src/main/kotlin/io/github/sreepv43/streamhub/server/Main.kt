@@ -5,31 +5,62 @@ import java.util.zip.ZipFile
 import kotlin.system.exitProcess
 
 /**
- * streamhub-server [--data=FOLDER] [--port=PORT] [--add-storage=LABEL=PATH]
+ * streamhub-server [--data=FOLDER] [--port=PORT] [--add-storage=LABEL=PATH] [--open-browser] [--background]
  *
  * Data folder: --data, else $STREAMHUB_DATA, else ~/.streamhub-server.
+ * --open-browser (what the installed menu entry passes) shows the control page, starting the server
+ * first unless it already runs; --background (starting with the computer) just makes sure it runs.
  */
 fun main(args: Array<String>) {
     fun option(name: String): String? = args.firstOrNull { it.startsWith("--$name=") }?.substringAfter('=')
+    val openBrowser = "--open-browser" in args
     val dataDir = File(option("data") ?: System.getenv("STREAMHUB_DATA") ?: File(System.getProperty("user.home"), ".streamhub-server").path)
     dataDir.mkdirs()
+    val logFile = File(dataDir, "server.log")
+    if (logFile.length() > MAX_LOG_BYTES) logFile.renameTo(File(dataDir, "server.old.log"))
+    val log = { line: String ->
+        println(line)
+        runCatching { logFile.appendText("${java.time.LocalDateTime.now().withNano(0)}  $line\n") }
+        Unit
+    }
+    val port = option("port")?.toIntOrNull() ?: StreamHubServer.configuredPort(dataDir)
+    if (Desktop.alreadyRunning(port)) {
+        if (openBrowser) Desktop.openBrowser("http://localhost:$port/")
+        else if ("--background" !in args) log("StreamHub Server is already running on port $port.")
+        return
+    }
     try {
         Natives.load(dataDir)
     } catch (e: Exception) {
-        System.err.println(e.message)
+        log(e.message.orEmpty())
         exitProcess(1)
     }
-    val server = StreamHubServer(dataDir, option("port")?.toIntOrNull())
+    val server = StreamHubServer(dataDir, option("port")?.toIntOrNull(), log = log)
     option("add-storage")?.let { spec ->
         val label = spec.substringBefore('=')
         val path = spec.substringAfter('=')
         val added = server.addStorage(label, path)
-        println("Added storage \"${added.label}\" at ${added.path}")
+        log("Added storage \"${added.label}\" at ${added.path}")
     }
-    server.start()
+    try {
+        server.start()
+    } catch (e: java.net.BindException) {
+        log("Port ${server.port} is used by another program. Choose another with --port, or \"port\" in ${File(dataDir, "config.json")}.")
+        exitProcess(1)
+    }
+    server.onStopRequested = { exitProcess(0) }
     Runtime.getRuntime().addShutdownHook(Thread { server.stop() })
+    // The installed server starts with the computer from its first start (switch it off on the page).
+    val firstRun = File(dataDir, ".started-before")
+    if (!firstRun.exists()) {
+        if (Desktop.autostart() == false) runCatching { Desktop.setAutostart(true) }
+        runCatching { firstRun.writeText("") }
+    }
+    if (openBrowser) Desktop.openBrowser("http://localhost:${server.port}/")
     Thread.currentThread().join()
 }
+
+private const val MAX_LOG_BYTES = 2L * 1024 * 1024
 
 /** Finds the native torrent engine for this computer in the distribution's natives/ folder. */
 object Natives {
@@ -49,7 +80,9 @@ object Natives {
             else -> System.getProperty("os.arch").lowercase()
         }
         val home = runCatching { File(Natives::class.java.protectionDomain.codeSource.location.toURI()).parentFile.parentFile }.getOrNull()
-        val jars = listOfNotNull(home?.let { File(it, "natives") }, File("natives"))
+        // natives/ next to lib/ (the zip) or next to the jars (the installed program).
+        val jarDir = runCatching { File(Natives::class.java.protectionDomain.codeSource.location.toURI()).parentFile }.getOrNull()
+        val jars = listOfNotNull(home?.let { File(it, "natives") }, jarDir?.let { File(it, "natives") }, File("natives"))
             .flatMap { dir -> dir.listFiles()?.filter { it.name.startsWith("libtorrent4j-$platform") && it.extension == "jar" }.orEmpty() }
         for (jar in jars) {
             ZipFile(jar).use { zip ->

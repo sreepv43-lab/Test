@@ -68,6 +68,35 @@ class StreamHubServer(
         downloads.stop()
     }
 
+    /** Set by the program to quit when the control page's Stop is pressed. */
+    var onStopRequested: () -> Unit = {}
+
+    fun requestStop() {
+        Thread {
+            Thread.sleep(300)
+            onStopRequested()
+        }.start()
+    }
+
+    fun adminStatus(): AdminStatus {
+        val c = config()
+        return AdminStatus(
+            name = c.name,
+            version = version,
+            port = port,
+            addresses = Desktop.addresses(),
+            pairingCode = pairingCode,
+            storages = c.storages.map(Storages::view),
+            defaultStorage = c.defaultStorage ?: c.storages.firstOrNull()?.id,
+            devices = c.devices.map { AdminDevice(it.name, it.pairedAt) },
+            libraryCount = library.items().size,
+            smbPath = c.smbPath,
+            dataFolder = dataDir.absolutePath,
+            autostart = Desktop.autostart(),
+            ffprobe = MediaProbe.available,
+        )
+    }
+
     fun status(): ServerStatus {
         val c = config()
         return ServerStatus(c.name, version, c.storages.map(Storages::view), c.defaultStorage ?: c.storages.firstOrNull()?.id, c.smbPath)
@@ -105,6 +134,45 @@ class StreamHubServer(
         config = config.copy(storages = config.storages + storage)
         saveConfig()
         storage
+    }
+
+    /** Forgets a storage (its files stay where they are). */
+    fun removeStorage(id: String): Boolean = synchronized(this) {
+        if (config.storages.none { it.id == id }) return false
+        config = config.copy(
+            storages = config.storages.filter { it.id != id },
+            defaultStorage = config.defaultStorage.takeIf { it != id },
+        )
+        saveConfig()
+        library.requestScan()
+        true
+    }
+
+    /** Where downloads go when the app doesn't choose. */
+    fun setDefaultStorage(id: String): Boolean = synchronized(this) {
+        if (config.storages.none { it.id == id }) return false
+        config = config.copy(defaultStorage = id)
+        saveConfig()
+        true
+    }
+
+    fun rename(name: String) = synchronized(this) {
+        require(name.isNotBlank()) { "The name can't be empty" }
+        config = config.copy(name = name.trim().take(60))
+        saveConfig()
+    }
+
+    fun setSmbPath(path: String?) = synchronized(this) {
+        config = config.copy(smbPath = path?.trim()?.ifEmpty { null })
+        saveConfig()
+    }
+
+    /** Unpairs a device: its key stops working at once. */
+    fun removeDevice(pairedAt: Long): Boolean = synchronized(this) {
+        if (config.devices.none { it.pairedAt == pairedAt }) return false
+        config = config.copy(devices = config.devices.filter { it.pairedAt != pairedAt })
+        saveConfig()
+        true
     }
 
     /**
@@ -155,5 +223,10 @@ class StreamHubServer(
 
     companion object {
         private const val MAX_FAILED_PAIRINGS = 5
+
+        /** The port in [dataDir]'s config, read without starting anything. */
+        fun configuredPort(dataDir: File): Int =
+            runCatching { ServerJson.decodeFromString(ServerConfig.serializer(), File(dataDir, "config.json").readText()).port }
+                .getOrDefault(ServerConfig.DEFAULT_PORT)
     }
 }
