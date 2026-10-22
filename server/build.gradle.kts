@@ -103,8 +103,18 @@ fun launcherOptions(platform: String, icon: String) = listOf(
     "--icon", file(icon).path,
 )
 
+// packaging/ with the version written into the .deb's control file (jpackage's own placeholders
+// differ between JDK versions).
+val linuxInstallerResources by tasks.registering(Copy::class) {
+    from("packaging")
+    into(layout.buildDirectory.dir("installer/resources"))
+    val version = project.version.toString()
+    inputs.property("version", version)
+    filesMatching("control") { filter { it.replace("@VERSION@", version) } }
+}
+
 val linuxInstaller by tasks.registering(Exec::class) {
-    dependsOn(linuxInstallerInput)
+    dependsOn(linuxInstallerInput, linuxInstallerResources)
     val out = layout.buildDirectory.dir("installer/out").get().asFile
     doFirst { out.deleteRecursively() }
     commandLine(
@@ -115,7 +125,7 @@ val linuxInstaller by tasks.registering(Exec::class) {
             "--description", installerDescription,
             "--vendor", "StreamHub",
         ) + launcherOptions("linux", "packaging/streamhub-server.png") + listOf(
-            "--resource-dir", file("packaging").path,
+            "--resource-dir", layout.buildDirectory.dir("installer/resources").get().asFile.path,
             "--linux-shortcut",
             "--linux-menu-group", "AudioVideo;Network;",
             "--linux-app-category", "video",
