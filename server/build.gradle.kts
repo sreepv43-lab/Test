@@ -18,6 +18,11 @@ val libtorrent = "2.1.0-39"
 // natives/ folder and the right one is unpacked at start (see Natives.kt).
 val natives: Configuration by configurations.creating { isTransitive = false }
 val testNative: Configuration by configurations.creating { isTransitive = false }
+// JavaFX for the installers' own window (AppWindow.kt); not in the zip, which opens the browser.
+val javafxVersion = "21.0.5"
+val javafxModules = listOf("base", "graphics", "controls", "media", "web")
+val javafxLinux: Configuration by configurations.creating { isTransitive = false }
+val javafxWindows: Configuration by configurations.creating { isTransitive = false }
 
 dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
@@ -28,6 +33,14 @@ dependencies {
     natives("org.libtorrent4j:libtorrent4j-windows:$libtorrent")
     natives("org.libtorrent4j:libtorrent4j-macos:$libtorrent")
     testNative("org.libtorrent4j:libtorrent4j-linux:$libtorrent")
+    // -PjavafxDir=/folder/with/javafx-*-linux.jars compiles without downloading them (offline checks).
+    val localFx = findProperty("javafxDir") as String?
+    javafxModules.forEach { module ->
+        if (localFx != null) compileOnly(files("$localFx/javafx-$module-$javafxVersion-linux.jar"))
+        else compileOnly("org.openjfx:javafx-$module:$javafxVersion:linux")
+        javafxLinux("org.openjfx:javafx-$module:$javafxVersion:linux")
+        javafxWindows("org.openjfx:javafx-$module:$javafxVersion:win")
+    }
     testImplementation("junit:junit:4.13.2")
 }
 
@@ -63,19 +76,22 @@ distributions {
 // Linux .deb (needs fakeroot) and Windows .exe (needs WiX 3). Started from the menu, the program
 // opens the control page (starting the server if needed).
 val jpackage = File(System.getProperty("java.home"), "bin/jpackage" + if (System.getProperty("os.name").startsWith("Windows")) ".exe" else "").path
-// Only what the server uses (no desktop graphics libraries, so the .deb installs on any recent distro).
-val installerModules = "java.base,java.logging,java.net.http,jdk.httpserver,jdk.crypto.ec,jdk.unsupported,java.management,java.naming"
+// What the server and its window (JavaFX) use. The .deb lists its system libraries itself
+// (packaging/control) so it installs on older and newer distros alike.
+val installerModules = "java.base,java.logging,java.net.http,jdk.httpserver,jdk.crypto.ec,jdk.unsupported,java.management,java.naming," +
+    "java.desktop,java.xml,jdk.jsobject,jdk.xml.dom,jdk.jfr"
 val installerDescription = "StreamHub Server: downloads for the StreamHub TV app, even with the TV off"
 
-fun installerInput(name: String, platform: String) = tasks.register<Sync>(name) {
+fun installerInput(name: String, platform: String, javafx: Configuration) = tasks.register<Sync>(name) {
     from(tasks.jar)
     from(configurations.runtimeClasspath)
+    from(javafx)
     from({ natives.filter { platform in it.name } }) { into("natives") }
     into(layout.buildDirectory.dir("installer/input-$platform"))
 }
 
-val linuxInstallerInput = installerInput("linuxInstallerInput", "linux")
-val windowsInstallerInput = installerInput("windowsInstallerInput", "windows")
+val linuxInstallerInput = installerInput("linuxInstallerInput", "linux", javafxLinux)
+val windowsInstallerInput = installerInput("windowsInstallerInput", "windows", javafxWindows)
 
 fun launcherOptions(platform: String, icon: String) = listOf(
     "--input", layout.buildDirectory.dir("installer/input-$platform").get().asFile.path,

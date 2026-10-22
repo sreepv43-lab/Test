@@ -72,6 +72,10 @@ object Desktop {
         }
     }
 
+    /** Whether this computer has a screen to show a window on. */
+    fun hasDisplay(): Boolean =
+        !linux || !System.getenv("DISPLAY").isNullOrEmpty() || !System.getenv("WAYLAND_DISPLAY").isNullOrEmpty()
+
     fun openBrowser(url: String) {
         val command = when {
             linux -> listOf("xdg-open", url)
@@ -82,13 +86,38 @@ object Desktop {
         if (command != null) runCatching { ProcessBuilder(command).inheritIO().start() }
     }
 
-    /** Whether a StreamHub Server already answers on [port] of this computer. */
-    fun alreadyRunning(port: Int): Boolean = runCatching {
+    /** The version of the StreamHub Server already answering on [port] of this computer, if any. */
+    fun runningVersion(port: Int): String? = runCatching {
         val connection = URI("http://127.0.0.1:$port/api/hello").toURL().openConnection() as HttpURLConnection
         connection.connectTimeout = 1_500
         connection.readTimeout = 1_500
-        connection.inputStream.use { it.readBytes().decodeToString() }.contains("streamhub-server")
-    }.getOrDefault(false)
+        val hello = ServerJson.decodeFromString(Hello.serializer(), connection.inputStream.use { it.readBytes().decodeToString() })
+        hello.version.takeIf { hello.app == "streamhub-server" }
+    }.getOrNull()
+
+    fun alreadyRunning(port: Int): Boolean = runningVersion(port) != null
+
+    /** Asks the server on [port] to quit (an older version after an update) and waits until it has. */
+    fun stopRunning(port: Int): Boolean {
+        runCatching {
+            val connection = URI("http://127.0.0.1:$port/admin/api/stop").toURL().openConnection() as HttpURLConnection
+            connection.requestMethod = "POST"
+            connection.setRequestProperty("X-StreamHub", "admin")
+            connection.setRequestProperty("Content-Type", "application/json")
+            connection.doOutput = true
+            connection.outputStream.use { it.write("{}".toByteArray()) }
+            connection.inputStream.use { it.readBytes() }
+        }
+        val until = System.currentTimeMillis() + 15_000
+        while (System.currentTimeMillis() < until) {
+            if (!alreadyRunning(port)) {
+                Thread.sleep(500)
+                return true
+            }
+            Thread.sleep(300)
+        }
+        return false
+    }
 
     /** This computer's addresses on the home network (what the TV needs), e.g. "192.168.1.20". */
     fun addresses(): List<String> = runCatching {

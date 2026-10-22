@@ -24,9 +24,20 @@ fun main(args: Array<String>) {
         Unit
     }
     val port = option("port")?.toIntOrNull() ?: StreamHubServer.configuredPort(dataDir)
+    // After an update the old version may still be running: this one takes over.
+    val running = Desktop.runningVersion(port)
+    val mine = StreamHubServer::class.java.`package`?.implementationVersion
+    if (running != null && mine != null && running != mine && running != "dev") {
+        log("Replacing StreamHub Server $running with $mine.")
+        Desktop.stopRunning(port)
+    }
     if (Desktop.alreadyRunning(port)) {
-        if (openBrowser) Desktop.openBrowser("http://localhost:$port/")
-        else if ("--background" !in args) log("StreamHub Server is already running on port $port.")
+        if (openBrowser) {
+            // Only the window is wanted: this program ends when it is closed.
+            if (showControlPage("http://localhost:$port/", quitOnClose = true, log)) Thread.currentThread().join()
+        } else if ("--background" !in args) {
+            log("StreamHub Server is already running on port $port.")
+        }
         return
     }
     try {
@@ -56,8 +67,22 @@ fun main(args: Array<String>) {
         if (Desktop.autostart() == false) runCatching { Desktop.setAutostart(true) }.onFailure { log("Couldn't switch on starting with the computer: ${it.message}") }
         runCatching { firstRun.writeText("") }
     }
-    if (openBrowser) Desktop.openBrowser("http://localhost:${server.port}/")
+    if (openBrowser) showControlPage("http://localhost:${server.port}/", quitOnClose = false, log)
     Thread.currentThread().join()
+}
+
+/**
+ * Shows the control page in StreamHub Server's own window (the installers bring JavaFX for it), or
+ * else in the browser. Returns whether the window opened.
+ */
+private fun showControlPage(url: String, quitOnClose: Boolean, log: (String) -> Unit): Boolean {
+    if (Desktop.hasDisplay()) {
+        val window = runCatching { AppWindow.open(url, quitOnClose) }
+        if (window.isSuccess) return true
+        log("Opening the control page in the browser (no app window: ${window.exceptionOrNull()})")
+    }
+    Desktop.openBrowser(url)
+    return false
 }
 
 private const val MAX_LOG_BYTES = 2L * 1024 * 1024
