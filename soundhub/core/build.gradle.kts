@@ -22,6 +22,7 @@ dependencies {
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
     // SMB (Windows/Samba shares: NAS boxes, PCs) for saving music on a home server.
     implementation("com.hierynomus:smbj:0.13.0")
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")
