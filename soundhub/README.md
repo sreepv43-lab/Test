@@ -24,6 +24,12 @@ There are two **layouts**, chosen under **Settings → Appearance**, each with i
   holds the Library and Downloads. Up from the top of a page reaches the bar, Down returns. Its
   colours are Cinema (dark green) or Daylight.
 
+## Home server
+
+Settings → Home server saves your music on a NAS or PC (any SMB share): either a copy of every song, or
+songs kept only on the server and played from it over the network. Enter the server, share, folder and
+login, press Test connection, and choose what to do with songs.
+
 ## Features
 
 - **Soulseek client built in.** Sign in with a Soulseek username and password. A new username is
