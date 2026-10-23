@@ -28,6 +28,10 @@ import io.github.sreepv43.soundhub.library.SearchTrack
 import io.github.sreepv43.soundhub.player.PlaybackController
 import io.github.sreepv43.soundhub.player.QueueItem
 import io.github.sreepv43.soundhub.player.SoundHubDataSourceFactory
+import io.github.sreepv43.soundhub.server.MusicServer
+import io.github.sreepv43.soundhub.server.ServerConfig
+import io.github.sreepv43.soundhub.server.ServerSync
+import io.github.sreepv43.soundhub.server.SmbMusicServer
 import io.github.sreepv43.soundhub.player.toQueueItem
 import io.github.sreepv43.soundhub.service.TransferService
 import io.github.sreepv43.soundhub.slsk.ConnectionState
@@ -88,6 +92,25 @@ class AppContainer(private val context: Context) {
     val collection = CollectionStore(File(context.filesDir, "collection.json"))
     val covers = CoverCache()
     val downloads = MusicDownloads(client, library, ::musicFolder, ioScope)
+    private var serverKey = ""
+    private var serverInstance: MusicServer? = null
+
+    /** The home server chosen under Settings → Home server, or null when none is set up. */
+    @Synchronized
+    fun musicServer(): MusicServer? {
+        val config = ServerConfig(
+            settings.serverHost.value, settings.serverShare.value, settings.serverFolder.value,
+            settings.serverUser.value, settings.serverPassword.value,
+        )
+        if (!config.isSet) return null
+        if (config.toString() != serverKey) {
+            serverKey = config.toString()
+            serverInstance = SmbMusicServer(config)
+        }
+        return serverInstance
+    }
+
+    val serverSync = ServerSync(library, ::musicServer, { settings.serverMode.value }, ::musicFolder, ioScope)
     val search = SearchSession(client, appScope)
     val playback = PlaybackController(context, this)
     val updater = AppUpdater(context, settings, appScope)
@@ -122,6 +145,7 @@ class AppContainer(private val context: Context) {
     fun start() {
         // Songs on an unplugged drive stay in the library (shown as unavailable) until the
         // listener removes them; nothing is dropped automatically.
+        library.onDeleted = serverSync::deleteFromServer
         LibraryEnricher(library, covers, ioScope)
         updater.checkIfDue()
         appScope.launch { library.tracks.collect { refreshMissing() } }
@@ -264,7 +288,7 @@ class AppContainer(private val context: Context) {
      * can't be played (unsupported format, or its drive isn't connected): never another song instead.
      */
     fun playLibrary(tracks: List<LibraryTrack>, start: LibraryTrack? = null, shuffle: Boolean = false): Boolean {
-        val playable = tracks.filter { it.info.playable && File(it.path).isFile }
+        val playable = tracks.filter { it.info.playable && it.available() }
         if (playable.isEmpty()) return false
         val index = when {
             start != null -> playable.indexOf(start)
@@ -278,7 +302,7 @@ class AppContainer(private val context: Context) {
     }
 
     fun enqueueLibrary(tracks: List<LibraryTrack>, next: Boolean): Int {
-        val playable = tracks.filter { it.info.playable && File(it.path).isFile }
+        val playable = tracks.filter { it.info.playable && it.available() }
         playback.enqueue(playable.map { it.toQueueItem() }, next)
         return playable.size
     }
@@ -322,7 +346,7 @@ class AppContainer(private val context: Context) {
         File(musicFolder(), PathNames.localPath(track.username, track.file.filename)).parent.orEmpty()
 
     private fun queueItemFor(track: SearchTrack): QueueItem {
-        library.find(track.username, track.file.filename)?.takeIf { File(it.path).isFile }?.let { return it.toQueueItem() }
+        library.find(track.username, track.file.filename)?.takeIf { it.available() }?.let { return it.toQueueItem() }
         val transfer = downloads.fetch(track)
         return QueueItem(
             id = LibraryStore.id(track.username, track.file.filename),

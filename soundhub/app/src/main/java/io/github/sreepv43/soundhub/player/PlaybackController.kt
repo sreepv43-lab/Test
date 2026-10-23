@@ -58,7 +58,7 @@ fun LibraryTrack.toQueueItem() = QueueItem(
     album = album,
     artist = artist,
     info = info,
-    uri = Uri.fromFile(File(path)).toString(),
+    uri = if (!isLocal && serverPath.isNotEmpty()) SoundHubDataSourceFactory.serverUri(serverPath).toString() else Uri.fromFile(File(path)).toString(),
     albumKey = LibraryViews.albumKeyOf(path),
 )
 
@@ -124,7 +124,7 @@ class PlaybackController(private val context: Context, private val container: Ap
 
     private fun build(mode: String): ExoPlayer {
         val exo = ExoPlayer.Builder(context, AudioOutput.renderersFactory(context, mode))
-            .setMediaSourceFactory(DefaultMediaSourceFactory(SoundHubDataSourceFactory(context) { container.client.transfer(it)?.data }))
+            .setMediaSourceFactory(DefaultMediaSourceFactory(SoundHubDataSourceFactory(context, { container.client.transfer(it)?.data }, container::musicServer)))
             .setAudioAttributes(
                 AudioAttributes.Builder().setUsage(C.USAGE_MEDIA).setContentType(C.AUDIO_CONTENT_TYPE_MUSIC).build(),
                 /* handleAudioFocus = */ true,
@@ -329,7 +329,7 @@ class PlaybackController(private val context: Context, private val container: Ap
 
     /** Resumes the saved session with the songs that are still in the library. Returns false if none are. */
     fun resume(session: SavedSession): Boolean {
-        val tracks = session.trackIds.mapNotNull(container.library::get).filter { File(it.path).isFile && it.info.playable }
+        val tracks = session.trackIds.mapNotNull(container.library::get).filter { it.available() && it.info.playable }
         if (tracks.isEmpty()) return false
         val currentId = session.trackIds.getOrNull(session.index)
         val start = tracks.indexOfFirst { it.id == currentId }

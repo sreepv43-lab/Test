@@ -55,6 +55,14 @@ class Settings(context: Context) {
     /** How Dolby/DTS audio reaches the receiver: "auto", "hdmi" or "arc" (see AudioOutput). */
     val outputMode = string("output_mode", "auto")
 
+    /** The home server (an SMB share): "off", "copy" (also keep a copy there) or "only" (keep songs only there). */
+    val serverMode = string("server_mode", "off")
+    val serverHost = string("server_host", "")
+    val serverShare = string("server_share", "")
+    val serverFolder = string("server_folder", "SoundHub")
+    val serverUser = string("server_user", "")
+    val serverPassword = string("server_password", "")
+
     /** How many dB songs the app decodes itself (FLAC, MP3, …) are turned down, so they match Dolby bitstreams the receiver decodes: "0", "3", "6", "9". */
     val levelMatch = string("level_match", "6")
 

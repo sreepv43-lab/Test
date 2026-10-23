@@ -116,6 +116,20 @@ fun SettingsScreen(onOpen: (SettingsKind) -> Unit, onSound: () -> Unit) {
                 key = "settings-STORAGE",
             ) { onOpen(SettingsKind.STORAGE) }
         }
+        item(key = "server") {
+            val serverMode by container.settings.serverMode.flow.collectAsStateWithLifecycle()
+            val serverHost by container.settings.serverHost.flow.collectAsStateWithLifecycle()
+            SettingsRow(
+                "Home server",
+                when {
+                    serverHost.isBlank() -> "Save your music on a NAS or PC on your network"
+                    serverMode == "only" -> "Songs kept on $serverHost"
+                    serverMode == "copy" -> "Copies saved to $serverHost"
+                    else -> "$serverHost · not saving"
+                },
+                key = "settings-SERVER",
+            ) { onOpen(SettingsKind.SERVER) }
+        }
         item(key = "sound") {
             SettingsRow(
                 "Atmos & sound",
@@ -180,7 +194,7 @@ private fun openNotificationSettings(context: android.content.Context) {
 }
 
 @Composable
-private fun SettingsList(content: LazyListScope.() -> Unit) {
+internal fun SettingsList(content: LazyListScope.() -> Unit) {
     LazyColumn(
         Modifier.fillMaxSize().testTag("page-list"),
         state = rememberPageListState(),
@@ -191,7 +205,7 @@ private fun SettingsList(content: LazyListScope.() -> Unit) {
 }
 
 @Composable
-private fun SettingsRow(title: String, subtitle: String?, key: String, pageDefault: Boolean = false, onClick: () -> Unit) {
+internal fun SettingsRow(title: String, subtitle: String?, key: String, pageDefault: Boolean = false, onClick: () -> Unit) {
     ListRow(onClick = onClick, key = key, pageDefault = pageDefault, modifier = Modifier.testTag(key)) {
         TwoLines(title, subtitle, Modifier.weight(1f))
         Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
@@ -203,6 +217,7 @@ fun SettingsDetailScreen(kind: SettingsKind) {
     when (kind) {
         SettingsKind.ACCOUNT -> AccountSettings()
         SettingsKind.STORAGE -> StorageSettings()
+        SettingsKind.SERVER -> ServerSettings()
         SettingsKind.NETWORK -> NetworkSettings()
         SettingsKind.APPEARANCE -> AppearanceSettings()
         SettingsKind.UPDATES -> UpdateSettings()

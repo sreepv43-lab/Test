@@ -52,6 +52,15 @@ android {
     buildFeatures {
         compose = true
     }
+    // The SMB library (home server) and its crypto bring duplicate metadata files.
+    packaging {
+        resources {
+            excludes += listOf(
+                "META-INF/DEPENDENCIES", "META-INF/LICENSE*", "META-INF/NOTICE*", "META-INF/INDEX.LIST",
+                "META-INF/versions/**", "META-INF/*.SF", "META-INF/*.DSA", "META-INF/*.RSA", "META-INF/AL2.0", "META-INF/LGPL2.1",
+            )
+        }
+    }
     // Robolectric runs the remote-navigation UI tests on the JVM.
     testOptions {
         unitTests.isIncludeAndroidResources = true

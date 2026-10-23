@@ -27,7 +27,15 @@ data class LibraryTrack(
     val addedAt: Long,
     /** Title/artist/album/cover were read from the file's own tags (not just its path). */
     val tagged: Boolean = false,
-)
+    /** Where the song is on the home server (relative to its music folder), once it has been saved there. */
+    val serverPath: String = "",
+) {
+    /** The file is on this device. */
+    val isLocal: Boolean get() = File(path).isFile
+
+    /** The song can be played: its file is here, or a copy is on the home server. */
+    fun available(): Boolean = isLocal || serverPath.isNotEmpty()
+}
 
 data class Album(val key: String, val title: String, val artist: String?, val tracks: List<LibraryTrack>) {
     fun matches(filter: FormatFilter) = tracks.any { filter.matches(it.info) }
@@ -40,6 +48,10 @@ class LibraryStore(private val file: File) {
     private val json = Json { ignoreUnknownKeys = true }
     private val serializer = ListSerializer(LibraryTrack.serializer())
     private val _tracks = MutableStateFlow(load())
+
+    /** Told about each song whose files are deleted (so its copy on the home server can go too). */
+    @Volatile
+    var onDeleted: (LibraryTrack) -> Unit = {}
     val tracks: StateFlow<List<LibraryTrack>> = _tracks.asStateFlow()
 
     fun find(username: String, remotePath: String): LibraryTrack? =
@@ -66,13 +78,14 @@ class LibraryStore(private val file: File) {
                 local.delete()
                 // Tidy up the album folder once it is empty.
                 local.parentFile?.takeIf { it.list()?.isEmpty() == true }?.delete()
+                onDeleted(track)
             }
         }
         save(kept)
     }
 
     /** Songs whose file can't be found now (deleted, or on a drive that is unplugged). */
-    fun missing(): List<LibraryTrack> = _tracks.value.filterNot { File(it.path).isFile }
+    fun missing(): List<LibraryTrack> = _tracks.value.filterNot { it.available() }
 
     /**
      * Drops entries whose files are gone. Only when the listener asks for it: run automatically, an
@@ -80,7 +93,7 @@ class LibraryStore(private val file: File) {
      */
     @Synchronized
     fun removeMissing() {
-        val present = _tracks.value.filter { File(it.path).isFile }
+        val present = _tracks.value.filter { it.available() }
         if (present.size != _tracks.value.size) save(present)
     }
 

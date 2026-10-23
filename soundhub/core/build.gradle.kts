@@ -20,6 +20,8 @@ kotlin {
 dependencies {
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
     api("org.jetbrains.kotlinx:kotlinx-serialization-json:1.7.3")
+    // SMB (Windows/Samba shares: NAS boxes, PCs) for saving music on a home server.
+    implementation("com.hierynomus:smbj:0.13.0")
 
     testImplementation("junit:junit:4.13.2")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.9.0")

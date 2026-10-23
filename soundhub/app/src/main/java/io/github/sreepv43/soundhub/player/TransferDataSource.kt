@@ -12,6 +12,8 @@ import androidx.media3.datasource.DataSourceException
 import androidx.media3.datasource.DataSpec
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.TransferListener
+import io.github.sreepv43.soundhub.server.MusicServer
+import io.github.sreepv43.soundhub.server.ServerFile
 import io.github.sreepv43.soundhub.slsk.GrowingFile
 import java.io.FileNotFoundException
 import java.io.RandomAccessFile
@@ -85,23 +87,92 @@ class TransferDataSource(private val resolve: (Long) -> GrowingFile?) : BaseData
     }
 }
 
+/** Plays a song straight from the home server. URIs look like `smbmusic://server/<path on the server>`. */
+@OptIn(UnstableApi::class)
+class ServerDataSource(private val server: () -> MusicServer?) : BaseDataSource(/* isNetwork = */ true) {
+    private var uri: Uri? = null
+    private var file: ServerFile? = null
+    private var position = 0L
+    private var bytesRemaining = 0L
+    private var opened = false
+
+    override fun open(dataSpec: DataSpec): Long {
+        uri = dataSpec.uri
+        transferInitializing(dataSpec)
+        val relative = dataSpec.uri.pathSegments.joinToString("/")
+        val remote = server() ?: throw FileNotFoundException("The home server isn't set up")
+        val source = try {
+            remote.open(relative)
+        } catch (e: Exception) {
+            throw FileNotFoundException("Can't open the song on the home server: ${e.message}")
+        }
+        file = source
+        position = dataSpec.position
+        if (position > source.size) throw DataSourceException(PlaybackException.ERROR_CODE_IO_READ_POSITION_OUT_OF_RANGE)
+        bytesRemaining = if (dataSpec.length != C.LENGTH_UNSET.toLong()) dataSpec.length else source.size - position
+        opened = true
+        transferStarted(dataSpec)
+        return bytesRemaining
+    }
+
+    override fun read(buffer: ByteArray, offset: Int, length: Int): Int {
+        if (length == 0) return 0
+        if (bytesRemaining == 0L) return C.RESULT_END_OF_INPUT
+        val source = file ?: return C.RESULT_END_OF_INPUT
+        val read = source.read(buffer, offset, minOf(length.toLong(), bytesRemaining).toInt(), position)
+        if (read <= 0) return C.RESULT_END_OF_INPUT
+        position += read
+        bytesRemaining -= read
+        bytesTransferred(read)
+        return read
+    }
+
+    override fun getUri(): Uri? = uri
+
+    override fun close() {
+        uri = null
+        try {
+            file?.close()
+        } finally {
+            file = null
+            if (opened) {
+                opened = false
+                transferEnded()
+            }
+        }
+    }
+}
+
 /** Sends `slskstream:` URIs to [TransferDataSource] and everything else (local files) to Media3's default. */
 @OptIn(UnstableApi::class)
-class SoundHubDataSourceFactory(context: Context, private val resolve: (Long) -> GrowingFile?) : DataSource.Factory {
+class SoundHubDataSourceFactory(
+    context: Context,
+    private val resolve: (Long) -> GrowingFile?,
+    private val server: () -> MusicServer? = { null },
+) : DataSource.Factory {
     private val defaults = DefaultDataSource.Factory(context)
 
-    override fun createDataSource(): DataSource = Routing(defaults.createDataSource(), TransferDataSource(resolve))
+    override fun createDataSource(): DataSource = Routing(defaults.createDataSource(), TransferDataSource(resolve), ServerDataSource(server))
 
-    private class Routing(private val default: DataSource, private val transfer: TransferDataSource) : DataSource {
+    private class Routing(
+        private val default: DataSource,
+        private val transfer: TransferDataSource,
+        private val remote: ServerDataSource,
+    ) : DataSource {
         private var active: DataSource? = null
 
         override fun addTransferListener(transferListener: TransferListener) {
             default.addTransferListener(transferListener)
             transfer.addTransferListener(transferListener)
+            remote.addTransferListener(transferListener)
         }
 
         override fun open(dataSpec: DataSpec): Long {
-            val source = if (dataSpec.uri.scheme == SCHEME) transfer else default
+            val source = when (dataSpec.uri.scheme) {
+                SCHEME -> transfer
+                SERVER_SCHEME -> remote
+                else -> default
+            }
             active = source
             return source.open(dataSpec)
         }
@@ -124,6 +195,14 @@ class SoundHubDataSourceFactory(context: Context, private val resolve: (Long) ->
 
     companion object {
         const val SCHEME = "slskstream"
+        const val SERVER_SCHEME = "smbmusic"
+
+        /** A song on the home server, by its path there (the file name keeps its extension for Media3). */
+        fun serverUri(relative: String): Uri {
+            val builder = Uri.Builder().scheme(SERVER_SCHEME).authority("server")
+            relative.split('/').filter { it.isNotEmpty() }.forEach(builder::appendPath)
+            return builder.build()
+        }
 
         /** The file name is kept so Media3 can guess the container from the extension. */
         fun uriFor(transferId: Long, remotePath: String): Uri {

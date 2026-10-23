@@ -35,6 +35,7 @@ enum class Section(val label: String, val icon: ImageVector, val title: String =
 enum class SettingsKind(val label: String) {
     ACCOUNT("Account"),
     STORAGE("Storage"),
+    SERVER("Home server"),
     APPEARANCE("Appearance"),
     NETWORK("Network (advanced)"),
     UPDATES("Updates"),

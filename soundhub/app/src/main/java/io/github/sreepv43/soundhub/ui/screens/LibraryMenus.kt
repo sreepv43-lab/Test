@@ -44,7 +44,7 @@ fun playOrExplain(
         context,
         when {
             start == null -> "None of these songs can be played right now (is their drive connected?)"
-            !File(start.path).isFile -> "\"${start.title}\" is on a drive that isn't connected."
+            !start.available() -> "\"${start.title}\" is on a drive that isn't connected."
             !start.info.playable -> "This device can't play ${start.info.label}. It stays in your library."
             else -> "\"${start.title}\" can't be played right now."
         },
