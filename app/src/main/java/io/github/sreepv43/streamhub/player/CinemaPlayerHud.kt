@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -72,6 +71,11 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import io.github.sreepv43.streamhub.ui.components.tvFocus
 import kotlinx.coroutines.delay
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.gestures.animateScrollBy
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.platform.LocalDensity
+import kotlinx.coroutines.launch
 
 /** The side panels of the Cinema player. */
 enum class HudPanel(val title: String, val subtitle: String) {
@@ -387,8 +391,8 @@ private fun HudButton(icon: ImageVector, label: String, modifier: Modifier = Mod
 private fun Drawer(state: PlayerHudState, panel: HudPanel, modifier: Modifier) {
     val first = remember(panel) { FocusRequester() }
     LaunchedEffect(panel) { runCatching { first.requestFocus() } }
-    // Info shows many numbers at once: a wider drawer fits them all without scrolling.
-    Column(modifier.width(if (panel == HudPanel.Info) 640.dp else 400.dp).fillMaxHeight().background(DrawerBg)) {
+    val scroll = remember(panel) { ScrollState(0) }
+    Column(modifier.width(400.dp).fillMaxHeight().background(DrawerBg)) {
         Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(panel.title, color = Txt, fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -405,14 +409,14 @@ private fun Drawer(state: PlayerHudState, panel: HudPanel, modifier: Modifier) {
             ) { Icon(Icons.Default.Close, contentDescription = "Close", tint = Txt) }
         }
         Column(
-            Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 24.dp, vertical = 10.dp),
+            Modifier.weight(1f).fillMaxWidth().verticalScroll(scroll).padding(horizontal = 24.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             when (panel) {
                 HudPanel.Languages -> LanguagesPanel(state, first)
                 HudPanel.Sources -> SourcesPanel(state, first)
                 HudPanel.Video -> VideoPanel(state, first)
-                HudPanel.Info -> InfoPanel(state, first)
+                HudPanel.Info -> InfoPanel(state, first, scroll)
                 HudPanel.More -> MorePanel(state, first)
             }
         }
@@ -652,32 +656,48 @@ private fun VideoPanel(state: PlayerHudState, first: FocusRequester) {
 }
 
 @Composable
-private fun InfoPanel(state: PlayerHudState, first: FocusRequester) {
-    // Short numbers in a three-column grid, the formats side by side, the hash last: everything fits
-    // on a TV screen without scrolling.
-    val byLabel = state.info.toMap()
-    val formats = listOf("Video", "Audio", "Source")
+private fun InfoPanel(state: PlayerHudState, first: FocusRequester, scroll: ScrollState) {
+    val scope = rememberCoroutineScope()
+    val step = with(LocalDensity.current) { 120.dp.toPx() }
+    // The only button sits on top; Up / Down on it scroll the numbers (and Up at the top goes on to Close).
+    Action(
+        "Copy playback report",
+        full = true,
+        modifier = Modifier.focusRequester(first).onPreviewKeyEvent { event ->
+            val down = event.key == Key.DirectionDown
+            val up = event.key == Key.DirectionUp
+            when {
+                !down && !up -> false
+                down && scroll.value >= scroll.maxValue -> false
+                up && scroll.value <= 0 -> false
+                else -> {
+                    if (event.type == KeyEventType.KeyDown) scope.launch { scroll.animateScrollBy(if (down) step else -step) }
+                    true
+                }
+            }
+        },
+    ) { state.actions.copyReport() }
+    // Compact lines, numbers first, the long ones (formats, hash) last.
     val order = listOf("Position", "Playback speed", "Buffered", "Ready ahead", "Peers", "Speed", "Uploading", "Downloaded", "Completed", "Torrent")
-    val tiles = order.mapNotNull { label -> byLabel[label]?.let { label to it } } +
-        state.info.filter { (label, _) -> label !in order && label !in formats && label != "Info hash" }
-    @Composable
-    fun grid(items: List<Pair<String, String>>, columns: Int) = items.chunked(columns).forEach { row ->
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            row.forEach { (label, value) -> InfoTile(label, value, Modifier.weight(1f)) }
-            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
+    val last = listOf("Source", "Video", "Audio", "Info hash")
+    val lines = order.mapNotNull { label -> state.info.firstOrNull { it.first == label } } +
+        state.info.filter { it.first !in order && it.first !in last } +
+        last.mapNotNull { label -> state.info.firstOrNull { it.first == label } }
+    Column(Modifier.padding(top = 4.dp)) {
+        lines.forEach { (label, value) ->
+            Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.Top) {
+                Text(label, color = Color(0xFFABB8C3), fontSize = 12.sp, modifier = Modifier.width(96.dp))
+                Text(
+                    value,
+                    color = Txt,
+                    fontSize = if (label == "Info hash") 11.sp else 13.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.weight(1f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                )
+            }
+            Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x12FFFFFF)))
         }
-    }
-    grid(tiles, 3)
-    grid(formats.mapNotNull { label -> byLabel[label]?.let { label to it } }, 2)
-    byLabel["Info hash"]?.let { InfoTile("Info hash", it, Modifier.fillMaxWidth(), small = true) }
-    Action("Copy playback report", full = true, modifier = Modifier.padding(top = 4.dp).focusRequester(first)) { state.actions.copyReport() }
-}
-
-@Composable
-private fun InfoTile(label: String, value: String, modifier: Modifier, small: Boolean = false) {
-    Column(modifier.background(ChoiceBg, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 7.dp)) {
-        Text(label, color = Muted, fontSize = 11.sp)
-        Text(value, color = Txt, fontSize = if (small) 12.sp else 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
     }
 }
 

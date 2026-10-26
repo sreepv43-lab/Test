@@ -426,7 +426,7 @@ class ScreensTest {
 
     @Test
     @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
-    fun playbackInformationFitsOnAFullHdTvWithoutScrolling() {
+    fun playbackInformationScrollsDownAndBackUpWithTheRemote() {
         val state = PlayerHudState(noActions).apply {
             title = "Dune"
             panel = HudPanel.Info
@@ -439,18 +439,26 @@ class ScreensTest {
                 "Completed" to "42.17%",
                 "Ready ahead" to "3:12",
                 "Buffered" to "2:58",
-                "Video" to "3840×2160 HEVC · 18.4 Mbit/s",
-                "Audio" to "English · Dolby Digital Plus 5.1 (passthrough)",
+                "Video" to "3840×2160 DOLBY-VISION",
+                "Audio" to "E-AC3 5.1 → passthrough (DD+) to the receiver",
                 "Position" to "1:02:11 of 2:35:40",
                 "Playback speed" to "1.0×",
             )
         }
         show { PlayerHud(state) }
         val screen = rule.onRoot().getBoundsInRoot()
-        val last = rule.onNodeWithText("Copy playback report").getBoundsInRoot()
-        assertTrue("report button ends at ${last.bottom}, screen at ${screen.bottom}", last.bottom <= screen.bottom)
-        val hash = rule.onNodeWithText("0123456789abcdef0123456789abcdef01234567").getBoundsInRoot()
-        assertTrue("hash ends at ${hash.bottom}", hash.bottom <= screen.bottom)
+        fun visible(text: String): Boolean {
+            val bounds = rule.onNodeWithText(text).getBoundsInRoot()
+            return bounds.top >= screen.top && bounds.bottom <= screen.bottom
+        }
+        assertEquals("Copy playback report", focused())
+        assertTrue("the panel starts at the top", visible("Position"))
+        press(KeyEvent.KEYCODE_DPAD_DOWN, times = 6)
+        settle(1_000)
+        assertTrue("Down reaches the last line", visible("0123456789abcdef0123456789abcdef01234567"))
+        press(KeyEvent.KEYCODE_DPAD_UP, times = 6)
+        settle(1_000)
+        assertTrue("Up scrolls back to the top", visible("Position"))
     }
 
     @Test
