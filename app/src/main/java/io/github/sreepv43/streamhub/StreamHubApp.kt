@@ -48,6 +48,7 @@ import java.util.concurrent.TimeUnit
 import okhttp3.Cache
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import io.github.sreepv43.streamhub.data.RatingsStore
 
 class StreamHubApp : Application(), ImageLoaderFactory {
     lateinit var container: AppContainer
@@ -120,6 +121,8 @@ class AppContainer(context: Context) {
     val addons = AddonRepository(context, addonClient)
     val settings = Settings(context)
     val history = WatchHistory(context)
+    /** Rotten Tomatoes scores (MDBList, with the user's key). */
+    val ratings = RatingsStore(context, http, settings)
     val introMemory = IntroMemory(context)
     val library = Library(context)
     val homeCache = HomeCache(File(context.filesDir, "home-rows.json"))

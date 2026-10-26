@@ -70,6 +70,9 @@ class Settings(context: Context) {
     /** Key from pairing (sent with every request). */
     val homeServerToken = string("home_server_token", "")
     val homeServerName = string("home_server_name", "")
+    /** MDBList key for Rotten Tomatoes scores (Settings → Theme/Appearance → Ratings); empty = off. */
+    val ratingsKey = string("ratings_mdblist_key", "")
+    val ratingsOnPosters = bool("ratings_on_posters", true)
 
     /** "classic" or "cinema" (see ui.Interfaces). */
     val interfaceStyle = string("interface_style", "classic")

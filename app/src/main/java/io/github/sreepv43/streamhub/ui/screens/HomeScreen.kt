@@ -61,6 +61,13 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Edit
+import io.github.sreepv43.streamhub.ui.components.ActionCard
+import io.github.sreepv43.streamhub.ui.components.ContinueWatchingEditor
 
 data class HomeState(
     val initializing: Boolean = true,
@@ -148,7 +155,9 @@ fun HomeScreen(
     ScrollToStartOnRestart(listState)
     val posterMenu = rememberPosterMenu()
     PosterMenu(posterMenu)
-    val continueWatching = history.filterNot { it.isFinished }
+    var editingContinue by remember { mutableStateOf(false) }
+    if (editingContinue) ContinueWatchingEditor(onClose = { editingContinue = false })
+    val continueWatching = history.filter { it.inContinueWatching }
     val myList by LocalContext.current.container.library.items.collectAsStateWithLifecycle()
     // List positions: the title is item 0, then the optional rows, then the catalogs.
     var nextIndex = 1
@@ -186,6 +195,9 @@ fun HomeScreen(
                                         focusKey = entry.metaId,
                                         onLongClick = { posterMenu.target = PosterTarget.of(entry) },
                                     )
+                                }
+                                item(key = "edit-continue") {
+                                    ActionCard("Edit list", Icons.Default.Edit, "edit-continue") { editingContinue = true }
                                 }
                             }
                         }

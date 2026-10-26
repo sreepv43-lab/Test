@@ -1444,7 +1444,9 @@ class PlayerActivity : ComponentActivity() {
             showUpNext()
         }
         val metaId = request.metaId
+        // "Off" in Settings (0 s) never offers the button.
         val showSkip = request.type == "series" && metaId != null && !skipIntroDismissed && !upNextShown &&
+            container.settings.introSkipSeconds.value > 0 &&
             duration > MIN_EPISODE_MS && inIntroWindow(metaId, position)
         skipIntroView.visibility = if (showSkip) View.VISIBLE else View.GONE
     }

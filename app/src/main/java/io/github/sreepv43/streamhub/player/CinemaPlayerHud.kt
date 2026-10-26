@@ -387,7 +387,8 @@ private fun HudButton(icon: ImageVector, label: String, modifier: Modifier = Mod
 private fun Drawer(state: PlayerHudState, panel: HudPanel, modifier: Modifier) {
     val first = remember(panel) { FocusRequester() }
     LaunchedEffect(panel) { runCatching { first.requestFocus() } }
-    Column(modifier.width(400.dp).fillMaxHeight().background(DrawerBg)) {
+    // Info shows many numbers at once: a wider drawer fits them all without scrolling.
+    Column(modifier.width(if (panel == HudPanel.Info) 640.dp else 400.dp).fillMaxHeight().background(DrawerBg)) {
         Row(Modifier.fillMaxWidth().padding(start = 24.dp, end = 24.dp, top = 24.dp, bottom = 14.dp), verticalAlignment = Alignment.CenterVertically) {
             Column(Modifier.weight(1f)) {
                 Text(panel.title, color = Txt, fontSize = 24.sp, fontWeight = FontWeight.Bold)
@@ -652,15 +653,32 @@ private fun VideoPanel(state: PlayerHudState, first: FocusRequester) {
 
 @Composable
 private fun InfoPanel(state: PlayerHudState, first: FocusRequester) {
-    GroupLabel("Now")
-    state.info.forEach { (label, value) ->
-        Row(Modifier.fillMaxWidth().padding(vertical = 6.dp)) {
-            Text(label, color = Color(0xFFABB8C3), fontSize = 13.sp, modifier = Modifier.weight(1f))
-            Text(value, color = Txt, fontSize = 13.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1.4f), textAlign = androidx.compose.ui.text.style.TextAlign.End)
+    // Short numbers in a three-column grid, the formats side by side, the hash last: everything fits
+    // on a TV screen without scrolling.
+    val byLabel = state.info.toMap()
+    val formats = listOf("Video", "Audio", "Source")
+    val order = listOf("Position", "Playback speed", "Buffered", "Ready ahead", "Peers", "Speed", "Uploading", "Downloaded", "Completed", "Torrent")
+    val tiles = order.mapNotNull { label -> byLabel[label]?.let { label to it } } +
+        state.info.filter { (label, _) -> label !in order && label !in formats && label != "Info hash" }
+    @Composable
+    fun grid(items: List<Pair<String, String>>, columns: Int) = items.chunked(columns).forEach { row ->
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            row.forEach { (label, value) -> InfoTile(label, value, Modifier.weight(1f)) }
+            repeat(columns - row.size) { Spacer(Modifier.weight(1f)) }
         }
-        Box(Modifier.fillMaxWidth().height(1.dp).background(Color(0x12FFFFFF)))
     }
-    Action("Copy playback report", full = true, modifier = Modifier.padding(top = 12.dp).focusRequester(first)) { state.actions.copyReport() }
+    grid(tiles, 3)
+    grid(formats.mapNotNull { label -> byLabel[label]?.let { label to it } }, 2)
+    byLabel["Info hash"]?.let { InfoTile("Info hash", it, Modifier.fillMaxWidth(), small = true) }
+    Action("Copy playback report", full = true, modifier = Modifier.padding(top = 4.dp).focusRequester(first)) { state.actions.copyReport() }
+}
+
+@Composable
+private fun InfoTile(label: String, value: String, modifier: Modifier, small: Boolean = false) {
+    Column(modifier.background(ChoiceBg, RoundedCornerShape(10.dp)).padding(horizontal = 12.dp, vertical = 7.dp)) {
+        Text(label, color = Muted, fontSize = 11.sp)
+        Text(value, color = Txt, fontSize = if (small) 12.sp else 15.sp, fontWeight = FontWeight.SemiBold, maxLines = 2)
+    }
 }
 
 @Composable

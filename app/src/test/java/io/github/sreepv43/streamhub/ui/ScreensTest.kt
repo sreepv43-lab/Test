@@ -82,6 +82,9 @@ import org.robolectric.RobolectricTestRunner
 import org.robolectric.Shadows.shadowOf
 import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
+import androidx.compose.ui.test.onRoot
+import io.github.sreepv43.streamhub.data.WatchEntry
+import io.github.sreepv43.streamhub.ui.components.ContinueWatchingEditor
 
 /** Real screens and components driven with remote key presses (with the app's own container). */
 @RunWith(RobolectricTestRunner::class)
@@ -419,6 +422,78 @@ class ScreensTest {
         focus(rule.onNodeWithText("Hindi"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertTrue(calls.toString(), "audio 0:1" in calls)
+    }
+
+    @Test
+    @Config(qualifiers = "w960dp-h540dp-land-television-xhdpi")
+    fun playbackInformationFitsOnAFullHdTvWithoutScrolling() {
+        val state = PlayerHudState(noActions).apply {
+            title = "Dune"
+            panel = HudPanel.Info
+            info = listOf(
+                "Info hash" to "0123456789abcdef0123456789abcdef01234567",
+                "Peers" to "48 (31 seeds)",
+                "Speed" to "4.2 MB/s",
+                "Uploading" to "310 kB/s",
+                "Downloaded" to "1.8 GB",
+                "Completed" to "42.17%",
+                "Ready ahead" to "3:12",
+                "Buffered" to "2:58",
+                "Video" to "3840×2160 HEVC · 18.4 Mbit/s",
+                "Audio" to "English · Dolby Digital Plus 5.1 (passthrough)",
+                "Position" to "1:02:11 of 2:35:40",
+                "Playback speed" to "1.0×",
+            )
+        }
+        show { PlayerHud(state) }
+        val screen = rule.onRoot().getBoundsInRoot()
+        val last = rule.onNodeWithText("Copy playback report").getBoundsInRoot()
+        assertTrue("report button ends at ${last.bottom}, screen at ${screen.bottom}", last.bottom <= screen.bottom)
+        val hash = rule.onNodeWithText("0123456789abcdef0123456789abcdef01234567").getBoundsInRoot()
+        assertTrue("hash ends at ${hash.bottom}", hash.bottom <= screen.bottom)
+    }
+
+    @Test
+    fun continueWatchingTitlesCanBeRemovedAndStillResume() {
+        val history = container.history
+        history.record(WatchEntry("tt1160419", "movie", "Dune", videoId = "tt1160419", positionMs = 600_000, durationMs = 9_000_000))
+        history.record(WatchEntry("tt2543164", "movie", "Arrival", videoId = "tt2543164", positionMs = 900_000, durationMs = 7_000_000))
+        var closed = false
+        show { ContinueWatchingEditor(onClose = { closed = true }) }
+        rule.onNodeWithText("Arrival").assertExists()
+        rule.onAllNodesWithText("Remove")[0].performClick()
+        settle()
+        assertTrue(history.entries.value.single { it.metaId == "tt2543164" }.hidden)
+        assertEquals("a removed title still resumes", 900_000L, history.positionFor("tt2543164"))
+        rule.onNodeWithText("Dune").assertExists()
+        rule.onNodeWithText("Remove all").performClick()
+        settle()
+        assertTrue("the editor closes when the row is empty", closed)
+        // Playing it again brings it back.
+        history.record(WatchEntry("tt1160419", "movie", "Dune", videoId = "tt1160419", positionMs = 700_000, durationMs = 9_000_000))
+        assertTrue(history.entries.value.single { it.metaId == "tt1160419" }.inContinueWatching)
+    }
+
+    private val noActions = object : PlayerHudActions {
+        override fun togglePlay() {}
+        override fun seekStep(forward: Boolean, repeat: Boolean) {}
+        override fun exit() {}
+        override fun selectAudio(id: String) {}
+        override fun selectSubtitle(id: String?) {}
+        override fun shiftSubtitles(deltaMs: Long?) {}
+        override fun setSubtitleScale(scale: Float) {}
+        override fun setSubtitleBox(box: Boolean) {}
+        override fun loadSources() {}
+        override fun switchSource(index: Int) {}
+        override fun setResizeMode(mode: Int) {}
+        override fun setSpeed(speed: Float) {}
+        override fun setStartBuffer(ms: Int) {}
+        override fun copyReport() {}
+        override fun restart() {}
+        override fun download() {}
+        override fun setSleep(minutes: Int) {}
+        override fun retry() {}
+        override fun dismissProblem() {}
     }
 
     private fun addon(name: String) = InstalledAddon("https://$name.example/manifest.json".replace(' ', '-'), Manifest(id = name, name = name))

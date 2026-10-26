@@ -20,9 +20,12 @@ data class WatchEntry(
     val positionMs: Long = 0,
     val durationMs: Long = 0,
     val updatedAt: Long = 0,
+    /** Taken off Continue watching by the user; it still resumes, and comes back when played again. */
+    val hidden: Boolean = false,
 ) {
     val progress: Float get() = if (durationMs > 0) positionMs.toFloat() / durationMs else 0f
     val isFinished: Boolean get() = durationMs > 0 && progress > 0.95f
+    val inContinueWatching: Boolean get() = !isFinished && !hidden
 }
 
 /** Remembers playback positions for resuming and the "Continue watching" row. */
@@ -46,6 +49,12 @@ class WatchHistory(context: Context) {
             (listOf(entry.copy(updatedAt = System.currentTimeMillis())) + list.filterNot { it.metaId == entry.metaId })
                 .take(MAX_ENTRIES)
         }
+        prefs.edit().putString(KEY, StremioJson.encodeToString(serializer, _entries.value)).apply()
+    }
+
+    /** Takes [metaId] off Continue watching (the resume point stays). */
+    fun hide(metaId: String) {
+        _entries.update { list -> list.map { if (it.metaId == metaId) it.copy(hidden = true) else it } }
         prefs.edit().putString(KEY, StremioJson.encodeToString(serializer, _entries.value)).apply()
     }
 

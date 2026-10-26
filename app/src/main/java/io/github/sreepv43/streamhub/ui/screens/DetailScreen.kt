@@ -77,6 +77,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import io.github.sreepv43.streamhub.ui.components.rememberRatings
+import io.github.sreepv43.streamhub.ui.components.ratingFacts
 
 data class DetailState(
     val loading: Boolean = true,
@@ -294,12 +296,11 @@ fun MetaHeader(
             subtitle?.let {
                 Text(it, style = MaterialTheme.typography.titleMedium, color = text.copy(alpha = 0.85f), modifier = Modifier.padding(top = 10.dp))
             }
-            val info = listOfNotNull(
-                meta.releaseInfo,
-                meta.runtime,
-                meta.imdbRating?.let { "★ $it" },
-                meta.genres.take(3).joinToString(" · ").ifEmpty { null },
-            ).joinToString("   ")
+            val info = (
+                listOfNotNull(meta.releaseInfo, meta.runtime, meta.imdbRating?.let { "★ $it" }) +
+                    ratingFacts(rememberRatings(meta.id)) +
+                    listOfNotNull(meta.genres.take(3).joinToString(" · ").ifEmpty { null })
+                ).joinToString("   ")
             if (info.isNotEmpty()) {
                 Text(info, style = MaterialTheme.typography.titleSmall, color = text.copy(alpha = 0.72f), modifier = Modifier.padding(top = 10.dp))
             }

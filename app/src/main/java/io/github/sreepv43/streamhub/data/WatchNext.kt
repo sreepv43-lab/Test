@@ -48,7 +48,7 @@ class WatchNext(
     /** What the row should show, by a key that stays the same for the same title. */
     private fun programs(entries: List<WatchEntry>, list: List<LibraryItem>, mode: String): Map<String, WatchNextProgram> {
         if (mode == "off") return emptyMap()
-        val watching = entries.filter { !it.isFinished && it.positionMs > MIN_POSITION_MS }.take(MAX_CONTINUE)
+        val watching = entries.filter { it.inContinueWatching && it.positionMs > MIN_POSITION_MS }.take(MAX_CONTINUE)
         val programs = LinkedHashMap<String, WatchNextProgram>()
         watching.forEach { entry ->
             val episode = entry.type != "movie" && entry.videoId != entry.metaId

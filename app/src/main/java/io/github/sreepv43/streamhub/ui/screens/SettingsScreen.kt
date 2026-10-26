@@ -202,6 +202,61 @@ private fun ThemeTab() {
             }
         }
     }
+    SettingsSection("Ratings (Rotten Tomatoes)") { RatingsSection() }
+}
+
+/** The MDBList key that brings Rotten Tomatoes scores to posters and title pages. */
+@Composable
+private fun RatingsSection() {
+    val container = LocalContext.current.container
+    val settings = container.settings
+    val key by settings.ratingsKey.flow.collectAsStateWithLifecycle()
+    val onPosters by settings.ratingsOnPosters.flow.collectAsStateWithLifecycle()
+    val problem by container.ratings.problem.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    var result by remember { mutableStateOf<String?>(null) }
+    var checking by remember { mutableStateOf(false) }
+    Text(
+        "Shows Rotten Tomatoes critics (🍅) and audience (🍿) scores, plus Metacritic, next to IMDb's ★. They come from " +
+            "MDBList with your own free key: sign in at mdblist.com (Google, GitHub or Trakt), open Preferences, " +
+            "copy the API key and enter it here. Scores are remembered for a week, so the free daily limit is plenty.",
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+    Column(Modifier.widthIn(max = 640.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        TvTextField(
+            value = key,
+            onValueChange = {
+                settings.ratingsKey.set(it.trim())
+                result = null
+            },
+            label = "MDBList API key",
+            placeholder = "Paste or type the key from mdblist.com → Preferences",
+            keyboardType = KeyboardType.Ascii,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            FlatButton(
+                text = if (checking) "Checking…" else "Check key",
+                enabled = key.isNotBlank() && !checking,
+                onClick = {
+                    checking = true
+                    scope.launch {
+                        result = container.ratings.check()
+                        checking = false
+                    }
+                },
+            )
+            if (key.isNotBlank()) {
+                FlatButton(text = "Remove key", onClick = {
+                    settings.ratingsKey.set("")
+                    result = null
+                })
+            }
+        }
+        (result ?: problem)?.let { Text(it, color = MaterialTheme.colorScheme.onSurfaceVariant) }
+    }
+    ChoiceRow("🍅 score under posters in catalogues", listOf(true to "Show", false to "Hide"), onPosters) {
+        settings.ratingsOnPosters.set(it)
+    }
 }
 
 @Composable
@@ -336,7 +391,7 @@ private fun PlaybackSettings() {
         color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     ChoiceRow("Play the next episode automatically", listOf(true to "On", false to "Off"), autoplay) { settings.autoplayNext.set(it) }
-    ChoiceRow("\"Skip intro\" jumps ahead by", listOf(60, 75, 85, 90, 105, 120).map { it to "$it s" }, skip) {
+    ChoiceRow("\"Skip intro\" jumps ahead by", listOf(0 to "Off") + listOf(30, 45, 60, 75, 85, 90, 105, 120).map { it to "$it s" }, skip) {
         settings.introSkipSeconds.set(it)
     }
     ChoiceRow("Rewind jumps back", listOf(5, 10, 15, 30).map { it to "$it s" }, seekBack) { settings.seekBackSeconds.set(it) }

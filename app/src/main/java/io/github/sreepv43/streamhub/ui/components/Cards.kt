@@ -61,6 +61,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import coil.compose.AsyncImage
@@ -174,22 +175,26 @@ private fun Modifier.posterClick(onClick: () -> Unit, onLongClick: (() -> Unit)?
 
 /** Last tile of a row, the same size as a poster. */
 @Composable
-fun SeeAllCard(onClick: () -> Unit) {
+fun SeeAllCard(onClick: () -> Unit) = ActionCard("See all", Icons.AutoMirrored.Filled.ArrowForward, "see-all", onClick)
+
+/** A poster-sized tile with an icon and a label (e.g. "See all", "Edit list"). */
+@Composable
+fun ActionCard(label: String, icon: ImageVector, key: String, onClick: () -> Unit) {
     val shape = RoundedCornerShape(16.dp)
     CardFrame {
         Column(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(2f / 3f)
-                .tvFocus(shape, scale = 1.07f, key = "see-all")
+                .tvFocus(shape, scale = 1.07f, key = key)
                 .clip(shape)
                 .panel(shape)
                 .clickable(onClick = onClick),
             verticalArrangement = Arrangement.Center,
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
-            Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null, tint = AppColors.accent)
-            Text("See all", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+            Icon(icon, contentDescription = null, tint = AppColors.accent)
+            Text(label, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
         }
     }
 }
@@ -232,7 +237,7 @@ fun MetaCard(
         image = meta.poster,
         onClick = onClick,
         landscape = meta.posterShape == "landscape",
-        caption = meta.releaseInfo,
+        caption = listOfNotNull(meta.releaseInfo?.takeIf { it.isNotBlank() }, posterRating(meta.id)).joinToString(" · "),
         modifier = modifier,
         onFocused = onFocused,
         focusKey = meta.type + meta.id,

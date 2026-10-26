@@ -93,6 +93,8 @@ import io.github.sreepv43.streamhub.ui.components.StreamActions
 import io.github.sreepv43.streamhub.ui.components.rememberCopies
 import io.github.sreepv43.streamhub.ui.components.titleRef
 import io.github.sreepv43.streamhub.ui.components.WatchContext
+import io.github.sreepv43.streamhub.ui.components.rememberRatings
+import io.github.sreepv43.streamhub.ui.components.ratingFacts
 
 /** How the source list is ordered. */
 internal enum class SourceSort(val label: String) {
@@ -409,11 +411,12 @@ private fun TitleHeader(
                     overflow = TextOverflow.Ellipsis,
                 )
                 subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = AppColors.text) }
-                val facts = listOfNotNull(
-                    meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" },
-                    meta.releaseInfo?.takeIf { it.isNotBlank() },
-                    meta.runtime?.takeIf { it.isNotBlank() },
-                )
+                val facts = listOfNotNull(meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" }) +
+                    ratingFacts(rememberRatings(meta.id)) +
+                    listOfNotNull(
+                        meta.releaseInfo?.takeIf { it.isNotBlank() },
+                        meta.runtime?.takeIf { it.isNotBlank() },
+                    )
                 if (facts.isNotEmpty()) Text(facts.joinToString("    "), style = MaterialTheme.typography.bodyMedium)
                 meta.description?.takeIf { it.isNotBlank() }?.let {
                     Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.textDim, maxLines = 3, overflow = TextOverflow.Ellipsis)

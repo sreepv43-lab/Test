@@ -82,6 +82,12 @@ import io.github.sreepv43.streamhub.ui.components.tvRow
 import io.github.sreepv43.streamhub.ui.rememberHistory
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material3.Icon
+import androidx.compose.foundation.clickable
+import io.github.sreepv43.streamhub.ui.components.ContinueWatchingEditor
+import io.github.sreepv43.streamhub.ui.components.rememberRatings
+import io.github.sreepv43.streamhub.ui.components.ratingFacts
 
 /**
  * Home in the Cinema interface: a large banner for the film to continue (or the first one of the
@@ -100,7 +106,7 @@ internal fun CinemaHome(
     val container = LocalContext.current.container
     val history by rememberHistory()
     val myList by container.library.items.collectAsStateWithLifecycle()
-    val continueWatching = history.filterNot { it.isFinished }
+    val continueWatching = history.filter { it.inContinueWatching }
     val loaded = remember(state.rows) {
         state.rows.flatMap { (it.second as? RowState.Loaded)?.metas.orEmpty() }.associateBy { it.id }
     }
@@ -121,6 +127,8 @@ internal fun CinemaHome(
     ScrollToStartOnRestart(listState)
     val posterMenu = rememberPosterMenu()
     PosterMenu(posterMenu)
+    var editingContinue by remember { mutableStateOf(false) }
+    if (editingContinue) ContinueWatchingEditor(onClose = { editingContinue = false })
     // List positions: the banner is item 0, then the optional rows, then the catalogues.
     var nextIndex = 1
     val continueIndex = if (continueWatching.isNotEmpty()) nextIndex++ else -1
@@ -168,6 +176,7 @@ internal fun CinemaHome(
                                         onLongClick = { posterMenu.target = PosterTarget.of(entry) },
                                     )
                                 }
+                                item(key = "edit-continue") { EditListCard { editingContinue = true } }
                             }
                         }
                     }
@@ -317,8 +326,8 @@ private fun Hero(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            val facts = listOfNotNull(
-                meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" },
+            val facts = listOfNotNull(meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" }) +
+                ratingFacts(rememberRatings(meta.id)).take(2) + listOfNotNull(
                 meta.releaseInfo?.takeIf { it.isNotBlank() },
                 meta.genres.take(2).takeIf { it.isNotEmpty() }?.joinToString(" / "),
                 meta.runtime?.takeIf { it.isNotBlank() },
@@ -394,6 +403,26 @@ private fun ContinueCard(entry: WatchEntry, image: String?, onClick: () -> Unit,
                 modifier = Modifier.padding(top = 6.dp).fillMaxWidth().height(4.dp).clip(RoundedCornerShape(2.dp)),
             )
         }
+    }
+}
+
+/** End of the Continue watching row: opens the list with a Remove button per title. */
+@Composable
+private fun EditListCard(onClick: () -> Unit) {
+    val shape = RoundedCornerShape(14.dp)
+    Column(
+        Modifier
+            .width(150.dp)
+            .height(108.dp)
+            .tvFocus(shape, scale = 1.04f, key = "edit-continue")
+            .clip(shape)
+            .panel(shape)
+            .clickable(onClick = onClick),
+        verticalArrangement = Arrangement.Center,
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        Icon(Icons.Default.Edit, contentDescription = null, tint = AppColors.accent)
+        Text("Edit list", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
     }
 }
 
