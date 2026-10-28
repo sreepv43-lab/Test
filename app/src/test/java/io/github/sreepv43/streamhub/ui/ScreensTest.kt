@@ -312,6 +312,7 @@ class ScreensTest {
                 streams = StreamsState(results = listOf(AddonStreams(addon("Sample A"), listOf(uhd, hd)))),
                 handlers = StreamHandlers(onPlay = { played = it }, onDownload = {}, onExternal = {}),
                 resumeMs = null,
+                onOpenPerson = {},
             )
         }
         rule.onNodeWithText("Leo Vale").assertExists()
