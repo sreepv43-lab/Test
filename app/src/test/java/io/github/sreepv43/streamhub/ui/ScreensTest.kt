@@ -316,6 +316,17 @@ class ScreensTest {
         }
         rule.onNodeWithText("Leo Vale").assertExists()
 
+        // Play suggested is selected when the page opens; the buttons are a row, the cast is above them.
+        assertEquals("Play suggested", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Sources (2)", focused())
+        press(KeyEvent.KEYCODE_DPAD_RIGHT)
+        assertEquals("Download", focused())
+        press(KeyEvent.KEYCODE_DPAD_UP)
+        assertTrue(focused(), focused().contains("Elena Ward") || focused().contains("Leo Vale"))
+        press(KeyEvent.KEYCODE_DPAD_DOWN)
+        assertTrue(focused(), focused() in listOf("Play suggested", "Sources (2)", "Download"))
+
         // The suggested source fits the 1080p setting.
         focus(rule.onNodeWithText("Play suggested"))
         press(KeyEvent.KEYCODE_DPAD_CENTER)
@@ -336,6 +347,28 @@ class ScreensTest {
         focus(rule.onAllNodesWithText("Details")[0])
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         rule.onNodeWithText("Description").assertExists()
+    }
+
+    @Test
+    fun playSuggestedPressedBeforeSourcesArrivePlaysTheBestOneWhenItComes() {
+        val hd = Stream(url = "https://a.example/hd.mkv", name = "Web", title = "Movie.2026.1080p.WEB-DL.x264 4.2 GB")
+        val streams = mutableStateOf(StreamsState(pending = 1))
+        var played: Stream? = null
+        show {
+            CinemaTitlePage(
+                Meta(id = "tt1", name = "The Last Horizon"),
+                subtitle = null,
+                streams = streams.value,
+                handlers = StreamHandlers(onPlay = { played = it }, onDownload = {}, onExternal = {}),
+                resumeMs = null,
+            )
+        }
+        assertEquals("Play suggested", focused())
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertEquals(null, played)
+        rule.runOnUiThread { streams.value = StreamsState(results = listOf(AddonStreams(addon("Sample A"), listOf(hd)))) }
+        settle()
+        assertEquals(hd, played)
     }
 
     @Test

@@ -95,6 +95,7 @@ import io.github.sreepv43.streamhub.ui.components.titleRef
 import io.github.sreepv43.streamhub.ui.components.WatchContext
 import io.github.sreepv43.streamhub.ui.components.rememberRatings
 import io.github.sreepv43.streamhub.ui.components.ratingFacts
+import androidx.compose.runtime.withFrameNanos
 
 /** How the source list is ordered. */
 internal enum class SourceSort(val label: String) {
@@ -184,11 +185,36 @@ internal fun CinemaTitlePage(
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val firstSource = remember { FocusRequester() }
-    val hasCredits = meta.director.isNotEmpty() || meta.cast.isNotEmpty()
     // Copies already downloaded (TV, drives, Home Server) come before the sources.
     val copies = rememberCopies(remember(meta, watch?.videoId) { watch?.takeIf { streams != null }?.let { titleRef(meta, it.videoId) } })
-    // List positions: header, (credits), (downloaded), sources title, filters, then the cards.
-    val sourcesTitleIndex = 1 + (if (hasCredits) 1 else 0) + (if (copies.isNotEmpty()) 1 else 0)
+    // List positions: header (with the cast and the buttons), (downloaded), sources title, filters, then the cards.
+    val sourcesTitleIndex = 1 + (if (copies.isNotEmpty()) 1 else 0)
+
+    // Play suggested (or, on a series, the first button) is selected when the page opens; not again
+    // when coming back to it, where the shell restores the last selection.
+    val primaryFocus = remember { FocusRequester() }
+    var primaryFocused by remember { mutableStateOf(false) }
+    var startFocusDone by rememberSaveable { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        if (startFocusDone) return@LaunchedEffect
+        for (frame in 0 until START_FOCUS_FRAMES) {
+            withFrameNanos { }
+            // Once it has the selection, the remote is free to move it.
+            if (primaryFocused) break
+            runCatching { primaryFocus.requestFocus() }
+        }
+        startFocusDone = true
+    }
+    // OK on Play suggested before any source has arrived plays the best one as soon as it does.
+    var playWhenReady by remember { mutableStateOf(false) }
+    LaunchedEffect(best, playWhenReady) {
+        val ready = best
+        if (playWhenReady && ready != null) {
+            playWhenReady = false
+            handlers.onPlay(ready.stream)
+        }
+    }
+    val loading = streams != null && best == null && streams.pending > 0
 
     details?.let { source ->
         SourceDetails(
@@ -208,22 +234,37 @@ internal fun CinemaTitlePage(
                 subtitle = subtitle,
                 best = best?.takeIf { streams != null },
                 sourceCount = if (streams != null) sources.size else null,
+                loading = loading,
                 resumeMs = resumeMs,
                 inList = inList,
-                onPlay = { best?.let { handlers.onPlay(it.stream) } },
+                primaryFocus = primaryFocus,
+                onPrimaryFocus = { primaryFocused = it },
+                onPlay = {
+                    val ready = best
+                    when {
+                        ready != null -> handlers.onPlay(ready.stream)
+                        loading -> {
+                            playWhenReady = true
+                            StreamActions.toast(context, "Finding the best source…")
+                        }
+                        else -> StreamActions.toast(context, "No playable source found. Try Sources below.")
+                    }
+                },
                 onSources = {
                     scope.launch {
                         listState.animateScrollToItem(sourcesTitleIndex)
                         runCatching { firstSource.requestFocus() }
                     }
                 },
-                onDownload = { best?.let { download(it.stream) } },
+                onDownload = {
+                    val ready = best
+                    if (ready != null) download(ready.stream)
+                    else StreamActions.toast(context, if (loading) "Finding the best source…" else "No source to download.")
+                },
                 onToggleList = onToggleList,
                 onTrailer = onTrailer,
+                onOpenPerson = onOpenPerson,
             ) }
-        }
-        if (hasCredits) {
-            item(key = "credits") { Credits(meta, onOpenPerson) }
         }
         if (copies.isNotEmpty()) {
             item(key = "downloaded") { DownloadedCopies(copies, watch, resumeMs) }
@@ -351,20 +392,23 @@ private fun ChipRow(content: @Composable () -> Unit) {
     ) { content() }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TitleHeader(
     meta: Meta,
     subtitle: String?,
     best: Source?,
     sourceCount: Int?,
+    loading: Boolean,
     resumeMs: Long?,
     inList: Boolean?,
+    primaryFocus: FocusRequester,
+    onPrimaryFocus: (Boolean) -> Unit,
     onPlay: () -> Unit,
     onSources: () -> Unit,
     onDownload: () -> Unit,
     onToggleList: (() -> Unit)?,
     onTrailer: ((String) -> Unit)?,
+    onOpenPerson: ((String) -> Unit)?,
 ) {
     val context = LocalContext.current
     val pageColor = AppColors.background
@@ -384,74 +428,84 @@ private fun TitleHeader(
                     },
             )
         }
-        Row(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 12.dp)) {
-            Box(
-                Modifier
-                    .width(180.dp)
-                    .aspectRatio(2f / 3f)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(AppColors.panelRaised),
-            ) {
-                meta.poster?.let {
-                    AsyncImage(model = it, contentDescription = meta.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+        Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 12.dp)) {
+            Row {
+                Box(
+                    Modifier
+                        .width(180.dp)
+                        .aspectRatio(2f / 3f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(AppColors.panelRaised),
+                ) {
+                    meta.poster?.let {
+                        AsyncImage(model = it, contentDescription = meta.name, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
+                    }
+                }
+                Column(Modifier.padding(start = 28.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val eyebrow = listOfNotNull(
+                        meta.genres.take(2).joinToString(" / ").ifEmpty { null },
+                        if (meta.type == "series") "Series" else "Movie",
+                    ).joinToString(" · ").uppercase()
+                    Text(eyebrow, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold, color = AppColors.accent)
+                    Text(
+                        meta.name,
+                        fontFamily = FontFamily.Serif,
+                        fontSize = 40.sp,
+                        lineHeight = 44.sp,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = AppColors.text) }
+                    val facts = listOfNotNull(meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" }) +
+                        ratingFacts(rememberRatings(meta.id)) +
+                        listOfNotNull(
+                            meta.releaseInfo?.takeIf { it.isNotBlank() },
+                            meta.runtime?.takeIf { it.isNotBlank() },
+                        )
+                    if (facts.isNotEmpty()) Text(facts.joinToString("    "), style = MaterialTheme.typography.bodyMedium)
+                    meta.description?.takeIf { it.isNotBlank() }?.let {
+                        Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.textDim, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (meta.director.isNotEmpty()) {
+                        Row {
+                            Text("Directed by ", style = MaterialTheme.typography.bodyMedium)
+                            Text(meta.director.take(2).joinToString(", "), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = AppColors.accent)
+                        }
+                    }
+                    if (meta.director.isNotEmpty() || meta.cast.isNotEmpty()) Credits(meta, onOpenPerson)
                 }
             }
-            Column(Modifier.padding(start = 28.dp).weight(1f), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                val eyebrow = listOfNotNull(
-                    meta.genres.take(2).joinToString(" / ").ifEmpty { null },
-                    if (meta.type == "series") "Series" else "Movie",
-                ).joinToString(" · ").uppercase()
-                Text(eyebrow, fontSize = 12.sp, letterSpacing = 2.sp, fontWeight = FontWeight.Bold, color = AppColors.accent)
-                Text(
-                    meta.name,
-                    fontFamily = FontFamily.Serif,
-                    fontSize = 40.sp,
-                    lineHeight = 44.sp,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = AppColors.text) }
-                val facts = listOfNotNull(meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" }) +
-                    ratingFacts(rememberRatings(meta.id)) +
-                    listOfNotNull(
-                        meta.releaseInfo?.takeIf { it.isNotBlank() },
-                        meta.runtime?.takeIf { it.isNotBlank() },
-                    )
-                if (facts.isNotEmpty()) Text(facts.joinToString("    "), style = MaterialTheme.typography.bodyMedium)
-                meta.description?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.textDim, maxLines = 3, overflow = TextOverflow.Ellipsis)
-                }
-                if (meta.director.isNotEmpty()) {
-                    Row {
-                        Text("Directed by ", style = MaterialTheme.typography.bodyMedium)
-                        Text(meta.director.take(2).joinToString(", "), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold, color = AppColors.accent)
-                    }
-                }
-                // Wraps onto a second line instead of squeezing the last button when they don't all fit.
-                FlowRow(
-                    Modifier.tvRow().padding(top = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    if (best != null) {
-                        FlatButton(if (resumeMs != null) "Resume" else "Play suggested", onClick = onPlay, icon = Icons.Default.PlayArrow, prominent = true)
-                    }
-                    if (sourceCount != null) {
-                        FlatButton(if (sourceCount > 0) "Sources ($sourceCount)" else "Sources", onClick = onSources, icon = Icons.AutoMirrored.Filled.List)
-                    }
-                    if (best != null) {
+            // The actions under the poster: Play suggested / Sources / Download, then My List / Trailer.
+            val trailer = meta.trailers.firstOrNull { it.type == null || it.type == "Trailer" }?.source
+            val playable = sourceCount != null
+            val primary = Modifier.focusRequester(primaryFocus).onFocusChanged { onPrimaryFocus(it.isFocused) }
+            Column(Modifier.padding(top = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                if (playable) {
+                    Row(Modifier.tvRow(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        FlatButton(if (resumeMs != null) "Resume" else "Play suggested", onClick = onPlay, icon = Icons.Default.PlayArrow, prominent = true, modifier = primary)
+                        FlatButton(if (sourceCount!! > 0) "Sources ($sourceCount)" else "Sources", onClick = onSources, icon = Icons.AutoMirrored.Filled.List)
                         FlatButton("Download", onClick = onDownload, icon = Icons.Default.Download)
                     }
-                    if (inList != null && onToggleList != null) {
-                        FlatButton(
-                            if (inList) "In My List" else "My List",
-                            onClick = onToggleList,
-                            icon = if (inList) Icons.Default.Check else Icons.Default.Add,
-                        )
-                    }
-                    val trailer = meta.trailers.firstOrNull { it.type == null || it.type == "Trailer" }?.source
-                    if (trailer != null && onTrailer != null) {
-                        FlatButton("Trailer (YouTube)", onClick = { onTrailer(trailer) }, icon = Icons.Default.Movie)
+                }
+                val hasList = inList != null && onToggleList != null
+                if (hasList || (trailer != null && onTrailer != null)) {
+                    Row(Modifier.tvRow(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        if (inList != null && onToggleList != null) {
+                            FlatButton(
+                                if (inList) "In My List" else "My List",
+                                onClick = onToggleList,
+                                icon = if (inList) Icons.Default.Check else Icons.Default.Add,
+                                modifier = if (playable) Modifier else primary,
+                            )
+                        }
+                        if (trailer != null && onTrailer != null) {
+                            FlatButton(
+                                "Trailer (YouTube)",
+                                onClick = { onTrailer(trailer) },
+                                icon = Icons.Default.Movie,
+                                modifier = if (playable || hasList) Modifier else primary,
+                            )
+                        }
                     }
                 }
                 val caption = buildList {
@@ -461,6 +515,7 @@ private fun TitleHeader(
                         f.sizeBytes?.let { add(Formatter.formatShortFileSize(context, it)) }
                         add("Suggested source")
                     }
+                    if (best == null && loading) add("Finding sources…")
                     resumeMs?.let { add("Resumes from ${clock(it)}") }
                 }
                 if (caption.isNotEmpty()) {
@@ -475,7 +530,7 @@ private fun TitleHeader(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun Credits(meta: Meta, onOpenPerson: ((String) -> Unit)?) {
-    Column(Modifier.padding(start = 24.dp, end = 24.dp, top = 12.dp)) {
+    Column(Modifier.padding(top = 6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text("Cast & creators", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             if (onOpenPerson != null) {
@@ -483,7 +538,7 @@ private fun Credits(meta: Meta, onOpenPerson: ((String) -> Unit)?) {
             }
         }
         FlowRow(
-            Modifier.padding(top = 12.dp).tvRow(),
+            Modifier.padding(top = 10.dp).tvRow(),
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -643,6 +698,7 @@ private fun clock(ms: Long): String {
     else "%d:%02d".format(total / 60, total % 60)
 }
 
+private const val START_FOCUS_FRAMES = 90
 private const val UNDO_MS = 8_000L
 private val QUALITY_ORDER = listOf("4K", "1440p", "1080p", "720p", "SD")
 private const val MAX_LANGUAGE_CHIPS = 8
