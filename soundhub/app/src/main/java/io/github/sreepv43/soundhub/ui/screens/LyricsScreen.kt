@@ -1,6 +1,12 @@
 package io.github.sreepv43.soundhub.ui.screens
 
+import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.foundation.layout.Column
 import androidx.compose.material.icons.filled.TextIncrease
 import androidx.compose.material.icons.filled.TextDecrease
@@ -132,12 +138,16 @@ private fun SyncedLyrics(lyrics: Lyrics, position: Long, shiftMs: Long, scale: F
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val half = maxHeight / 2
         LaunchedEffect(index, scale) {
-            if (index >= 0) {
-                // The line being sung stays in the middle of the screen.
-                val height = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }?.size ?: with(density) { 60.dp.roundToPx() }
-                // With half the screen as padding above, an item scrolled to offset 0 already sits at the middle's top edge: lift it by half its height.
-                listState.animateScrollToItem(index, scrollOffset = height / 2)
+            if (index < 0) return@LaunchedEffect
+            val item = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }
+            if (item == null) {
+                // Far away (just opened, or a seek): jump near it, the glide below finishes the job.
+                listState.scrollToItem(index)
             }
+            val target = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return@LaunchedEffect
+            // Glide so the line being sung ends in the middle of the screen (no jump from line to line).
+            val delta = (target.offset + target.size / 2f) - listState.layoutInfo.viewportSize.height / 2f
+            if (kotlin.math.abs(delta) > 1f) listState.animateScrollBy(delta, tween(durationMillis = 700, easing = FastOutSlowInEasing))
         }
         LazyColumn(
             Modifier.fillMaxSize(),
@@ -148,14 +158,19 @@ private fun SyncedLyrics(lyrics: Lyrics, position: Long, shiftMs: Long, scale: F
         ) {
             itemsIndexed(lines) { i, line ->
                 val active = i == index
-                val base = if (active) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge
+                val base = MaterialTheme.typography.titleLarge
+                val color by animateColorAsState(if (active) Accent else AppColors.textDim, tween(400), label = "lyric-colour")
+                val grow by animateFloatAsState(if (active) 1.18f else 1f, tween(400), label = "lyric-size")
                 Text(
                     line.text.ifEmpty { "♪" },
                     style = base.copy(fontSize = base.fontSize * scale, lineHeight = base.lineHeight * scale),
-                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                    color = if (active) Accent else AppColors.textDim,
+                    fontWeight = FontWeight.SemiBold,
+                    color = color,
                     textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth().graphicsLayer {
+                        scaleX = grow
+                        scaleY = grow
+                    },
                 )
             }
             item { Note("Lyrics: ${lyrics.source}", modifier = Modifier.padding(top = 12.dp)) }
