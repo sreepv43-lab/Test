@@ -135,7 +135,8 @@ private fun SyncedLyrics(lyrics: Lyrics, position: Long, shiftMs: Long, scale: F
             if (index >= 0) {
                 // The line being sung stays in the middle of the screen.
                 val height = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }?.size ?: with(density) { 60.dp.roundToPx() }
-                listState.animateScrollToItem(index, scrollOffset = -(listState.layoutInfo.viewportSize.height / 2 - height / 2))
+                // With half the screen as padding above, an item scrolled to offset 0 already sits at the middle's top edge: lift it by half its height.
+                listState.animateScrollToItem(index, scrollOffset = height / 2)
             }
         }
         LazyColumn(
