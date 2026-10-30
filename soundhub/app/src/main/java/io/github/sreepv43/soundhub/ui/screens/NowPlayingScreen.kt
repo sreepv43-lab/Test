@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import io.github.sreepv43.soundhub.ui.revealTopWhenFocused
+import androidx.compose.material.icons.filled.Lyrics
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Repeat
@@ -105,7 +106,7 @@ import kotlinx.coroutines.delay
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit, onOpenArtist: (String) -> Unit, onSearchOnline: () -> Unit) {
+fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit, onOpenArtist: (String) -> Unit, onSearchOnline: () -> Unit, onLyrics: () -> Unit) {
     val context = LocalContext.current
     val container = context.container
     val playback = container.playback
@@ -249,6 +250,7 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit, onOpenArtist:
                     primary = false,
                 ) { container.collection.toggleFavouriteTrack(current.id) }
                 ActionButton("Playlist", Icons.AutoMirrored.Filled.PlaylistAdd, primary = false) { showPlaylist = true }
+                ActionButton("Lyrics", Icons.Default.Lyrics, primary = false, onClick = onLyrics)
                 ActionButton("Queue (${queue.size})", Icons.AutoMirrored.Filled.QueueMusic, primary = false, onClick = onQueue)
                 ActionButton(sleepLabel(sleep, now), Icons.Default.Bedtime, primary = false) { showSleep = true }
                 ActionButton("Sound", Icons.Default.SurroundSound, primary = false) { onGo(Section.SOUND) }

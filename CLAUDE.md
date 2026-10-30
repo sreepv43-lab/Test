@@ -31,6 +31,7 @@ soundhub/
 │   ├── slsk/       # SoulseekClient (server, peers, transfers), Messages/Wire (protocol), GrowingFile, Upnp
 │   ├── audio/      # AudioFormats (classify by name/attributes, FormatFilter), AudioProbe (file headers, Atmos)
 │   ├── library/    # LibraryStore, SearchResults/SearchSession, Releases (album grouping), LibraryViews, CollectionStore (favourites, playlists, history, resume), FamousArtists, MusicDownloads, PathNames
+│   ├── lyrics/     # Lrc parser, LyricsFinder (kept copy → .lrc next to the song → LRCLIB), LyricsStore
 │   ├── server/     # Home server: MusicServer (SMB via smbj), ServerSync (copy/only mode, covers, retry)
 │   └── update/     # Updates: newest `soundhub-build-N` GitHub release (N = versionCode) and its APK
 └── app/src/main/java/io/github/sreepv43/soundhub/
@@ -56,6 +57,7 @@ Conventions:
 - SoundHub colours: never hard-code a colour in a screen; use `AppColors.*`, `Accent`, `FocusColor`, the badge colours or `MaterialTheme.colorScheme`, which all follow the theme chosen under Settings → Appearance (`currentPalette` in `ui/Theme.kt`; the default, Sky, is light, so text on a `AppColors.text` fill uses `AppColors.onText`, and the side menu uses `onRail`/`railSelected`/`onRailSelected`).
 - SoundHub updates: releases are tagged `soundhub-build-<run number>` and the run number is the versionCode, so the updater compares them directly; keep both in step. The release body's `## What's new` section (up to `---`) is what the app shows. SoundHub is signed with the `SOUNDHUB_KEYSTORE` secret when present (never commit a keystore); updates only install over the same key.
 - SoundHub home server (Settings → Home server, `serverMode` off/copy/only): downloads always land in the local music folder first (the Soulseek client and tag/probe code need real files); `ServerSync` then uploads each song and its covers over SMB and sets `LibraryTrack.serverPath`; in `only` mode the local audio is deleted after upload and the song plays from `smbmusic://server/<path>` (`ServerDataSource`). Use `LibraryTrack.available()` (local file or server copy), never `File(path).isFile`, to decide whether a song can be played.
+- SoundHub lyrics: Now playing → Lyrics opens `LyricsPage` (full screen, no bar/panel); `AppContainer.findLyrics` runs `LyricsFinder` off the main thread; synced lines follow `playback.player.currentPosition` and the highlighted line is `Lrc.lineAt`. Lyrics are kept in `filesDir/lyrics`; songs with none are not asked about again for a week.
 - SoundHub playback: never play a different song than the one chosen (`AppContainer.playLibrary`/`playFolder` return false and the UI says why). Library entries whose files are missing (unplugged drive) are kept and shown as "Drive disconnected"; only `LibraryStore.removeMissing()`, on the listener's request, drops them.
 
 ## Development Workflow

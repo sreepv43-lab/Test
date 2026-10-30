@@ -73,6 +73,12 @@ data class PlaylistPage(val id: String) : Page {
     override val key: String get() = "playlist:$id"
 }
 
+/** Full-screen lyrics of the song playing. */
+data object LyricsPage : Page {
+    override val section: Section get() = Section.NOW_PLAYING
+    override val key: String get() = "lyrics"
+}
+
 data object QueuePage : Page {
     override val section: Section get() = Section.NOW_PLAYING
     override val key: String get() = "queue"

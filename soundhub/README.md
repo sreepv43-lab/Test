@@ -30,6 +30,12 @@ Settings → Home server saves your music on a NAS or PC (any SMB share): either
 songs kept only on the server and played from it over the network. Enter the server, share, folder and
 login, press Test connection, and choose what to do with songs.
 
+## Lyrics
+
+Now playing → Lyrics shows the song's lyrics full screen, with the line being sung highlighted when they are
+timed. They come from an `.lrc`/`.txt` file next to the song, else from the free LRCLIB database, and are
+kept on the device.
+
 ## Features
 
 - **Soulseek client built in.** Sign in with a Soulseek username and password. A new username is

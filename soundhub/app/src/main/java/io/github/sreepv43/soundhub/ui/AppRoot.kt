@@ -57,6 +57,7 @@ import io.github.sreepv43.soundhub.ui.screens.NowPlayingScreen
 import io.github.sreepv43.soundhub.ui.screens.PlayerPanel
 import io.github.sreepv43.soundhub.ui.screens.PlaylistScreen
 import io.github.sreepv43.soundhub.ui.screens.QueueScreen
+import io.github.sreepv43.soundhub.ui.screens.LyricsScreen
 import io.github.sreepv43.soundhub.ui.screens.ReleaseScreen
 import io.github.sreepv43.soundhub.ui.screens.SearchScreen
 import io.github.sreepv43.soundhub.ui.screens.SettingsDetailScreen
@@ -95,7 +96,7 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
     Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         BoxWithConstraints(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing)) {
             val wide = maxWidth >= WIDE_LAYOUT
-            val onNowPlaying = navigator.current == SectionPage(Section.NOW_PLAYING)
+            val onNowPlaying = navigator.current == SectionPage(Section.NOW_PLAYING) || navigator.current == LyricsPage
             // Panel layout: the panel is beside every page on wide screens (empty until something
             // plays, so the page never resizes when playback starts). Simple layout, and narrow
             // screens: one player bar along the bottom.
@@ -141,6 +142,7 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
                             onGo = go,
                             onOpenArtist = openArtist,
                             onSearchOnline = { navigator.bringToTop(Section.SEARCH) },
+                            onLyrics = { navigator.open(LyricsPage) },
                         )
                         Section.SETTINGS -> SettingsScreen(
                             onOpen = { navigator.open(SettingsPage(it)) },
@@ -157,6 +159,7 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
                     )
                     is PlaylistPage -> PlaylistScreen(page.id, onPlaying = showPlayer, onGone = { navigator.back() })
                     QueuePage -> QueueScreen()
+                    LyricsPage -> LyricsScreen()
                     is SettingsPage -> SettingsDetailScreen(page.kind)
                 }
             }

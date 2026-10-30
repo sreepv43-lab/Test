@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Application
 import android.content.Context
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Environment
 import android.os.StatFs
@@ -112,6 +113,18 @@ class AppContainer(private val context: Context) {
 
     val serverSync = ServerSync(library, ::musicServer, { settings.serverMode.value }, ::musicFolder, ioScope)
     val search = SearchSession(client, appScope)
+    private val lyricsFinder = io.github.sreepv43.soundhub.lyrics.LyricsFinder(
+        io.github.sreepv43.soundhub.lyrics.LyricsStore(File(context.filesDir, "lyrics")),
+    )
+
+    /** Lyrics for [item]: kept, next to its file, or from LRCLIB. Blocking: call off the main thread. */
+    fun findLyrics(item: QueueItem, refresh: Boolean): io.github.sreepv43.soundhub.lyrics.Lyrics? {
+        val local = Uri.parse(item.uri).takeIf { it.scheme == "file" }?.path?.let(::File)
+            ?: library.get(item.id)?.path?.let(::File)
+        val seconds = playback.infoFor(item).durationSec ?: playback.player.duration.takeIf { it > 0 }?.let { (it / 1000).toInt() }
+        return lyricsFinder.find(item.id, item.artist, item.title, item.album.takeIf { it.isNotBlank() }, seconds, local, refresh)
+    }
+
     val playback = PlaybackController(context, this)
     val updater = AppUpdater(context, settings, appScope)
 
