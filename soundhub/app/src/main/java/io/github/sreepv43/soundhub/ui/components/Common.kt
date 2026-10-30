@@ -197,12 +197,12 @@ fun ListRow(
 
 /** Text the remote can scroll to (plain text after the last button can't be reached otherwise). */
 @Composable
-fun ReadableText(text: String, modifier: Modifier = Modifier) {
+fun ReadableText(text: String, modifier: Modifier = Modifier, style: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.bodyMedium) {
     var focused by remember { mutableStateOf(false) }
     val shape = RoundedCornerShape(10.dp)
     Text(
         text,
-        style = MaterialTheme.typography.bodyMedium,
+        style = style,
         color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = modifier
             .fillMaxWidth()

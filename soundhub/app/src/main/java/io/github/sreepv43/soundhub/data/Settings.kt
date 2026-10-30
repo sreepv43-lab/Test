@@ -55,6 +55,9 @@ class Settings(context: Context) {
     /** How Dolby/DTS audio reaches the receiver: "auto", "hdmi" or "arc" (see AudioOutput). */
     val outputMode = string("output_mode", "auto")
 
+    /** Size of the lyrics text, in tenths (10 = normal). */
+    val lyricsSize = string("lyrics_size", "12")
+
     /** The home server (an SMB share): "off", "copy" (also keep a copy there) or "only" (keep songs only there). */
     val serverMode = string("server_mode", "off")
     val serverHost = string("server_host", "")

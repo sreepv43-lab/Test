@@ -2,6 +2,11 @@ package io.github.sreepv43.soundhub.ui.screens
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.material.icons.filled.TextIncrease
+import androidx.compose.material.icons.filled.TextDecrease
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
@@ -18,7 +23,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
@@ -64,6 +68,8 @@ fun LyricsScreen() {
     var refresh by remember { mutableIntStateOf(0) }
     // Shifts the lines earlier (+) or later (−), for a TV or receiver that delays the sound.
     var shiftMs by remember { mutableLongStateOf(0L) }
+    val sizeTenths by container.settings.lyricsSize.flow.collectAsStateWithLifecycle()
+    val scale = (sizeTenths.toIntOrNull() ?: 12).coerceIn(MIN_SIZE, MAX_SIZE) / 10f
     var position by remember { mutableLongStateOf(0L) }
     LaunchedEffect(Unit) {
         while (true) {
@@ -91,6 +97,12 @@ fun LyricsScreen() {
                     ActionButton("Earlier", Icons.Default.Remove, primary = false, pageDefault = true) { shiftMs -= SHIFT_STEP_MS }
                     ActionButton("Later", Icons.Default.Add, primary = false) { shiftMs += SHIFT_STEP_MS }
                 }
+                ActionButton("Smaller", Icons.Default.TextDecrease, primary = false) {
+                    container.settings.lyricsSize.set(((sizeTenths.toIntOrNull() ?: 12) - 2).coerceAtLeast(MIN_SIZE).toString())
+                }
+                ActionButton("Larger", Icons.Default.TextIncrease, primary = false) {
+                    container.settings.lyricsSize.set(((sizeTenths.toIntOrNull() ?: 12) + 2).coerceAtMost(MAX_SIZE).toString())
+                }
                 ActionButton("Search again", Icons.Default.Refresh, primary = false, pageDefault = !synced) { refresh++ }
                 if (synced && shiftMs != 0L) Note("Lyrics shifted ${"%+.1f".format(shiftMs / 1000.0)} s", modifier = Modifier.padding(top = 10.dp))
             }
@@ -102,58 +114,72 @@ fun LyricsScreen() {
                 modifier = Modifier.padding(24.dp),
             )
             is LyricsState.Found -> if (result.lyrics.isSynced) {
-                SyncedLyrics(result.lyrics, position, shiftMs)
+                SyncedLyrics(result.lyrics, position, shiftMs, scale)
             } else {
-                PlainLyrics(result.lyrics)
+                PlainLyrics(result.lyrics, scale)
             }
         }
     }
 }
 
 @Composable
-private fun SyncedLyrics(lyrics: Lyrics, position: Long, shiftMs: Long) {
+private fun SyncedLyrics(lyrics: Lyrics, position: Long, shiftMs: Long, scale: Float) {
     val lines = lyrics.synced
-    val index by remember(lines, shiftMs) { derivedStateOf { Lrc.lineAt(lines, position + shiftMs) } }
+    // Read afresh at every position update (a remembered derived value would keep the first position).
+    val index = Lrc.lineAt(lines, position + shiftMs)
     val listState = rememberLazyListState()
-    LaunchedEffect(index) {
-        if (index >= 0) {
-            // Keep the line being sung a third of the way down, with the next ones in view.
-            listState.animateScrollToItem(index, scrollOffset = -listState.layoutInfo.viewportSize.height / 3)
+    val density = LocalDensity.current
+    BoxWithConstraints(Modifier.fillMaxSize()) {
+        val half = maxHeight / 2
+        LaunchedEffect(index, scale) {
+            if (index >= 0) {
+                // The line being sung stays in the middle of the screen.
+                val height = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index }?.size ?: with(density) { 60.dp.roundToPx() }
+                listState.animateScrollToItem(index, scrollOffset = -(listState.layoutInfo.viewportSize.height / 2 - height / 2))
+            }
         }
-    }
-    LazyColumn(
-        Modifier.fillMaxSize(),
-        state = listState,
-        contentPadding = PaddingValues(horizontal = 32.dp, vertical = 24.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        itemsIndexed(lines) { i, line ->
-            val active = i == index
-            Text(
-                line.text.ifEmpty { "♪" },
-                style = if (active) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge,
-                fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
-                color = if (active) Accent else AppColors.textDim,
-                textAlign = TextAlign.Start,
-                modifier = Modifier.fillMaxWidth(),
-            )
+        LazyColumn(
+            Modifier.fillMaxSize(),
+            state = listState,
+            contentPadding = PaddingValues(start = 32.dp, end = 32.dp, top = half, bottom = half),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
+            itemsIndexed(lines) { i, line ->
+                val active = i == index
+                val base = if (active) MaterialTheme.typography.headlineMedium else MaterialTheme.typography.titleLarge
+                Text(
+                    line.text.ifEmpty { "♪" },
+                    style = base.copy(fontSize = base.fontSize * scale, lineHeight = base.lineHeight * scale),
+                    fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+                    color = if (active) Accent else AppColors.textDim,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+            item { Note("Lyrics: ${lyrics.source}", modifier = Modifier.padding(top = 12.dp)) }
         }
-        item { Note("Lyrics: ${lyrics.source}", modifier = Modifier.padding(top = 12.dp)) }
     }
 }
 
 @Composable
-private fun PlainLyrics(lyrics: Lyrics) {
+private fun PlainLyrics(lyrics: Lyrics, scale: Float) {
     val paragraphs = remember(lyrics) { lyrics.plain.trim().split(Regex("""\n\s*\n""")).map { it.trim() }.filter { it.isNotEmpty() } }
+    val base = MaterialTheme.typography.titleLarge
     LazyColumn(
         Modifier.fillMaxSize(),
         contentPadding = PaddingValues(start = 24.dp, end = 24.dp, top = 12.dp, bottom = 32.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         item { Note("These lyrics aren't timed, so they don't follow the song. Scroll with the remote.") }
-        itemsIndexed(paragraphs) { _, text -> ReadableText(text) }
+        itemsIndexed(paragraphs) { _, text ->
+            ReadableText(text, style = base.copy(fontSize = base.fontSize * scale, lineHeight = base.lineHeight * scale, textAlign = TextAlign.Center))
+        }
         item { Note("Lyrics: ${lyrics.source}") }
     }
 }
 
+private const val MIN_SIZE = 8
+private const val MAX_SIZE = 22
 private const val SHIFT_STEP_MS = 500L
