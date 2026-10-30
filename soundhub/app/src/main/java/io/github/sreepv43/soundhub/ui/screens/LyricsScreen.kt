@@ -2,6 +2,7 @@ package io.github.sreepv43.soundhub.ui.screens
 
 import androidx.compose.foundation.gestures.animateScrollBy
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.animateFloatAsState
@@ -146,11 +147,16 @@ private fun SyncedLyrics(lyrics: Lyrics, position: Long, shiftMs: Long, scale: F
             }
             val target = listState.layoutInfo.visibleItemsInfo.firstOrNull { it.index == index } ?: return@LaunchedEffect
             // Glide so the line being sung ends in the middle of the screen (no jump from line to line).
-            val delta = (target.offset + target.size / 2f) - listState.layoutInfo.viewportSize.height / 2f
-            if (kotlin.math.abs(delta) > 1f) listState.animateScrollBy(delta, tween(durationMillis = 700, easing = FastOutSlowInEasing))
+            // Item offsets are measured from the end of the top padding, so the screen's middle is the
+            // middle of viewportStartOffset (minus the padding) and viewportEndOffset.
+            val info = listState.layoutInfo
+            val middle = (info.viewportStartOffset + info.viewportEndOffset) / 2f
+            val delta = (target.offset + target.size / 2f) - middle
+            // A slow, gentle glide (easing in and out) is easier on the eyes than a quick hop.
+            if (kotlin.math.abs(delta) > 1f) listState.animateScrollBy(delta, tween(durationMillis = GLIDE_MS, easing = FastOutSlowInEasing))
         }
         LazyColumn(
-            Modifier.fillMaxSize(),
+            Modifier.fillMaxSize().fadeEdges(),
             state = listState,
             contentPadding = PaddingValues(start = 32.dp, end = 32.dp, top = half, bottom = half),
             verticalArrangement = Arrangement.spacedBy(12.dp),
@@ -159,8 +165,8 @@ private fun SyncedLyrics(lyrics: Lyrics, position: Long, shiftMs: Long, scale: F
             itemsIndexed(lines) { i, line ->
                 val active = i == index
                 val base = MaterialTheme.typography.titleLarge
-                val color by animateColorAsState(if (active) Accent else AppColors.textDim, tween(400), label = "lyric-colour")
-                val grow by animateFloatAsState(if (active) 1.18f else 1f, tween(400), label = "lyric-size")
+                val color by animateColorAsState(if (active) Accent else AppColors.textDim, tween(GLIDE_MS), label = "lyric-colour")
+                val grow by animateFloatAsState(if (active) 1.1f else 1f, tween(GLIDE_MS), label = "lyric-size")
                 Text(
                     line.text.ifEmpty { "♪" },
                     style = base.copy(fontSize = base.fontSize * scale, lineHeight = base.lineHeight * scale),
@@ -199,3 +205,31 @@ private fun PlainLyrics(lyrics: Lyrics, scale: Float) {
 private const val MIN_SIZE = 8
 private const val MAX_SIZE = 22
 private const val SHIFT_STEP_MS = 500L
+private const val GLIDE_MS = 1_100
+
+/** Lines fade in at the bottom and out at the top instead of being cut off by the edge. */
+private fun Modifier.fadeEdges(height: androidx.compose.ui.unit.Dp = 72.dp): Modifier = this
+    .graphicsLayer { compositingStrategy = androidx.compose.ui.graphics.CompositingStrategy.Offscreen }
+    .drawWithContent {
+        drawContent()
+        val h = height.toPx().coerceAtMost(size.height / 3)
+        drawRect(
+            androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(androidx.compose.ui.graphics.Color.Black, androidx.compose.ui.graphics.Color.Transparent),
+                startY = 0f,
+                endY = h,
+            ),
+            size = androidx.compose.ui.geometry.Size(size.width, h),
+            blendMode = androidx.compose.ui.graphics.BlendMode.DstOut,
+        )
+        drawRect(
+            androidx.compose.ui.graphics.Brush.verticalGradient(
+                listOf(androidx.compose.ui.graphics.Color.Transparent, androidx.compose.ui.graphics.Color.Black),
+                startY = size.height - h,
+                endY = size.height,
+            ),
+            topLeft = androidx.compose.ui.geometry.Offset(0f, size.height - h),
+            size = androidx.compose.ui.geometry.Size(size.width, h),
+            blendMode = androidx.compose.ui.graphics.BlendMode.DstOut,
+        )
+    }
