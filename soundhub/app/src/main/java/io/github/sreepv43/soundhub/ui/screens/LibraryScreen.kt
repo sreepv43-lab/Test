@@ -466,7 +466,7 @@ fun AlbumScreen(albumKey: String, onPlaying: () -> Unit, onGone: () -> Unit, onO
 
 /** All albums by one artist. */
 @Composable
-fun ArtistScreen(name: String, onOpenAlbum: (String) -> Unit, onPlaying: () -> Unit) {
+fun ArtistScreen(name: String, onOpenAlbum: (String) -> Unit, onPlaying: () -> Unit, onSearchOnline: () -> Unit) {
     val context = LocalContext.current
     val container = context.container
     val tracks by container.library.tracks.collectAsStateWithLifecycle()
@@ -494,6 +494,14 @@ fun ArtistScreen(name: String, onOpenAlbum: (String) -> Unit, onPlaying: () -> U
                 }
             }
             albumRows(artist.albums, missing, "album", onOpenAlbum)
+        }
+        item(key = "online") {
+            Row(Modifier.tvButtonGroup(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                ActionButton("Find more by $name online", Icons.Default.Search, primary = false, pageDefault = artist == null) {
+                    container.startSearch(name)
+                    onSearchOnline()
+                }
+            }
         }
     }
 }

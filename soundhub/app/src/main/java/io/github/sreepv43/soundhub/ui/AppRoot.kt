@@ -136,7 +136,12 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
                                 navigator.select(Section.SEARCH)
                             },
                         )
-                        Section.NOW_PLAYING -> NowPlayingScreen(onQueue = { navigator.open(QueuePage) }, onGo = go)
+                        Section.NOW_PLAYING -> NowPlayingScreen(
+                            onQueue = { navigator.open(QueuePage) },
+                            onGo = go,
+                            onOpenArtist = openArtist,
+                            onSearchOnline = { navigator.bringToTop(Section.SEARCH) },
+                        )
                         Section.SETTINGS -> SettingsScreen(
                             onOpen = { navigator.open(SettingsPage(it)) },
                             onSound = { go(Section.SOUND) },
@@ -144,7 +149,12 @@ fun AppRoot(sectionRequest: Section?, onSectionRequestHandled: () -> Unit) {
                     } }
                     is ReleasePage -> ReleaseScreen(page.release, onPlaying = showPlayer)
                     is AlbumPage -> AlbumScreen(page.albumKey, onPlaying = showPlayer, onGone = { navigator.back() }, onOpenArtist = openArtist)
-                    is ArtistPage -> ArtistScreen(page.name, onOpenAlbum = openAlbum, onPlaying = showPlayer)
+                    is ArtistPage -> ArtistScreen(
+                        page.name,
+                        onOpenAlbum = openAlbum,
+                        onPlaying = showPlayer,
+                        onSearchOnline = { navigator.bringToTop(Section.SEARCH) },
+                    )
                     is PlaylistPage -> PlaylistScreen(page.id, onPlaying = showPlayer, onGone = { navigator.back() })
                     QueuePage -> QueueScreen()
                     is SettingsPage -> SettingsDetailScreen(page.kind)

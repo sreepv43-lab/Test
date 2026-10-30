@@ -32,6 +32,8 @@ import androidx.compose.material.icons.filled.LibraryMusic
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
+import io.github.sreepv43.soundhub.ui.revealTopWhenFocused
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.RemoveCircleOutline
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
@@ -103,7 +105,7 @@ import kotlinx.coroutines.delay
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
+fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit, onOpenArtist: (String) -> Unit, onSearchOnline: () -> Unit) {
     val context = LocalContext.current
     val container = context.container
     val playback = container.playback
@@ -189,6 +191,19 @@ fun NowPlayingScreen(onQueue: () -> Unit, onGo: (Section) -> Unit) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
                             FormatBadge(info)
                             if (queue.size > 1) Note("Song ${index + 1} of ${queue.size}")
+                        }
+                        current.artist?.takeIf { it.isNotBlank() }?.let { artist ->
+                            // The artist's songs in the library, or more of them from Soulseek.
+                            Row(
+                                Modifier.revealTopWhenFocused(listState).tvButtonGroup().padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                            ) {
+                                ActionButton("Songs by $artist", Icons.Default.Person, primary = false, onClick = { onOpenArtist(artist) })
+                                ActionButton("Find more online", Icons.Default.Search, primary = false) {
+                                    container.startSearch(artist)
+                                    onSearchOnline()
+                                }
+                            }
                         }
                         when {
                             buffering -> Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
