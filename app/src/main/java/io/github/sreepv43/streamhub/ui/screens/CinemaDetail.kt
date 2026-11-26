@@ -96,6 +96,7 @@ import io.github.sreepv43.streamhub.ui.components.WatchContext
 import io.github.sreepv43.streamhub.ui.components.rememberRatings
 import io.github.sreepv43.streamhub.ui.components.ratingFacts
 import androidx.compose.runtime.withFrameNanos
+import io.github.sreepv43.streamhub.ui.components.AgeRatingBadge
 
 /** How the source list is ordered. */
 internal enum class SourceSort(val label: String) {
@@ -149,6 +150,7 @@ internal fun CinemaTitlePage(
 
     var quality by rememberSaveable { mutableStateOf<String?>(null) }
     var language by rememberSaveable { mutableStateOf<String?>(null) }
+    var atmosOnly by rememberSaveable { mutableStateOf(false) }
     var sort by rememberSaveable { mutableStateOf(SourceSort.Suggested) }
     var details by remember { mutableStateOf<Source?>(null) }
     // With a drive already chosen for downloads, Download starts at once; Back within a few
@@ -171,9 +173,10 @@ internal fun CinemaTitlePage(
         undo = null
         StreamActions.toast(context, "Download cancelled")
     }
-    val shown = remember(sources, quality, language, sort) {
+    val shown = remember(sources, quality, language, atmosOnly, sort) {
         val filtered = sources.filter { s ->
-            (quality == null || s.facts.quality == quality) && (language == null || language in s.facts.languages)
+            (quality == null || s.facts.quality == quality) && (language == null || language in s.facts.languages) &&
+                (!atmosOnly || s.facts.atmos)
         }
         when (sort) {
             SourceSort.Suggested -> filtered
@@ -303,6 +306,13 @@ internal fun CinemaTitlePage(
                         ChipRow {
                             FlatChip("All languages", selected = language == null, onClick = { language = null })
                             languages.forEach { l -> FlatChip(l, selected = language == l, onClick = { language = l }) }
+                        }
+                    }
+                    val atmosCount = sources.count { it.facts.atmos }
+                    if (atmosCount > 0 || atmosOnly) {
+                        ChipRow {
+                            FlatChip("All audio", selected = !atmosOnly, onClick = { atmosOnly = false })
+                            FlatChip("Dolby Atmos ($atmosCount)", selected = atmosOnly, onClick = { atmosOnly = true })
                         }
                     }
                     if (sources.size > 1) {
@@ -456,13 +466,19 @@ private fun TitleHeader(
                         overflow = TextOverflow.Ellipsis,
                     )
                     subtitle?.let { Text(it, style = MaterialTheme.typography.titleMedium, color = AppColors.text) }
+                    val ratings = rememberRatings(meta.id)
                     val facts = listOfNotNull(meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" }) +
-                        ratingFacts(rememberRatings(meta.id)) +
+                        ratingFacts(ratings) +
                         listOfNotNull(
                             meta.releaseInfo?.takeIf { it.isNotBlank() },
                             meta.runtime?.takeIf { it.isNotBlank() },
                         )
-                    if (facts.isNotEmpty()) Text(facts.joinToString("    "), style = MaterialTheme.typography.bodyMedium)
+                    if (facts.isNotEmpty() || ratings?.certification != null) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            ratings?.certification?.let { AgeRatingBadge(it, Modifier.padding(end = 14.dp)) }
+                            Text(facts.joinToString("    "), style = MaterialTheme.typography.bodyMedium)
+                        }
+                    }
                     meta.description?.takeIf { it.isNotBlank() }?.let {
                         Text(it, style = MaterialTheme.typography.bodyMedium, color = AppColors.textDim, maxLines = 3, overflow = TextOverflow.Ellipsis)
                     }

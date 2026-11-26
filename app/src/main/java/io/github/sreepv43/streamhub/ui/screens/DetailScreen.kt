@@ -298,7 +298,7 @@ fun MetaHeader(
             }
             val info = (
                 listOfNotNull(meta.releaseInfo, meta.runtime, meta.imdbRating?.let { "★ $it" }) +
-                    ratingFacts(rememberRatings(meta.id)) +
+                    rememberRatings(meta.id).let { listOfNotNull(it?.certification) + ratingFacts(it) } +
                     listOfNotNull(meta.genres.take(3).joinToString(" · ").ifEmpty { null })
                 ).joinToString("   ")
             if (info.isNotEmpty()) {

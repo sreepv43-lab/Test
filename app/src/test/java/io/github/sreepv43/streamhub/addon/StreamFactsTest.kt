@@ -42,4 +42,11 @@ class StreamFactsTest {
         assertEquals("SD", StreamFacts.qualityOf(480))
         assertEquals(listOf("Multi audio"), StreamFacts.languages("Movie.MULTi.1080p"))
     }
+
+    @Test
+    fun atmosIsRecognised() {
+        assertEquals(true, StreamFacts.of(Stream(name = "Torrentio 4K", title = "Movie.2024.2160p.WEB-DL.DDP5.1.Atmos.DV.HEVC")).atmos)
+        assertEquals(true, StreamFacts.of(Stream(title = "Movie 2024 1080p BluRay TrueHD 7.1 Atmos")).atmos)
+        assertEquals(false, StreamFacts.of(Stream(title = "Movie.2024.1080p.WEB-DL.DDP5.1.H.264")).atmos)
+    }
 }

@@ -17,9 +17,18 @@ data class TitleRatings(
     /** IMDb, 0–10. */
     val imdb: Double? = null,
     val metacritic: Int? = null,
+    /** Age rating as MDBList gives it, e.g. "PG-13", "R", "TV-MA". */
+    val certification: String? = null,
     val fetchedAt: Long = 0,
+    /** Which fields this entry was fetched with ([CURRENT]); older entries are fetched again. */
+    val version: Int = 0,
 ) {
-    val isEmpty: Boolean get() = tomatoes == null && popcorn == null && imdb == null && metacritic == null
+    companion object {
+        /** 2: with [certification]. */
+        const val CURRENT = 2
+    }
+
+    val isEmpty: Boolean get() = tomatoes == null && popcorn == null && imdb == null && metacritic == null && certification == null
 
     /** "🍅 92%  🍿 87%", or null when Rotten Tomatoes has neither. */
     val tomatoLine: String?
@@ -40,7 +49,7 @@ object MdbList {
         val id = (item["imdb_id"] as? JsonPrimitive)?.contentOrNullSafe()
             ?: ((item["ids"] as? JsonObject)?.get("imdb") as? JsonPrimitive)?.contentOrNullSafe()
             ?: return null
-        var ratings = TitleRatings(fetchedAt = now)
+        var ratings = TitleRatings(fetchedAt = now, version = TitleRatings.CURRENT, certification = certificationOf(item))
         (item["ratings"] as? JsonArray)?.forEach { entry ->
             val rating = entry as? JsonObject ?: return@forEach
             val source = (rating["source"] as? JsonPrimitive)?.contentOrNullSafe()?.lowercase() ?: return@forEach
@@ -54,6 +63,15 @@ object MdbList {
             }
         }
         return id to ratings
+    }
+
+    /** "certification": "PG-13", or else "age_rating": 13 → "13+". */
+    private fun certificationOf(item: JsonObject): String? {
+        (item["certification"] as? JsonPrimitive)?.contentOrNullSafe()?.trim()
+            ?.takeIf { it.isNotEmpty() && it.length <= 12 && !it.equals("NR", true) && !it.equals("Not Rated", true) }
+            ?.let { return it }
+        val age = item.number("age_rating")?.toInt() ?: return null
+        return if (age in 1..21) "$age+" else null
     }
 
     /** A batch answer (an array) or a single title (an object). */

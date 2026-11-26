@@ -5,7 +5,16 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import io.github.sreepv43.streamhub.ui.AppColors
 import io.github.sreepv43.streamhub.StreamHubApp
 import io.github.sreepv43.streamhub.addon.TitleRatings
 
@@ -40,3 +49,18 @@ fun ratingFacts(ratings: TitleRatings?): List<String> = listOfNotNull(
     ratings?.popcorn?.let { "🍿 $it%" },
     ratings?.metacritic?.let { "Metacritic $it" },
 )
+
+/** The age rating ("PG-13", "R", "TV-MA") as a small outlined badge. */
+@Composable
+fun AgeRatingBadge(rating: String, modifier: Modifier = Modifier) {
+    Text(
+        rating,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.Bold,
+        color = AppColors.text,
+        maxLines = 1,
+        modifier = modifier
+            .border(1.dp, AppColors.textDim, RoundedCornerShape(4.dp))
+            .padding(horizontal = 6.dp, vertical = 1.dp),
+    )
+}

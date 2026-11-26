@@ -20,6 +20,9 @@ data class StreamFacts(
     val sizeBytes: Long?,
     val seeders: Int?,
 ) {
+    /** Dolby Atmos sound, as the name says ("DDP5.1 Atmos", "TrueHD Atmos"). */
+    val atmos: Boolean get() = audio?.contains("Atmos") == true
+
     /** The card's title line, e.g. "4K · Blu-ray REMUX · Dolby Vision". */
     val headline: String get() = listOfNotNull(quality, source, hdr).joinToString(" · ")
 

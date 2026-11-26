@@ -326,8 +326,9 @@ private fun Hero(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            val facts = listOfNotNull(meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" }) +
-                ratingFacts(rememberRatings(meta.id)).take(2) + listOfNotNull(
+            val ratings = rememberRatings(meta.id)
+            val facts = listOfNotNull(ratings?.certification, meta.imdbRating?.takeIf { it.isNotBlank() }?.let { "★ $it" }) +
+                ratingFacts(ratings).take(2) + listOfNotNull(
                 meta.releaseInfo?.takeIf { it.isNotBlank() },
                 meta.genres.take(2).takeIf { it.isNotEmpty() }?.joinToString(" / "),
                 meta.runtime?.takeIf { it.isNotBlank() },

@@ -48,6 +48,22 @@ class RatingsTest {
     }
 
     @Test
+    fun readsTheAgeRating() {
+        val json = Json.parseToJsonElement(
+            """[
+                {"imdb_id": "tt1160419", "certification": "PG-13", "ratings": []},
+                {"imdb_id": "tt0903747", "certification": "", "age_rating": 18, "ratings": []},
+                {"imdb_id": "tt2543164", "certification": "NR", "ratings": []}
+            ]""",
+        )
+        val all = MdbList.parseAny(json, now = 0)
+        assertEquals("PG-13", all.getValue("tt1160419").certification)
+        assertEquals("18+", all.getValue("tt0903747").certification)
+        assertNull(all.getValue("tt2543164").certification)
+        assertEquals(TitleRatings.CURRENT, all.getValue("tt1160419").version)
+    }
+
+    @Test
     fun onlyImdbIdsCanBeLookedUp() {
         assertEquals("tt0903747", MdbList.imdbId("tt0903747:1:2"))
         assertNull(MdbList.imdbId("kitsu:1234"))

@@ -303,7 +303,7 @@ class ScreensTest {
     @Test
     fun cinemaMoviePageShowsSourceCardsWithFiltersAndDetails() {
         val hd = Stream(url = "https://a.example/hd.mkv", name = "Web", title = "Movie.2026.1080p.WEB-DL.x264.AAC.5.1 [Tam + Mal] 4.2 GB")
-        val uhd = Stream(url = "https://a.example/uhd.mkv", name = "Web", title = "Movie.2026.2160p.WEB-DL.HDR10.HEVC.DDP5.1 14.8 GB")
+        val uhd = Stream(url = "https://a.example/uhd.mkv", name = "Web", title = "Movie.2026.2160p.WEB-DL.HDR10.HEVC.DDP5.1.Atmos 14.8 GB")
         var played: Stream? = null
         show {
             CinemaTitlePage(
@@ -344,6 +344,16 @@ class ScreensTest {
         focus(rule.onAllNodesWithText("4K")[0]) // the chip; the 4K card has its own "4K" badge
         press(KeyEvent.KEYCODE_DPAD_CENTER)
         assertTrue(rule.onAllNodesWithText("1080p · WEB-DL").fetchSemanticsNodes().isEmpty())
+
+        // Back to all qualities; "Dolby Atmos" keeps only the Atmos sources.
+        focus(rule.onNodeWithText("All quality"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        focus(rule.onNodeWithText("Dolby Atmos (1)"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
+        assertTrue(rule.onAllNodesWithText("1080p · WEB-DL").fetchSemanticsNodes().isEmpty())
+        rule.onNodeWithText("4K · WEB-DL · HDR10").assertExists()
+        focus(rule.onNodeWithText("All audio"))
+        press(KeyEvent.KEYCODE_DPAD_CENTER)
 
         focus(rule.onAllNodesWithText("Details")[0])
         press(KeyEvent.KEYCODE_DPAD_CENTER)

@@ -114,6 +114,7 @@ class RatingsStore(context: Context, private val http: OkHttpClient, private val
     private fun key(): String = settings.ratingsKey.value.trim()
 
     private fun fresh(ratings: TitleRatings): Boolean {
+        if (ratings.version < TitleRatings.CURRENT) return false
         val age = System.currentTimeMillis() - ratings.fetchedAt
         return age < if (ratings.isEmpty) EMPTY_TTL_MS else TTL_MS
     }
@@ -151,7 +152,7 @@ class RatingsStore(context: Context, private val http: OkHttpClient, private val
                         val now = System.currentTimeMillis()
                         val found = MdbList.parseAny(json.parseToJsonElement(text), now)
                         // Titles MDBList doesn't know are remembered as empty, so they aren't asked again for a while.
-                        remember(ids.associateWith { TitleRatings(fetchedAt = now) } + found)
+                        remember(ids.associateWith { TitleRatings(fetchedAt = now, version = TitleRatings.CURRENT) } + found)
                         true
                     }
                     response.code == 429 -> {
@@ -171,7 +172,7 @@ class RatingsStore(context: Context, private val http: OkHttpClient, private val
                         true
                     }
                     else -> {
-                        if (response.code == 404) remember(ids.associateWith { TitleRatings(fetchedAt = System.currentTimeMillis()) })
+                        if (response.code == 404) remember(ids.associateWith { TitleRatings(fetchedAt = System.currentTimeMillis(), version = TitleRatings.CURRENT) })
                         problemFor(response.code, text, key)?.let { _problem.value = it }
                         response.code != 401 && response.code != 403
                     }
