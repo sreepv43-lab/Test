@@ -416,8 +416,7 @@ class Downloads(
     }
 
     private fun load() {
-        if (!jobsFile.isFile) return
-        val saved = runCatching { ServerJson.decodeFromString<List<Job>>(jobsFile.readText()) }.getOrDefault(emptyList())
+        val saved = readSaved(jobsFile) { ServerJson.decodeFromString<List<Job>>(it) } ?: return
         synchronized(jobs) {
             saved.forEach { job ->
                 jobs[job.id] = if (job.state == JobState.COMPLETED || job.paused) job
@@ -426,7 +425,10 @@ class Downloads(
         }
     }
 
-    private fun save() {
+    private val saveLock = Any()
+
+    /** Saves the list; the snapshot is taken inside the lock, so an older one never lands after a newer one. */
+    private fun save() = synchronized(saveLock) {
         val text = synchronized(jobs) { ServerJson.encodeToString(kotlinx.serialization.builtins.ListSerializer(Job.serializer()), jobs.values.toList()) }
         runCatching { writeAtomically(jobsFile, text.toByteArray()) }
     }
@@ -467,11 +469,45 @@ class Downloads(
 }
 
 /** Writes through a temporary file, so a crash never leaves half a file behind. */
+private val fileLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
+/**
+ * Replaces [file] with [bytes] so it is never half-written: one writer per file at a time (the
+ * ticker, the HTTP threads and finishing downloads all save), each through its own temporary file,
+ * and the previous version is kept as `<name>.bak` for [readSaved].
+ */
 fun writeAtomically(file: File, bytes: ByteArray) {
-    val tmp = File(file.parentFile, file.name + ".tmp")
-    tmp.writeBytes(bytes)
-    if (!tmp.renameTo(file)) {
-        file.delete()
-        tmp.renameTo(file)
+    val lock = fileLocks.computeIfAbsent(file.absolutePath) { Any() }
+    synchronized(lock) {
+        val tmp = File(file.parentFile, file.name + ".tmp-" + Thread.currentThread().id)
+        tmp.writeBytes(bytes)
+        if (file.isFile && file.length() > 0) {
+            runCatching { java.nio.file.Files.copy(file.toPath(), File(file.parentFile, file.name + ".bak").toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING) }
+        }
+        try {
+            java.nio.file.Files.move(tmp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING, java.nio.file.StandardCopyOption.ATOMIC_MOVE)
+        } catch (e: Exception) {
+            // Some file systems (and Windows with a file open elsewhere) refuse an atomic replace.
+            java.nio.file.Files.move(tmp.toPath(), file.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        }
+    }
+}
+
+/**
+ * Reads a file saved with [writeAtomically], falling back to its backup when it is missing or
+ * can't be read. A file that can't be read is kept as `<name>.broken-<time>` instead of being
+ * written over with less.
+ */
+fun <T> readSaved(file: File, parse: (String) -> T): T? {
+    val lock = fileLocks.computeIfAbsent(file.absolutePath) { Any() }
+    synchronized(lock) {
+        if (file.isFile) {
+            runCatching { return parse(file.readText()) }
+            // Set aside (so the next save doesn't make it the backup).
+            runCatching { file.renameTo(File(file.parentFile, file.name + ".broken-" + System.currentTimeMillis())) }
+        }
+        val backup = File(file.parentFile, file.name + ".bak")
+        if (backup.isFile) runCatching { return parse(backup.readText()) }
+        return null
     }
 }

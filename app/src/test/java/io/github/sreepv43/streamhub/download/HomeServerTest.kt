@@ -47,7 +47,8 @@ class HomeServerTest {
                     }
                     "POST /api/downloads" -> job("j1", "metadata")
                     "GET /api/downloads" -> "[" + job("j1", "downloading") + "," + job("j2", "completed", "Dune: Part Two") + "]"
-                    "GET /api/library" -> "[]"
+                    "GET /api/library" -> """[{"id":"fabc","title":"Minority Report","fileName":"Minority.Report.2002.2160p.mkv","sizeBytes":94,
+                        "storageLabel":"S:\\","available":true,"storageId":"s2","folder":"Minority Report 2002"}]"""
                     "GET /api/status" -> """{"name":"Den PC","storages":[{"id":"s1","label":"Elements","available":true,"freeBytes":5,"totalBytes":9}]}"""
                     else -> return MockResponse().setResponseCode(404)
                 }
@@ -101,6 +102,34 @@ class HomeServerTest {
         assertEquals(DownloadItem.Status.COMPLETED, repository.get("server-j2")!!.status)
         assertEquals(DownloadLocation.Kind.SERVER, repository.get("server-j2")!!.location.kind)
         assertEquals("http://$address/media/j2", homeServer.mediaUrl("j2"))
+    }
+
+    @Test
+    fun aDownloadTheServerLostIsFoundAgainByItsFile() {
+        val context = RuntimeEnvironment.getApplication()
+        val settings = Settings(context)
+        val repository = DownloadRepository(context)
+        val homeServer = HomeServer(OkHttpClient(), settings, repository)
+        runBlocking { homeServer.pair("${server.hostName}:${server.port}", "123456", "TV") }
+        repository.add(
+            DownloadItem(
+                id = "old-1",
+                title = "Minority Report",
+                url = TorrentLinks.logicalUrl(magnet, 0),
+                location = DownloadLocation(DownloadLocation.Kind.SERVER, "s2", "Den PC · S:\\"),
+                fileName = "Minority.Report.2002.2160p.mkv",
+                totalBytes = 94,
+                downloadedBytes = 94,
+                status = DownloadItem.Status.COMPLETED,
+                remoteId = "job-the-server-forgot",
+            ),
+        )
+        homeServer.start()
+        waitFor { repository.get("old-1")?.remoteId == "fabc" }
+        val found = repository.get("old-1")!!
+        assertEquals(DownloadItem.Status.COMPLETED, found.status)
+        assertEquals("http://${server.hostName}:${server.port}/media/fabc", homeServer.mediaUrl(found.remoteId!!))
+        assertEquals("Minority Report 2002", homeServer.library.value.single().folder)
     }
 
     private fun waitFor(condition: () -> Boolean) {

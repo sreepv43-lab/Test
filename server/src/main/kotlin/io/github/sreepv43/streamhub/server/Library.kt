@@ -52,6 +52,8 @@ class Library(
                 storageLabel = label(job.storageId),
                 available = available(job.storageId, job.filePath!!),
                 fromDownload = true,
+                storageId = job.storageId,
+                folder = folderIn(job.storageId, job.filePath!!),
             )
         }
         val found = synchronized(this) { scanned }.map { f ->
@@ -68,9 +70,19 @@ class Library(
                 storageLabel = label(f.storageId),
                 available = available(f.storageId, f.path),
                 fromDownload = false,
+                storageId = f.storageId,
+                folder = folderIn(f.storageId, f.path),
             )
         }
         return downloads + found
+    }
+
+    /** The file's folder inside its storage ("Dune (2021)/Extras"), "" for the storage's top. */
+    private fun folderIn(storageId: String, path: String): String {
+        val root = storages().firstOrNull { it.id == storageId }?.path ?: return ""
+        val parent = File(path).parentFile ?: return ""
+        return runCatching { File(root).toPath().relativize(parent.toPath()).toString().replace('\\', '/') }
+            .getOrDefault("").takeUnless { it.startsWith("..") }.orEmpty()
     }
 
     /** The file behind a library id, if it can be read now. */
@@ -96,7 +108,8 @@ class Library(
             }
             File(storage.path).walkTopDown()
                 .maxDepth(MAX_DEPTH)
-                .onEnter { !it.name.startsWith(".") }
+                // Hidden folders, and Windows' own folders at a drive's top.
+                .onEnter { !it.name.startsWith(".") && !it.name.startsWith("$") && it.name != "System Volume Information" }
                 .filter { it.isFile && it.extension.lowercase() in Downloads.VIDEO_EXTENSIONS && it.length() >= minVideoBytes }
                 .filter { it.path !in downloaded && !it.name.contains("sample", ignoreCase = true) }
                 .forEach { video ->
@@ -130,7 +143,7 @@ class Library(
     }
 
     private fun load(): List<ScannedFile> =
-        runCatching { ServerJson.decodeFromString(ListSerializer(ScannedFile.serializer()), file.readText()) }.getOrDefault(emptyList())
+        readSaved(file) { ServerJson.decodeFromString(ListSerializer(ScannedFile.serializer()), it) }.orEmpty()
 
     private fun save() {
         val text = ServerJson.encodeToString(ListSerializer(ScannedFile.serializer()), synchronized(this) { scanned })

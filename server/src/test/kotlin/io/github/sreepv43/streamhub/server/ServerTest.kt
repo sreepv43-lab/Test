@@ -106,7 +106,8 @@ class ServerTest {
         val s = startServer(47412)
         val token = pair(s)
         val movie = Random(1).nextBytes(300_000)
-        File(storage, "Manjummel.Boys.2024.1080p.WEB-DL.mkv").writeBytes(movie)
+        File(storage, "Manjummel Boys (2024)").mkdirs()
+        File(storage, "Manjummel Boys (2024)/Manjummel.Boys.2024.1080p.WEB-DL.mkv").writeBytes(movie)
         s.library.scan()
         val items = ServerJson.decodeFromString(
             kotlinx.serialization.builtins.ListSerializer(LibraryItem.serializer()),
@@ -116,6 +117,7 @@ class ServerTest {
         assertEquals("Manjummel Boys", item.parsedTitle)
         assertEquals(2024, item.year)
         assertTrue(item.available)
+        assertEquals("Manjummel Boys (2024)", item.folder)
 
         val (code, part) = request("GET", "/media/${item.id}", token, range = "bytes=1000-1999")
         assertEquals(206, code)

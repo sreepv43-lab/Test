@@ -52,8 +52,11 @@ import io.github.sreepv43.streamhub.ui.components.panel
 import io.github.sreepv43.streamhub.ui.components.tvRow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import io.github.sreepv43.streamhub.ui.components.serverFiles
+import io.github.sreepv43.streamhub.ui.components.rememberServerFilesPlace
+import io.github.sreepv43.streamhub.ui.components.StreamActions
 
-private enum class DownloadFilter(val label: String) { All("All"), Active("Active"), Completed("Completed") }
+private enum class DownloadFilter(val label: String) { All("All"), Active("Active"), Completed("Completed"), Server("Home Server files") }
 
 private val DownloadItem.active: Boolean
     get() = status == DownloadItem.Status.RUNNING || status == DownloadItem.Status.QUEUED ||
@@ -78,10 +81,17 @@ internal fun CinemaDownloads(
     onOpenStorage: () -> Unit,
 ) {
     var filter by rememberSaveable { mutableStateOf(DownloadFilter.All) }
+    val context = LocalContext.current
+    val homeServer = context.container.homeServer
+    val serverLibrary by homeServer.library.collectAsStateWithLifecycle()
+    val serverOnline by homeServer.online.collectAsStateWithLifecycle()
+    val filters = DownloadFilter.entries.filter { it != DownloadFilter.Server || homeServer.configured }
+    val place = rememberServerFilesPlace(active = filter == DownloadFilter.Server)
     val shown = when (filter) {
         DownloadFilter.All -> items
         DownloadFilter.Active -> items.filter { it.active }
         DownloadFilter.Completed -> items.filter { it.status == DownloadItem.Status.COMPLETED }
+        DownloadFilter.Server -> emptyList()
     }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 40.dp)) {
         item(key = "title") {
@@ -102,10 +112,12 @@ internal fun CinemaDownloads(
         item(key = "saving-to") { SavingTo(waitingForWifi, onOpenStorage) }
         item(key = "filters") {
             Row(Modifier.tvRow().padding(horizontal = 24.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                DownloadFilter.entries.forEach { f -> FlatChip(f.label, selected = filter == f, onClick = { filter = f }) }
+                filters.forEach { f -> FlatChip(f.label, selected = filter == f, onClick = { filter = f }) }
             }
         }
-        if (shown.isEmpty()) {
+        if (filter == DownloadFilter.Server) {
+            serverFiles(place, serverLibrary, serverOnline, onPlay = { StreamActions.playServerFile(context, it) })
+        } else if (shown.isEmpty()) {
             item(key = "empty") {
                 Text(
                     if (items.isEmpty()) "Nothing downloaded yet. Use Download on a movie's page or next to a source."

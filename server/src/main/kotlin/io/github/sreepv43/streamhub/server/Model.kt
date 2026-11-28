@@ -163,6 +163,9 @@ data class LibraryItem(
     val storageLabel: String,
     val available: Boolean,
     val fromDownload: Boolean,
+    val storageId: String = "",
+    /** Folder inside the storage ("Dune (2021)"), "" at its top; for browsing on the TV. */
+    val folder: String = "",
 )
 
 /** A video file found by scanning a storage (library.json). */

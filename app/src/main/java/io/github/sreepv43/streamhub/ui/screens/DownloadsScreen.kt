@@ -60,6 +60,11 @@ import io.github.sreepv43.streamhub.ui.components.DialogShape
 import io.github.sreepv43.streamhub.ui.components.FlatIconButton
 import io.github.sreepv43.streamhub.ui.components.panel
 import io.github.sreepv43.streamhub.ui.components.tvFocus
+import io.github.sreepv43.streamhub.ui.components.serverFiles
+import io.github.sreepv43.streamhub.ui.components.rememberServerFilesPlace
+import io.github.sreepv43.streamhub.ui.components.FlatChip
+import io.github.sreepv43.streamhub.ui.components.tvRow
+import androidx.compose.runtime.saveable.rememberSaveable
 
 @Composable
 fun DownloadsScreen(onOpenStorageSettings: () -> Unit = {}) {
@@ -123,7 +128,22 @@ fun DownloadsScreen(onOpenStorageSettings: () -> Unit = {}) {
                 modifier = Modifier.padding(horizontal = 24.dp),
             )
         }
-        if (items.isEmpty()) {
+        val homeServer = context.container.homeServer
+        var serverFilesShown by rememberSaveable { mutableStateOf(false) }
+        val place = rememberServerFilesPlace(active = serverFilesShown)
+        if (homeServer.configured) {
+            Row(Modifier.tvRow().padding(horizontal = 24.dp, vertical = 4.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                FlatChip("Downloads", selected = !serverFilesShown, onClick = { serverFilesShown = false })
+                FlatChip("Home Server files", selected = serverFilesShown, onClick = { serverFilesShown = true })
+            }
+        }
+        if (serverFilesShown && homeServer.configured) {
+            val serverLibrary by homeServer.library.collectAsStateWithLifecycle()
+            val serverOnline by homeServer.online.collectAsStateWithLifecycle()
+            LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
+                serverFiles(place, serverLibrary, serverOnline, onPlay = { StreamActions.playServerFile(context, it) })
+            }
+        } else if (items.isEmpty()) {
             CenteredMessage("Nothing downloaded yet. Use the download button next to a stream.")
         } else {
             LazyColumn(

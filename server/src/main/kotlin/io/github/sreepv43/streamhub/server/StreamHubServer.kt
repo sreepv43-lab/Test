@@ -215,7 +215,7 @@ class StreamHubServer(
     private fun newCode(): String = (100_000 + random.nextInt(900_000)).toString()
 
     private fun loadConfig(): ServerConfig =
-        runCatching { ServerJson.decodeFromString(ServerConfig.serializer(), configFile.readText()) }.getOrNull() ?: ServerConfig()
+        readSaved(configFile) { ServerJson.decodeFromString(ServerConfig.serializer(), it) } ?: ServerConfig()
 
     private fun saveConfig() {
         dataDir.mkdirs()

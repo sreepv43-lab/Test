@@ -115,6 +115,9 @@ data class ServerLibraryItem(
     val storageLabel: String = "",
     val available: Boolean = true,
     val fromDownload: Boolean = false,
+    val storageId: String = "",
+    /** Folder inside its storage ("Dune (2021)"), "" at the top (older servers: always ""). */
+    val folder: String = "",
 )
 
 class HomeServerException(message: String) : IOException(message)
@@ -152,6 +155,8 @@ class HomeServer(
 
     private val refreshNow = MutableStateFlow(0)
     private val sending = java.util.concurrent.atomic.AtomicInteger()
+    /** The server's download ids at the last sync (null before the first). */
+    @Volatile private var lastJobIds: Set<String>? = null
 
     val configured: Boolean get() = settings.homeServerAddress.value.isNotEmpty() && settings.homeServerToken.value.isNotEmpty()
 
@@ -263,10 +268,13 @@ class HomeServer(
     fun pause(item: DownloadItem) = control(item, "pause")
 
     fun resume(item: DownloadItem) {
-        if (item.remoteId == null) {
+        // Never reached the server, or the server's list no longer has it: send it (again).
+        val lost = item.remoteId != null && lastJobIds?.contains(item.remoteId) == false &&
+            item.status != DownloadItem.Status.COMPLETED && _library.value.none { it.id == item.remoteId }
+        if (item.remoteId == null || lost) {
             // Never reached the server (it was offline): send it now.
-            repository.update(item.id) { it.copy(status = DownloadItem.Status.QUEUED, error = null, detail = "Sending to the Home Server…") }
-            send(item)
+            repository.update(item.id) { it.copy(status = DownloadItem.Status.QUEUED, error = null, detail = "Sending to the Home Server…", remoteId = null) }
+            send(item.copy(remoteId = null))
         } else {
             control(item, "resume")
         }
@@ -280,6 +288,15 @@ class HomeServer(
     }
 
     fun name(): String = settings.homeServerName.value.ifEmpty { "Home Server" }
+
+    /** Asks the server to look through its drives for new films now; the list updates shortly after. */
+    fun rescan() {
+        scope.launch {
+            runCatching { post("/api/library/scan", "".toRequestBody(jsonType), ServerError.serializer()) }
+            delay(RESCAN_WAIT_MS)
+            refresh()
+        }
+    }
 
     /** Where the player streams a server file from, and the key it sends. */
     fun mediaUrl(id: String): String = baseUrl() + "/media/" + id
@@ -302,13 +319,26 @@ class HomeServer(
         val local = repository.items.value
         // A download just finished: its library entry (for Play downloaded) is wanted now, not in 30 s.
         if (jobs.any { job -> job.state == "completed" && local.any { it.remoteId == job.id && it.status != DownloadItem.Status.COMPLETED } }) refresh()
+        lastJobIds = byRemote.keys
+        // Entries the server's download list doesn't have (it lost them, or they were linked to a
+        // file before) are looked up by their file in the server's library: the film is still on its drive.
+        val orphans = local.any { it.onServer && it.remoteId != null && it.remoteId !in byRemote }
+        val library = if (orphans) {
+            runCatching { get("/api/library", ListSerializer(ServerLibraryItem.serializer())) }.getOrNull()?.also { _library.value = it }
+        } else {
+            null
+        }
         for (item in local.filter { it.onServer && it.remoteId != null }) {
             val job = byRemote[item.remoteId]
             repository.update(item.id, persist = false) { current ->
-                if (job == null) {
-                    current.copy(status = DownloadItem.Status.FAILED, error = "This download is no longer on the Home Server", downloadRate = 0)
-                } else {
-                    withJob(current, job)
+                when {
+                    job != null -> withJob(current, job)
+                    library == null -> current
+                    else -> {
+                        val file = library.firstOrNull { it.id == current.remoteId } ?: fileFor(current, library)
+                        if (file != null) withFile(current, file)
+                        else current.copy(status = DownloadItem.Status.FAILED, error = "This download is no longer on the Home Server", downloadRate = 0)
+                    }
                 }
             }
         }
@@ -337,6 +367,29 @@ class HomeServer(
         }
         repository.flush()
     }
+
+    /** The library file that is [item]'s download: the same file name (and size, when known). */
+    private fun fileFor(item: DownloadItem, library: List<ServerLibraryItem>): ServerLibraryItem? {
+        val name = item.fileName ?: return null
+        return library.filter { it.fileName.equals(name, ignoreCase = true) }
+            .sortedByDescending { it.available }
+            .firstOrNull { item.totalBytes <= 0 || it.sizeBytes == item.totalBytes }
+    }
+
+    /** A finished download linked to its file in the server's library (plays from there). */
+    private fun withFile(item: DownloadItem, file: ServerLibraryItem): DownloadItem = item.copy(
+        remoteId = file.id,
+        status = if (file.available) DownloadItem.Status.COMPLETED else DownloadItem.Status.FAILED,
+        detail = if (file.available) null else "Storage unavailable",
+        error = if (file.available) null else "Its drive isn't connected to the Home Server now",
+        fileName = file.fileName,
+        totalBytes = file.sizeBytes,
+        downloadedBytes = file.sizeBytes,
+        downloadRate = 0,
+        peers = null,
+        seeds = null,
+        location = item.location.copy(label = listOf(name(), file.storageLabel).filter { it.isNotEmpty() }.joinToString(" · ")),
+    )
 
     private fun serverLabel(job: ServerJob): String =
         listOfNotNull(settings.homeServerName.value.ifEmpty { "Home Server" }, job.storageLabel).joinToString(" · ")
@@ -398,5 +451,6 @@ class HomeServer(
         private const val FAST_MS = 2_000L
         private const val SLOW_MS = 15_000L
         private const val LIBRARY_EVERY_MS = 30_000L
+        private const val RESCAN_WAIT_MS = 5_000L
     }
 }
